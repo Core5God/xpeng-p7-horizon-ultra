@@ -75,6 +75,20 @@
   #loadtext{font-size:13.5px;opacity:.65;margin-top:9px;letter-spacing:1px}
   .hintbar{position:absolute;bottom:24px;right:28px;display:flex;align-items:center;font-size:14.5px;color:rgba(255,255,255,.88);flex-wrap:wrap;max-width:62vw;justify-content:flex-end;row-gap:9px}
   kbd{font-family:inherit;font-size:12.5px;font-weight:700;letter-spacing:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-bottom-width:3px;border-radius:5px;padding:4px 10px;margin:0 7px 0 16px}
+  /* —— 计分牌与技能弹字 —— */
+  #scorechip{top:16px;right:16px;text-align:right;background:linear-gradient(90deg,rgba(4,10,22,.15),rgba(4,10,22,.72));border-right:3px solid var(--cy);padding:6px 16px;transform:skewX(-8deg)}
+  #scorechip .slabel{font-size:10px;letter-spacing:3px;opacity:.65}
+  #scoreval{font-size:26px;font-weight:700;font-style:italic;line-height:1;font-variant-numeric:tabular-nums;display:inline-block}
+  #combox{font-size:14px;font-weight:700;color:#cfd8e4;margin-left:7px}
+  #skillstack{position:fixed;top:96px;right:18px;z-index:10;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
+  body.nohud #skillstack{display:none}
+  .skill{font-family:'Rajdhani','Noto Sans SC',sans-serif;font-size:16px;font-weight:700;font-style:italic;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.85);background:linear-gradient(90deg,transparent,rgba(4,10,22,.55));padding:3px 12px;animation:skIn 1.6s ease-out forwards}
+  .skill.big{font-size:20px;color:#7fe9ff}
+  @keyframes skIn{0%{opacity:0;transform:skewX(-8deg) translateX(26px)}10%{opacity:1;transform:skewX(-8deg) translateX(0)}72%{opacity:1;transform:skewX(-8deg) translateX(0)}100%{opacity:0;transform:skewX(-8deg) translate(0,-14px)}}
+  /* —— 游戏内键位提示带（自动淡化，H 隐藏） —— */
+  #keytips{bottom:22px;left:50%;transform:translateX(-50%);font-size:12.5px;font-weight:500;color:rgba(255,255,255,.92);white-space:nowrap;transition:opacity 1.2s;background:linear-gradient(90deg,transparent,rgba(4,10,22,.4) 12%,rgba(4,10,22,.4) 88%,transparent);padding:5px 26px}
+  #keytips.dim{opacity:.32}
+  #keytips kbd{font-size:10.5px;padding:2px 7px;margin:0 4px 0 12px;border-bottom-width:2px}
   /* —— 照片工具栏 —— */
   #photobar{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:25;display:none;gap:12px}
   #photobar.show{display:flex}
@@ -115,6 +129,9 @@
   <div id="nitrowrap"><div id="nitrolabel">NITRO · SHIFT</div><div id="nitrobar"><div id="nitrofill"></div></div></div>
 </div>
 <div class="hud" id="racebox"><div id="laptime">0:00.00</div><div id="cpinfo"></div><div id="besttime"></div></div>
+<div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
+<div id="skillstack"></div>
+<div class="hud" id="keytips"><kbd>SHIFT</kbd>氮气<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
 
@@ -248,9 +265,20 @@ const stars = (() => {
 
 // 环境反射（由天空生成，可重建）
 let pmremTex = null;
+const envGroundMat = new THREE.MeshBasicMaterial({color:0x4a4038});
 function rebuildEnv() {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const rt = pmrem.fromScene(sky);
+  // 反射环境 = 天空 + 暗色地面：下半球反射不再是亮天，车漆质感更真实
+  const envScene = new THREE.Scene();
+  envScene.add(new THREE.Mesh(sky.geometry, sky.material));
+  envGroundMat.color.setHex(curTod === 'night' ? 0x0a0e13 : curTod === 'day' ? 0x46553f : 0x4a4038);
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(900, 24), envGroundMat);
+  ground.rotation.x = -Math.PI/2;
+  ground.position.y = -2;
+  envScene.add(ground);
+  // 大模糊 sigma：太阳盘会把整个立方体贴图面打饱和，平整车身板会反射出"正方形"高光；
+  // 模糊后环境只提供柔和的天光/地光，锐利的太阳高光交给方向光（圆形、物理正确）
+  const rt = pmrem.fromScene(envScene, 0.55);
   if (pmremTex) pmremTex.dispose();
   pmremTex = rt.texture;
   scene.environment = pmremTex;
@@ -261,13 +289,13 @@ function rebuildEnv() {
 const PRESETS = {
   sunset: {
     label:'落日', sunDir:[-0.55,0.30,-0.81], sunCol:0xffc792, sunInt:9, hemiInt:1.3, hemiSky:0xffd9b0,
-    exposure:0.62, fog:0xcf7a72, skySun:[-0.55,0.06,-0.81], turbidity:10, rayleigh:3.2, mieC:0.0035, mieG:0.96,
-    water:0x06283a, bloom:0.32, lights:false
+    exposure:0.62, fog:0xcf7a72, skySun:[-0.55,0.03,-0.81], turbidity:10, rayleigh:3.2, mieC:0.0015, mieG:0.985,
+    water:0x06283a, bloom:0.24, lights:false
   },
   day: {
-    label:'白天', sunDir:[-0.45,0.78,-0.45], sunCol:0xfff2dd, sunInt:11, hemiInt:2.0, hemiSky:0xcfe5ff,
-    exposure:0.55, fog:0xbfd8ea, skySun:[-0.45,0.60,-0.45], turbidity:3.2, rayleigh:1.2, mieC:0.0025, mieG:0.9,
-    water:0x0d4a66, bloom:0.22, lights:false
+    label:'白天', sunDir:[-0.45,0.78,-0.45], sunCol:0xfff2dd, sunInt:7.2, hemiInt:1.1, hemiSky:0xcfe5ff,
+    exposure:0.5, fog:0x9fc3dc, skySun:[-0.45,0.55,-0.45], turbidity:2.4, rayleigh:1.9, mieC:0.0012, mieG:0.95,
+    water:0x0d4a66, bloom:0.12, lights:false
   },
   night: {
     label:'夜晚', sunDir:[0.45,0.55,0.55], sunCol:0xa8bcdc, sunInt:1.4, hemiInt:0.45, hemiSky:0x223355,
@@ -353,22 +381,142 @@ function roadYAt(x, z, idx) {
 }
 function groundHeight(x, z) {
   const nr = nearestRoad(x, z);
-  const ry = roadYAt(x, z, nr.idx);
+  let dRoad = nr.dist;
+  let ry = roadYAt(x, z, nr.idx);
+  // 支线也压平地形；桥段除外（地形从桥下穿过）
+  if (typeof bSamples !== 'undefined' && bSamples.length) {
+    const bi = branchInfo(x, z);
+    if (!bi.bridge && bi.dist < dRoad) { dRoad = bi.dist; ry = bi.y; }
+  }
   const base = islandBase(x, z);
-  if (nr.dist < HALF_W + 1.5) return ry - 0.04;
-  if (nr.dist < 55) {
-    const t = THREE.MathUtils.smoothstep(nr.dist, HALF_W+1.5, 55);
-    return (ry - 0.04)*(1-t) + base*t;
+  // 压平带 15m：保证地形网格在路两侧必有顶点被压平，杜绝顶点间插值隆起盖住路面
+  if (dRoad < 15) return ry - 0.05;
+  if (dRoad < 60) {
+    const t = THREE.MathUtils.smoothstep(dRoad, 15, 60);
+    return (ry - 0.05)*(1-t) + base*t;
   }
   return base;
 }
+// ---------- 支线公路与跨谷桥 ----------
+const B_HALF = 5.0;
+const bSamples = [], bTangents = [], bNormals = [], bBridge = [];
+{
+  const A = 120, B = 480;
+  const pa = samples[A].clone(), pb = samples[B].clone();
+  const mids = [];
+  for (const t of [0.3, 0.5, 0.7]) {
+    const m = new THREE.Vector3().lerpVectors(pa, pb, t);
+    m.x += Math.sin(t*9)*22;
+    m.z += Math.cos(t*7)*18;
+    const hb = islandBase(m.x, m.z);
+    m.y = Math.max(hb + 1.2, Math.min(pa.y, pb.y)); // 平缓走线：低谷自动成桥、山体自动成路堑
+    mids.push(m);
+  }
+  const a2 = pa.clone().addScaledVector(tangents[A], 26);
+  const b2 = pb.clone().addScaledVector(tangents[B], -26);
+  const bc = new THREE.CatmullRomCurve3([pa, a2, ...mids, b2, pb], false, 'catmullrom', 0.4);
+  const NB = 260;
+  // 桥判定必须与"主路压平后的地面"比较——路口附近地形被主路抬升过，
+  // 用原始地形会把汇入口误判成桥，凭空生成横穿路面的幽灵护栏/空气墙
+  function gMain(x, z) {
+    const nr2 = nearestRoad(x, z);
+    const ry2 = roadYAt(x, z, nr2.idx);
+    const base2 = islandBase(x, z);
+    if (nr2.dist < 15) return ry2;
+    if (nr2.dist < 60) {
+      const t2 = THREE.MathUtils.smoothstep(nr2.dist, 15, 60);
+      return ry2*(1-t2) + base2*t2;
+    }
+    return base2;
+  }
+  const rawB = [];
+  for (let i = 0; i <= NB; i++) {
+    const t = i/NB;
+    const p = bc.getPointAt(t);
+    const tg = bc.getTangentAt(t);
+    bSamples.push(p);
+    bTangents.push(tg);
+    bNormals.push(new THREE.Vector3(-tg.z, 0, tg.x).normalize());
+    rawB.push(i > 25 && i < NB - 25 && p.y - gMain(p.x, p.z) > 3);
+  }
+  // 桥段必须连续 ≥14 个采样，去除碎片护栏
+  for (let i = 0; i <= NB; i++) bBridge.push(false);
+  let runStart = -1;
+  for (let i = 0; i <= NB + 1; i++) {
+    const v = i <= NB ? rawB[i] : false;
+    if (v && runStart < 0) runStart = i;
+    if (!v && runStart >= 0) {
+      const len = i - runStart;
+      if (len >= 14) for (let j = runStart; j < i; j++) bBridge[j] = true;
+      runStart = -1;
+    }
+  }
+}
+function branchInfo(x, z) {
+  let best = 1e18, bi = 0;
+  for (let i = 0; i < bSamples.length; i += 3) {
+    const dx = bSamples[i].x - x, dz = bSamples[i].z - z;
+    const d = dx*dx + dz*dz;
+    if (d < best) { best = d; bi = i; }
+  }
+  for (let j = Math.max(0, bi-3); j <= Math.min(bSamples.length-1, bi+3); j++) {
+    const dx = bSamples[j].x - x, dz = bSamples[j].z - z;
+    const d = dx*dx + dz*dz;
+    if (d < best) { best = d; bi = j; }
+  }
+  let y = bSamples[bi].y;
+  for (const j of [bi+1, bi-1]) {
+    if (j < 0 || j >= bSamples.length) continue;
+    const a = bSamples[bi], b = bSamples[j];
+    const abx = b.x - a.x, abz = b.z - a.z;
+    const L2 = abx*abx + abz*abz;
+    if (L2 < 1e-6) continue;
+    const t = ((x-a.x)*abx + (z-a.z)*abz) / L2;
+    if (t > 0 && t <= 1) { y = a.y + (b.y - a.y)*t; break; }
+  }
+  return { dist: Math.sqrt(best), y, bridge: bBridge[bi], idx: bi };
+}
+
+// 地形网格高度场：与渲染出的低面数地形严格一致（越野贴地用）
+let terrainField = null;
+function meshGroundHeight(x, z) {
+  if (!terrainField) return groundHeight(x, z);
+  const g = 201, st = 9.5;
+  const gx = (x + 950)/st, gz = (z + 950)/st;
+  if (gx < 0 || gz < 0 || gx >= 200 || gz >= 200) return groundHeight(x, z);
+  const ix = Math.floor(gx), iz = Math.floor(gz);
+  const fx2 = gx - ix, fz2 = gz - iz;
+  const h00 = terrainField[iz*g+ix], h10 = terrainField[iz*g+ix+1];
+  const h01 = terrainField[(iz+1)*g+ix], h11 = terrainField[(iz+1)*g+ix+1];
+  return h00*(1-fx2)*(1-fz2) + h10*fx2*(1-fz2) + h01*(1-fx2)*fz2 + h11*fx2*fz2;
+}
+
+// 车辆贴地用的"可行驶表面"高度：主路/支线/桥面取路面顶面，路外取渲染地形
+// refY：车辆当前高度——在桥下方时取桥下地形而非被"吸"上桥面
+function surfaceHeight(x, z, refY) {
+  const nr = nearestRoad(x, z);
+  if (bSamples.length) {
+    const bi = branchInfo(x, z);
+    if (bi.dist < nr.dist) {
+      const underBridge = bi.bridge && refY !== undefined && refY < bi.y - 2;
+      if (!underBridge) {
+        if (bi.dist < B_HALF) return bi.y + 0.07;
+        if (bi.dist < B_HALF + 1.1 && !bi.bridge) return bi.y + 0.04;
+      }
+    }
+  }
+  if (nr.dist < HALF_W) return roadYAt(x, z, nr.idx) + 0.06;
+  if (nr.dist < HALF_W + 1.1) return roadYAt(x, z, nr.idx) + 0.04;
+  return meshGroundHeight(x, z);
+}
 
 function buildTerrain() {
-  const SEG = 140, SIZE = 1900;
+  const SEG = 200, SIZE = 1900;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   g.rotateX(-Math.PI/2);
   const pos = g.attributes.position;
   const colors = new Float32Array(pos.count*3);
+  const field = new Float32Array(pos.count);
   const cSand = new THREE.Color(0xd9c08c), cGrass = new THREE.Color(0x55784a),
         cDry = new THREE.Color(0x96995c), cRock = new THREE.Color(0x8d8278);
   const tmp = new THREE.Color();
@@ -382,8 +530,10 @@ function buildTerrain() {
     else tmp.copy(cDry).lerp(cRock, Math.min((h-16)/10, 1));
     const v = 0.92 + 0.13*Math.sin(x*0.8)*Math.cos(z*0.7);
     colors[i*3] = tmp.r*v; colors[i*3+1] = tmp.g*v; colors[i*3+2] = tmp.b*v;
+    field[i] = h; // 记录高度场（与渲染网格一致的越野贴地）
   }
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  terrainField = field;
   g.computeVertexNormals();
   // 细节噪声贴图：打破大色块的平面感
   const detailTex = (() => {
@@ -472,8 +622,8 @@ function buildRoad() {
   })();
   const roadMat = new THREE.MeshStandardMaterial({map:asphaltTex, color:0xffffff, roughness:0.85, metalness:0, envMapIntensity:0.5});
   const shoulderMat = new THREE.MeshStandardMaterial({color:0x615a50, roughness:1});
-  const lineMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6, emissive:0x222222});
-  const dashMat = new THREE.MeshStandardMaterial({color:0xffd54f, roughness:0.6, emissive:0x332200});
+  const lineMat = new THREE.MeshStandardMaterial({color:0xdadada, roughness:0.85, emissive:0x0a0a0a});
+  const dashMat = new THREE.MeshStandardMaterial({color:0xe8c44a, roughness:0.85, emissive:0x141000});
   function ribbon(off1, off2, yLift, mat) {
     const pts = [], uvs = [];
     for (let i = 0; i <= NS; i++) {
@@ -510,6 +660,65 @@ function buildRoad() {
   dg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dashPts), 3));
   dg.setIndex(dashIdx); dg.computeVertexNormals();
   scene.add(new THREE.Mesh(dg, dashMat));
+
+  // —— 支线公路 + 跨谷桥（桥墩 / 桥护栏 / 桥面侧裙）
+  function branchRibbon(off1, off2, yLift, mat) {
+    const pts = [], uvs = [], idx = [];
+    for (let i = 0; i < bSamples.length; i++) {
+      const p = bSamples[i], n = bNormals[i];
+      pts.push(p.x + n.x*off1, p.y + yLift, p.z + n.z*off1,
+               p.x + n.x*off2, p.y + yLift, p.z + n.z*off2);
+      uvs.push(0, i*0.5, 1, i*0.5);
+      if (i < bSamples.length - 1) { const a = i*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
+    }
+    const g2 = new THREE.BufferGeometry();
+    g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+    g2.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+    g2.setIndex(idx);
+    g2.computeVertexNormals();
+    const m2 = new THREE.Mesh(g2, mat);
+    m2.receiveShadow = true;
+    return m2;
+  }
+  scene.add(branchRibbon(-B_HALF, B_HALF, 0.07, roadMat));
+  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.09, lineMat));
+  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.09, lineMat));
+  const pylonM = new THREE.MeshStandardMaterial({color:0x8d8d94, roughness:0.8});
+  const bRailM = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
+  const skirtM = new THREE.MeshStandardMaterial({color:0x55565e, roughness:0.85});
+  const pylGeos = [], bRailGeos = [];
+  const tmpB = new THREE.Object3D();
+  for (let i = 0; i < bSamples.length - 1; i++) {
+    if (!bBridge[i]) continue;
+    const p = bSamples[i], n = bNormals[i];
+    if (i % 6 === 0) { // 桥墩
+      const hb = Math.max(islandBase(p.x, p.z), -2);
+      const hgt = Math.max(p.y - hb, 1);
+      const py = new THREE.BoxGeometry(1.3, hgt, 1.3);
+      py.translate(p.x, hb + hgt/2, p.z);
+      pylGeos.push(py);
+    }
+    const p2 = bSamples[i+1], n2 = bNormals[i+1];
+    for (const s of [-1, 1]) { // 护栏矮墙
+      const a = new THREE.Vector3(p.x + n.x*s*(B_HALF + 0.12), p.y + 0.5, p.z + n.z*s*(B_HALF + 0.12));
+      const b2 = new THREE.Vector3(p2.x + n2.x*s*(B_HALF + 0.12), p2.y + 0.5, p2.z + n2.z*s*(B_HALF + 0.12));
+      tmpB.position.copy(a).lerp(b2, 0.5);
+      tmpB.lookAt(b2);
+      tmpB.updateMatrix();
+      bRailGeos.push(new THREE.BoxGeometry(0.2, 1.0, a.distanceTo(b2) + 0.06).applyMatrix4(tmpB.matrix));
+    }
+  }
+  if (pylGeos.length) {
+    const pm = new THREE.Mesh(mergeGeometries(pylGeos), pylonM);
+    pm.castShadow = true;
+    scene.add(pm);
+    scene.add(branchRibbon(-B_HALF - 0.15, B_HALF + 0.15, -0.45, skirtM)); // 桥面底裙
+  }
+  if (bRailGeos.length) {
+    const rm = new THREE.Mesh(mergeGeometries(bRailGeos), bRailM);
+    rm.castShadow = true;
+    scene.add(rm);
+  }
   // 护栏（烘焙合并：全部立柱 1 个网格 + 全部横梁 1 个网格）
   const postGeo = new THREE.BoxGeometry(0.18, 1.0, 0.18);
   const postMat = new THREE.MeshStandardMaterial({color:0xc9ccd0, roughness:0.45, metalness:0.7});
@@ -556,9 +765,13 @@ function buildScenery() {
   while (placed < 400 && guard++ < 4500) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
-    if (nearestRoad(x, z).dist < 11) continue;
+    if (nearestRoad(x, z).dist < 16 || branchInfo(x, z).dist < 14) continue;
     const h = groundHeight(x, z);
     if (h < 0.6 || h > 20) continue;
+    // 坡度过滤：低面数地形在陡坡上与解析高度有偏差，避免悬浮
+    const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
+                + Math.abs(groundHeight(x, z+5) - groundHeight(x, z-5));
+    if (slope > 4) continue;
     if (h >= 3.5 && Math.random() < 0.85) {
       // 收集 EZ-Tree 种植点：高处松树、低处阔叶、部分灌木
       let vi;
@@ -621,7 +834,7 @@ function buildScenery() {
       const bi = new THREE.InstancedMesh(t.branchesMesh.geometry, t.branchesMesh.material, spots.length);
       const li = new THREE.InstancedMesh(t.leavesMesh.geometry, leafInstM, spots.length);
       spots.forEach((s, k) => {
-        dummy.position.set(s.x, s.h - 0.08, s.z);
+        dummy.position.set(s.x, s.h - 0.15, s.z);
         dummy.rotation.set(0, s.rot, 0);
         dummy.scale.setScalar(TARGET_H[vi] / srcH * s.s);
         dummy.updateMatrix();
@@ -668,7 +881,7 @@ function buildEnv() {
   // —— 海滨路灯（夜间点亮；柱/臂、灯头、光斑各烘焙成 1 个网格）
   const poleG = new THREE.CylinderGeometry(0.07, 0.10, 4.6, 6);
   const armG = new THREE.BoxGeometry(0.06, 0.06, 1.5);
-  const headG = new THREE.BoxGeometry(0.5, 0.12, 0.24);
+  const headG = new THREE.BoxGeometry(0.42, 0.09, 0.2);
   const poleM = new THREE.MeshStandardMaterial({color:0x3a3f46, roughness:0.6, metalness:0.7});
   env.lampHeadM = new THREE.MeshStandardMaterial({color:0xfff2cf, emissive:0xffdf9e, emissiveIntensity:0.12});
   const poolTex = makeGlowTex([[0,'rgba(255,220,160,0.85)'],[0.5,'rgba(255,210,140,0.28)'],[1,'rgba(255,200,120,0)']]);
@@ -703,19 +916,26 @@ function buildEnv() {
   scene.add(env.lampPools);
   env.lampPools.visible = false;
 
-  // —— 漂移云层
-  const cloudTex = makeGlowTex([[0,'rgba(255,255,255,0.9)'],[0.35,'rgba(255,255,255,0.5)'],[0.7,'rgba(255,255,255,0.16)'],[1,'rgba(255,255,255,0)']]);
-  env.cloudMat = new THREE.SpriteMaterial({map:cloudTex, transparent:true, opacity:0.8, color:0xffbe92, depthWrite:false, fog:false});
+  // —— 漂移云层：多絮团簇（替代单张大贴片，体积感更真实）
+  const cloudTex = makeGlowTex([[0,'rgba(255,255,255,0.75)'],[0.4,'rgba(255,255,255,0.32)'],[0.75,'rgba(255,255,255,0.10)'],[1,'rgba(255,255,255,0)']]);
+  env.cloudMat = new THREE.SpriteMaterial({map:cloudTex, transparent:true, opacity:0.55, color:0xffbe92, depthWrite:false, fog:false});
   env.clouds = [];
-  for (let i = 0; i < 14; i++) {
-    const sp = new THREE.Sprite(env.cloudMat);
-    const a = Math.random()*Math.PI*2, r = 500 + Math.random()*950;
-    sp.position.set(Math.cos(a)*r, 170 + Math.random()*170, Math.sin(a)*r);
-    const s = 280 + Math.random()*360;
-    sp.scale.set(s, s*0.30, 1);
-    sp.userData.vx = 1.2 + Math.random()*1.8;
-    scene.add(sp);
-    env.clouds.push(sp);
+  for (let i = 0; i < 10; i++) {
+    const grp = new THREE.Group();
+    const a = Math.random()*Math.PI*2, r = 550 + Math.random()*900;
+    grp.position.set(Math.cos(a)*r, 190 + Math.random()*170, Math.sin(a)*r);
+    const s = 220 + Math.random()*260;
+    const puffs = 4 + Math.floor(Math.random()*3);
+    for (let p = 0; p < puffs; p++) {
+      const sp = new THREE.Sprite(env.cloudMat);
+      const ps = s*(0.45 + Math.random()*0.4);
+      sp.scale.set(ps, ps*0.42, 1);
+      sp.position.set((Math.random()-0.5)*s*1.3, (Math.random()-0.5)*s*0.16, (Math.random()-0.5)*s*0.25);
+      grp.add(sp);
+    }
+    grp.userData.vx = 1.2 + Math.random()*1.8;
+    scene.add(grp);
+    env.clouds.push(grp);
   }
 
   // —— 月亮
@@ -761,6 +981,7 @@ function buildEnv() {
   lhouse.add(env.beamGrp);
   lhouse.position.set(lx, ly, lz);
   scene.add(lhouse);
+  env.lhPos = {x: lx, z: lz}; // 供玩法系统放置碰撞体/道具
 
   // —— 萤火虫（夜间）
   const FN = 160, fpos = new Float32Array(FN*3);
@@ -786,7 +1007,7 @@ function buildEnv() {
   g2.rotateY(Math.PI/2);
   const gg = mergeGeometries([g1, g2]);
   const gm = new THREE.MeshLambertMaterial({color:0xffffff, side:THREE.DoubleSide});
-  const GCOUNT = 1300;
+  const GCOUNT = 1000;
   const inst = new THREE.InstancedMesh(gg, gm, GCOUNT);
   const dummy = new THREE.Object3D();
   const gc = new THREE.Color();
@@ -795,16 +1016,21 @@ function buildEnv() {
     const si = Math.floor(Math.random()*NS);
     const p = samples[si], n = normals[si];
     const side = Math.random() < 0.5 ? 1 : -1;
-    const off = 8 + Math.random()*38;
+    const off = 9 + Math.random()*32;
     const x = p.x + n.x*side*off, z = p.z + n.z*side*off;
+    if (branchInfo(x, z).dist < 9) continue;
     const h = groundHeight(x, z);
     if (h < 1 || h > 16) continue;
-    dummy.position.set(x, h, z);
+    // 陡坡跳过 + 下沉锚地，避免低面数地形上的悬浮草块
+    const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
+                + Math.abs(groundHeight(x, z+5) - groundHeight(x, z-5));
+    if (slope > 3) continue;
+    dummy.position.set(x, h - 0.12, z);
     dummy.rotation.y = Math.random()*Math.PI;
-    dummy.scale.setScalar(0.7 + Math.random()*0.9);
+    dummy.scale.setScalar(0.55 + Math.random()*0.6);
     dummy.updateMatrix();
     inst.setMatrixAt(gi, dummy.matrix);
-    gc.setHSL(0.26 + Math.random()*0.06, 0.42, 0.26 + Math.random()*0.14);
+    gc.setHSL(0.26 + Math.random()*0.06, 0.45, 0.20 + Math.random()*0.10);
     inst.setColorAt(gi, gc);
     gi++;
   }
@@ -825,19 +1051,423 @@ function buildEnv() {
   }
 }
 
+// ---------- 玩法系统：海滩建筑 / 可破坏道具 / 碎片物理 / 计分连击 ----------
+const props = [];          // 可破坏道具与沙滩球
+const debris = [];         // 飞散碎片
+const buildingCols = [];   // 建筑碰撞体
+let score = 0, scoreBest = 0, combo = 1, comboEvents = 0, lastScoreT = 0;
+let cruiseT = 0, driftAcc = 0, shake = 0;
+try { const b = localStorage.getItem('p7_scoreBest'); if (b) scoreBest = parseInt(b) || 0; } catch(e) {}
+function saveBestScore() {
+  if (score > scoreBest) {
+    scoreBest = score;
+    try { localStorage.setItem('p7_scoreBest', String(scoreBest)); } catch(e) {}
+  }
+}
+const SMASH_LABEL = { parasol:'遮阳伞 粉碎', chair:'躺椅 粉碎', crate:'木箱 粉碎', fence:'栅栏 粉碎', sign:'路牌 粉碎' };
+function skillPop(text, big) {
+  const stack = document.getElementById('skillstack');
+  const d = document.createElement('div');
+  d.className = 'skill' + (big ? ' big' : '');
+  d.textContent = text;
+  stack.appendChild(d);
+  while (stack.children.length > 5) stack.removeChild(stack.firstChild);
+  setTimeout(() => d.remove(), 1650);
+}
+function updateScoreChip() {
+  document.getElementById('scoreval').textContent = score.toLocaleString();
+  const cb = document.getElementById('combox');
+  cb.textContent = '×' + combo;
+  cb.style.color = ['', '#cfd8e4', '#7fe9ff', '#7dff9a', '#ffd54f', '#ff8a65'][combo] || '#fff';
+}
+function addScore(base, label, big) {
+  const pts = Math.round(base * combo);
+  score += pts;
+  comboEvents++;
+  lastScoreT = performance.now();
+  if (comboEvents >= 4 && combo < 5) {
+    combo++; comboEvents = 0;
+    skillPop('连击提升 ×' + combo, true);
+  }
+  skillPop('+' + pts + '  ' + label, big);
+  updateScoreChip();
+}
+// 撞击/踢球音效
+function sfx(type, inten) {
+  if (!actx || muted) return;
+  const i2 = inten || 1;
+  const t0 = actx.currentTime;
+  if (type === 'smash' || type === 'thud') {
+    const nb = actx.createBufferSource(); nb.buffer = makeNoiseBurst();
+    const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = type === 'smash' ? 1200 : 420;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(Math.min(0.4, 0.18*i2), t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + (type === 'smash' ? 0.22 : 0.32));
+    nb.connect(f); f.connect(g); g.connect(actx.destination); nb.start(t0);
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(type === 'smash' ? 110 : 62, t0);
+    o.frequency.exponentialRampToValueAtTime(38, t0 + 0.18);
+    const g2 = actx.createGain();
+    g2.gain.setValueAtTime(Math.min(0.5, 0.25*i2), t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.26);
+    o.connect(g2); g2.connect(actx.destination); o.start(t0); o.stop(t0 + 0.3);
+  } else if (type === 'boing') {
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(200, t0);
+    o.frequency.exponentialRampToValueAtTime(430, t0 + 0.12);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.18, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.2);
+    o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.22);
+  }
+}
+function smashProp(p, spd) {
+  p.intact = false;
+  for (const m of p.pieces) {
+    scene.attach(m);
+    debris.push({
+      m,
+      vx: state.vx*0.55 + (Math.random()-0.5)*5,
+      vy: 2.5 + Math.random()*3 + spd*0.12,
+      vz: state.vz*0.55 + (Math.random()-0.5)*5,
+      rx: (Math.random()-0.5)*9, ry: (Math.random()-0.5)*9, rz: (Math.random()-0.5)*9,
+      life: 2.4 + Math.random()
+    });
+  }
+  while (debris.length > 90) { scene.remove(debris[0].m); debris.shift(); }
+  scene.remove(p.group);
+  addScore(50, SMASH_LABEL[p.type] || '粉碎');
+  state.nitro = Math.min(1, state.nitro + 0.08); // 拆迁奖励：氮气返还
+  shake = Math.max(shake, Math.min(0.6, spd*0.018));
+  sfx('smash', Math.min(1.6, 0.5 + spd*0.03));
+  state.vx *= 0.965; state.vz *= 0.965;
+}
+function gameplayUpdate(dt, onRoad) {
+  const now = performance.now();
+  const px = state.pos.x, pz = state.pos.z;
+  const spd = Math.hypot(state.vx, state.vz);
+  // —— 道具碰撞 / 沙滩球物理 / 擦身奖励
+  for (const p of props) {
+    if (p.type === 'ball') {
+      const m = p.pieces[0];
+      const bdx = px - m.position.x, bdz = pz - m.position.z;
+      const bd2 = bdx*bdx + bdz*bdz;
+      if (bd2 < 4.4 && spd > 4) {
+        const bd = Math.sqrt(bd2) || 1;
+        p.vx = -bdx/bd*(spd*0.85 + 3) + state.vx*0.3;
+        p.vz = -bdz/bd*(spd*0.85 + 3) + state.vz*0.3;
+        p.vy = 4 + spd*0.28;
+        if (now - p.kickT > 700) { addScore(40, '沙滩球！'); sfx('boing'); }
+        p.kickT = now;
+      }
+      if (p.vx || p.vy || p.vz) {
+        p.vy -= 22*dt;
+        m.position.x += p.vx*dt; m.position.y += p.vy*dt; m.position.z += p.vz*dt;
+        m.rotation.x += p.vz*dt*2; m.rotation.z -= p.vx*dt*2;
+        const gy = meshGroundHeight(m.position.x, m.position.z) + 0.36;
+        if (m.position.y < gy) {
+          m.position.y = gy;
+          p.vy *= -0.55;
+          p.vx *= 0.92; p.vz *= 0.92;
+          if (Math.abs(p.vy) < 0.8) p.vy = 0;
+          if (Math.hypot(p.vx, p.vz) < 0.3) { p.vx = 0; p.vz = 0; }
+        }
+      }
+      continue;
+    }
+    if (!p.intact) continue;
+    const dx = px - p.x, dz = pz - p.z;
+    const d2 = dx*dx + dz*dz;
+    if (d2 > 1600) continue;
+    const hitR = p.r + 1.05;
+    if (d2 < hitR*hitR && spd > 2.5) smashProp(p, spd);
+    else if (!p.nearMiss && spd > 16 && d2 < 11.5) {
+      p.nearMiss = true;
+      addScore(30, '擦身而过');
+    }
+  }
+  // —— 建筑碰撞：推出 + 反弹 + 连击清零
+  for (const b of buildingCols) {
+    const dx = px - b.x, dz = pz - b.z;
+    const d = Math.hypot(dx, dz);
+    const rr = b.r + 1.0;
+    if (d < rr && d > 0.001) {
+      const nx = dx/d, nz = dz/d;
+      state.pos.x = b.x + nx*rr;
+      state.pos.z = b.z + nz*rr;
+      const vn = state.vx*nx + state.vz*nz;
+      if (vn < 0) {
+        state.vx -= nx*vn*1.5;
+        state.vz -= nz*vn*1.5;
+        const imp = -vn;
+        if (imp > 5) {
+          shake = Math.max(shake, Math.min(0.9, imp*0.035));
+          sfx('thud', Math.min(2, imp*0.1));
+          if (combo > 1) skillPop('撞击！连击中断', true);
+          combo = 1; comboEvents = 0; cruiseT = 0;
+          updateScoreChip();
+        }
+      }
+    }
+  }
+  // —— 碎片物理
+  for (let i = debris.length - 1; i >= 0; i--) {
+    const d = debris[i];
+    d.vy -= 22*dt;
+    d.m.position.x += d.vx*dt; d.m.position.y += d.vy*dt; d.m.position.z += d.vz*dt;
+    d.m.rotation.x += d.rx*dt; d.m.rotation.y += d.ry*dt; d.m.rotation.z += d.rz*dt;
+    const gy = meshGroundHeight(d.m.position.x, d.m.position.z) + 0.06;
+    if (d.m.position.y < gy) {
+      d.m.position.y = gy;
+      d.vy *= -0.32;
+      d.vx *= 0.6; d.vz *= 0.6;
+      d.rx *= 0.5; d.rz *= 0.5;
+    }
+    d.life -= dt;
+    if (d.life < 0.4) d.m.scale.multiplyScalar(Math.max(0.01, 1 - dt*2.5));
+    if (d.life <= 0) { scene.remove(d.m); debris.splice(i, 1); }
+  }
+  // —— 巡航奖励（在路上保持速度）
+  if (onRoad && state.speed > 12) {
+    cruiseT += dt;
+    if (cruiseT >= 10) { cruiseT = 0; addScore(150, '完美巡航', true); }
+  } else cruiseT = 0;
+  // —— 漂移结算
+  const fx2 = Math.sin(state.heading), fz2 = Math.cos(state.heading);
+  const vLat = state.vx*fz2 - state.vz*fx2;
+  if (keys['Space'] && onRoad && Math.abs(vLat) > 3.5 && spd > 8) driftAcc += Math.abs(vLat)*dt*9;
+  else if (driftAcc > 0 && !keys['Space']) {
+    if (driftAcc > 40) addScore(Math.round(driftAcc/10)*10, '漂移');
+    driftAcc = 0;
+  }
+  if (!onRoad) driftAcc = 0;
+  // —— 连击衰减
+  if (combo > 1 && now - lastScoreT > 18000) {
+    combo = 1; comboEvents = 0;
+    updateScoreChip();
+  }
+}
+function buildProps() {
+  // —— 共享材质 / 几何
+  const woodM = new THREE.MeshStandardMaterial({color:0x9a7748, roughness:0.85});
+  const whiteM = new THREE.MeshStandardMaterial({color:0xe9e3d5, roughness:0.8});
+  const redM = new THREE.MeshStandardMaterial({color:0xd95a4e, roughness:0.7});
+  const tealM = new THREE.MeshStandardMaterial({color:0x3aa6a0, roughness:0.7});
+  const metalM = new THREE.MeshStandardMaterial({color:0xb8b2a6, roughness:0.5, metalness:0.4});
+  const blueM = new THREE.MeshStandardMaterial({color:0x2b6fb5, roughness:0.6});
+  const darkM = new THREE.MeshStandardMaterial({color:0x4a3d31, roughness:0.9});
+  const ballMs = [0xff6b57, 0x4fc3f7, 0xffd54f].map(c => new THREE.MeshStandardMaterial({color:c, roughness:0.45}));
+  const pastel = [0xf0dfc0, 0xcfe3da, 0xf3cfc0, 0xdcd4ec];
+  const umbPoleG = new THREE.CylinderGeometry(0.035, 0.05, 2.25, 6); umbPoleG.translate(0, 1.12, 0);
+  const umbLeafG = new THREE.BoxGeometry(0.95, 0.05, 0.62);
+  umbLeafG.translate(0.5, 0, 0); umbLeafG.rotateZ(-0.42); umbLeafG.translate(0, 2.05, 0);
+  const chBaseG = new THREE.BoxGeometry(0.6, 0.07, 1.45); chBaseG.translate(0, 0.32, 0);
+  const chBackG = new THREE.BoxGeometry(0.6, 0.07, 0.72); chBackG.rotateX(0.95); chBackG.translate(0, 0.56, -0.75);
+  const chLegG = new THREE.BoxGeometry(0.07, 0.3, 1.1); chLegG.translate(0, 0.15, 0);
+  const plankG = new THREE.BoxGeometry(0.72, 0.72, 0.07);
+  const fPostG = new THREE.BoxGeometry(0.09, 0.95, 0.09); fPostG.translate(0, 0.48, 0);
+  const fRailG = new THREE.BoxGeometry(1.75, 0.1, 0.05);
+  const sgPoleG = new THREE.CylinderGeometry(0.04, 0.04, 1.65, 6); sgPoleG.translate(0, 0.82, 0);
+  const sgPanelG = new THREE.BoxGeometry(0.8, 0.55, 0.05); sgPanelG.translate(0, 1.55, 0);
+  const ballG = new THREE.SphereGeometry(0.36, 12, 10);
+  function reg(group, x, z, rotY, r, type) {
+    group.position.set(x, groundHeight(x, z), z);
+    group.rotation.y = rotY;
+    scene.add(group);
+    props.push({x, z, r, type, group, pieces: group.children.slice(), intact: true, nearMiss: false});
+  }
+  function mkParasol(x, z) {
+    const g = new THREE.Group();
+    const accent = Math.random() < 0.5 ? redM : tealM;
+    g.add(new THREE.Mesh(umbPoleG, metalM));
+    for (let k = 0; k < 6; k++) {
+      const m = new THREE.Mesh(umbLeafG, k % 2 ? whiteM : accent);
+      m.rotation.y = k/6*Math.PI*2;
+      g.add(m);
+    }
+    reg(g, x, z, Math.random()*6.3, 0.85, 'parasol');
+  }
+  function mkChair(x, z, rot) {
+    const g = new THREE.Group();
+    const cm = Math.random() < 0.5 ? tealM : whiteM;
+    g.add(new THREE.Mesh(chBaseG, cm));
+    g.add(new THREE.Mesh(chBackG, cm));
+    const l1 = new THREE.Mesh(chLegG, woodM); l1.position.x = -0.26; g.add(l1);
+    const l2 = new THREE.Mesh(chLegG, woodM); l2.position.x = 0.26; g.add(l2);
+    reg(g, x, z, rot, 0.8, 'chair');
+  }
+  function mkCrate(x, z) {
+    const g = new THREE.Group();
+    for (const [ox, oy, oz, top, ry] of [[0,0.36,0.33,0,0],[0,0.36,-0.33,0,0],[0.33,0.36,0,0,1],[-0.33,0.36,0,0,1],[0,0.72,0,1,0]]) {
+      const m = new THREE.Mesh(plankG, woodM);
+      m.position.set(ox, oy, oz);
+      if (top) m.rotation.x = Math.PI/2;
+      else if (ry) m.rotation.y = Math.PI/2;
+      g.add(m);
+    }
+    reg(g, x, z, Math.random()*6.3, 0.6, 'crate');
+  }
+  function mkFence(x, z, rot) {
+    const g = new THREE.Group();
+    const p1 = new THREE.Mesh(fPostG, whiteM); p1.position.x = -0.85; g.add(p1);
+    const p2 = new THREE.Mesh(fPostG, whiteM); p2.position.x = 0.85; g.add(p2);
+    const r1 = new THREE.Mesh(fRailG, whiteM); r1.position.y = 0.78; g.add(r1);
+    const r2 = new THREE.Mesh(fRailG, whiteM); r2.position.y = 0.42; g.add(r2);
+    reg(g, x, z, rot, 1.0, 'fence');
+  }
+  function mkSign(x, z, rot) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(sgPoleG, metalM));
+    g.add(new THREE.Mesh(sgPanelG, blueM));
+    reg(g, x, z, rot, 0.5, 'sign');
+  }
+  function mkBall(x, z) {
+    const m = new THREE.Mesh(ballG, ballMs[Math.floor(Math.random()*3)]);
+    m.position.set(x, groundHeight(x, z) + 0.36, z);
+    scene.add(m);
+    props.push({x, z, r:0.36, type:'ball', group:m, pieces:[m], intact:true, nearMiss:true, vx:0, vy:0, vz:0, kickT:0});
+  }
+  function beachSpot(minRoad, hMin, hMax) {
+    for (let t = 0; t < 300; t++) {
+      const a = Math.random()*Math.PI*2, r = 60 + Math.random()*540;
+      const x = Math.cos(a)*r, z = Math.sin(a)*r;
+      if (nearestRoad(x, z).dist < minRoad || branchInfo(x, z).dist < minRoad) continue;
+      const h = groundHeight(x, z);
+      if (h < hMin || h > hMax) continue;
+      const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
+                  + Math.abs(groundHeight(x, z+5) - groundHeight(x, z-5));
+      if (slope > 2.2) continue;
+      return {x, z, h};
+    }
+    return null;
+  }
+  // —— 建筑（不可破坏，有碰撞）
+  function addBuilding(g, x, z, rotY, r) {
+    g.position.set(x, groundHeight(x, z), z);
+    g.rotation.y = rotY;
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(g);
+    buildingCols.push({x, z, r});
+  }
+  function mkHut(wallHex) {
+    const g = new THREE.Group();
+    const wall = new THREE.MeshStandardMaterial({color:wallHex, roughness:0.85});
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 2.8), wall); body.position.y = 1.1; g.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.7, 1.4, 4), darkM); roof.position.y = 2.9; roof.rotation.y = Math.PI/4; g.add(roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.4, 0.08), darkM); door.position.set(0.4, 0.7, 1.42); g.add(door);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.08), new THREE.MeshStandardMaterial({color:0x223240, roughness:0.3})); win.position.set(-0.9, 1.3, 1.42); g.add(win);
+    return g;
+  }
+  function mkTower() {
+    const g = new THREE.Group();
+    const legG = new THREE.CylinderGeometry(0.09, 0.11, 2.6, 6);
+    for (const [lx2, lz2] of [[-0.9,-0.9],[0.9,-0.9],[-0.9,0.9],[0.9,0.9]]) {
+      const l = new THREE.Mesh(legG, woodM); l.position.set(lx2, 1.3, lz2); g.add(l);
+    }
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, 2.4), woodM); plat.position.y = 2.6; g.add(plat);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.4, 1.8), redM); cab.position.y = 3.4; g.add(cab);
+    const rf = new THREE.Mesh(new THREE.ConeGeometry(1.8, 0.9, 4), whiteM); rf.position.y = 4.6; rf.rotation.y = Math.PI/4; g.add(rf);
+    return g;
+  }
+  function mkKiosk() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.0, 2.0), whiteM); body.position.y = 1.0; g.add(body);
+    for (let k = 0; k < 4; k++) {
+      const aw = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.05, 1.25), k % 2 ? redM : whiteM);
+      aw.position.set(-1.02 + k*0.68, 2.18, 1.45);
+      aw.rotation.x = 0.28;
+      g.add(aw);
+    }
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.4), woodM); counter.position.set(0, 1.0, 1.15); g.add(counter);
+    return g;
+  }
+  function mkPier() {
+    const ang = Math.random()*Math.PI*2;
+    let r0 = 460;
+    while (r0 < 700 && islandBase(Math.cos(ang)*r0, Math.sin(ang)*r0) > 0.5) r0 += 4;
+    const dx2 = Math.cos(ang), dz2 = Math.sin(ang);
+    const g = new THREE.Group();
+    for (let k = 0; k < 9; k++) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.14, 1.9), woodM);
+      plank.position.set(dx2*k*1.95, 1.15, dz2*k*1.95);
+      plank.rotation.y = -ang;
+      g.add(plank);
+      if (k % 2 === 0) for (const s of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.6, 6), woodM);
+        post.position.set(dx2*k*1.95 - dz2*s*1.1, 0, dz2*k*1.95 + dx2*s*1.1);
+        g.add(post);
+      }
+    }
+    g.position.set(dx2*(r0-6), 0, dz2*(r0-6));
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(g);
+  }
+  // —— 布置
+  const hutSpots = [];
+  for (let i = 0; i < 5; i++) {
+    const s = beachSpot(20, 0.9, 2.8);
+    if (!s) continue;
+    hutSpots.push(s);
+    addBuilding(mkHut(pastel[i % pastel.length]), s.x, s.z, Math.random()*6.3, 2.7);
+  }
+  for (let i = 0; i < 2; i++) {
+    const s = beachSpot(18, 0.9, 2.5);
+    if (s) addBuilding(mkTower(), s.x, s.z, Math.random()*6.3, 1.8);
+  }
+  const ks = beachSpot(16, 1.0, 3.0);
+  if (ks) addBuilding(mkKiosk(), ks.x, ks.z, Math.random()*6.3, 1.9);
+  mkPier();
+  if (env.lhPos) {
+    buildingCols.push({x: env.lhPos.x, z: env.lhPos.z, r: 2.6});
+    mkCrate(env.lhPos.x + 4, env.lhPos.z + 1);
+    mkCrate(env.lhPos.x + 3, env.lhPos.z - 3);
+  }
+  for (let c = 0; c < 8; c++) {
+    const s = beachSpot(14, 0.9, 3.0);
+    if (!s) continue;
+    mkParasol(s.x + (Math.random()-0.5)*4, s.z + (Math.random()-0.5)*4);
+    mkChair(s.x + 1.6 + Math.random(), s.z + (Math.random()-0.5)*3, Math.random()*6.3);
+    if (Math.random() < 0.7) mkChair(s.x - 1.8 - Math.random(), s.z + (Math.random()-0.5)*3, Math.random()*6.3);
+    if (Math.random() < 0.7) mkBall(s.x + (Math.random()-0.5)*7, s.z + (Math.random()-0.5)*7);
+    if (Math.random() < 0.5) mkCrate(s.x + (Math.random()-0.5)*8, s.z + (Math.random()-0.5)*8);
+  }
+  for (const s of hutSpots) if (Math.random() < 0.8) mkCrate(s.x + 3 + Math.random()*2, s.z + 2);
+  // 白栅栏：沿路外侧（漂移甩尾的牺牲品）
+  for (let f = 0; f < 6; f++) {
+    const i0 = Math.floor(Math.random()*NS);
+    const side = Math.random() < 0.5 ? 1 : -1;
+    for (let k = 0; k < 3; k++) {
+      const i = (i0 + k*4) % NS;
+      const p = samples[i], n = normals[i], tg = tangents[i];
+      mkFence(p.x + n.x*side*9.8, p.z + n.z*side*9.8, Math.atan2(tg.x, tg.z) + Math.PI/2);
+    }
+  }
+  // 路牌
+  for (let s2 = 0; s2 < 8; s2++) {
+    const i = (Math.floor(s2*NS/8) + 20) % NS;
+    const side = s2 % 2 ? 1 : -1;
+    const p = samples[i], n = normals[i];
+    mkSign(p.x + n.x*side*8.5, p.z + n.z*side*8.5, Math.atan2(-n.x*side, -n.z*side));
+  }
+  updateScoreChip();
+}
+
 // ---------- 车辆（真实 E29 模型） ----------
+// c = 对原厂银色纹理的着色系数（target/silver），sw = 车库色块显示色（采样自官图车漆）
 const PAINTS = [
-  {name:'原厂',   c:0xffffff},
-  {name:'暗夜黑', c:0x33363c},
-  {name:'天青蓝', c:0x6e9fd8},
-  {name:'热橙',   c:0xe07840},
-  {name:'紫曜',   c:0x9a82d8},
-  {name:'墨绿',   c:0x5e8468}
+  {name:'新月银', c:0xffffff, sw:0xc3c9d1},
+  {name:'微星灰', c:0xc3d1d8, sw:0x97a6b2},
+  {name:'星芒蓝', c:0xd3f6f9, sw:0xa3c3cd},
+  {name:'星瀚绿', c:0x318166, sw:0x266654},
+  {name:'星暮紫', c:0xd7b8c0, sw:0xa6929e},
+  {name:'律动黄', c:0xffff54, sw:0xc6d845},
+  {name:'星曜红', c:0xe62b39, sw:0xb2222f}
 ];
 let skinIdx = 0;
 const car = new THREE.Group();
 scene.add(car);
-let carReady = false, paintMat = null, lampMats = [];
+let carReady = false, lampMats = [];
+const paintMats = [];
 const glassMats = [];
 let glassSeeThru = false;
 function setGlassSeeThru(on) {
@@ -858,10 +1488,11 @@ let wheelRadius = 0.36;
 // 夜间车灯
 const headlights = [];
 for (const sx of [-1, 1]) {
-  const sp = new THREE.SpotLight(0xcfe0ff, 0, 85, 0.38, 0.65, 1.8);
-  sp.position.set(sx*0.78, 0.72, 2.2);
+  // 光源点放在保险杠之外（z=2.72），光锥只朝前，不会打亮自身车身
+  const sp = new THREE.SpotLight(0xcfe0ff, 0, 85, 0.36, 0.65, 1.8);
+  sp.position.set(sx*0.70, 0.66, 2.72);
   const tgt = new THREE.Object3D();
-  tgt.position.set(sx*0.9, -0.55, 22);
+  tgt.position.set(sx*0.85, -0.75, 22);
   car.add(sp); car.add(tgt);
   sp.target = tgt;
   headlights.push(sp);
@@ -896,9 +1527,10 @@ loader.load(GLB_URL, (gltf) => {
       o.castShadow = true;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
-        m.envMapIntensity = 1.45;
-        if (m.name === 'Mat_E29_Body') {
-          paintMat = m;
+        m.envMapIntensity = 1.15;
+        if (m.name && m.name.startsWith('Mat_E29_Body')) {
+          // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
+          paintMats.push(m);
           if ('clearcoat' in m) { m.clearcoat = 1.0; m.clearcoatRoughness = 0.07; }
           m.userData.origColor = m.color.clone();
         }
@@ -962,10 +1594,13 @@ loader.load(GLB_URL, (gltf) => {
 
 // ---------- 涂装 ----------
 function applySkin(announce) {
-  if (!paintMat) return;
+  if (!paintMats.length) return;
   const P = PAINTS[skinIdx];
-  if (skinIdx === 0) paintMat.color.copy(paintMat.userData.origColor);
-  else paintMat.color.copy(paintMat.userData.origColor).multiply(new THREE.Color(P.c));
+  const tint = new THREE.Color(P.c);
+  for (const m of paintMats) {
+    if (skinIdx === 0) m.color.copy(m.userData.origColor);
+    else m.color.copy(m.userData.origColor).multiply(tint);
+  }
   if (announce) showMsg(P.name, 900, 28);
   refreshSwatches();
   saveSettings();
@@ -985,7 +1620,9 @@ function applyTod(name) {
   sun.intensity = P.sunInt;
   hemi.intensity = P.hemiInt;
   hemi.color.setHex(P.hemiSky);
-  rim.intensity = name === 'night' ? 0.5 : 1.3;
+  // 轮廓补光跟随天光：强度压低、色温与天空一致，不再是独立的"假光"
+  rim.intensity = name === 'night' ? 0.12 : 0.45;
+  rim.color.setHex(name === 'night' ? 0x6f82a8 : name === 'day' ? 0xcfe0f5 : 0xe8b9a0);
   renderer.toneMappingExposure = P.exposure;
   scene.fog.color.setHex(P.fog);
   bloomPass.strength = hiQuality ? P.bloom : 0;
@@ -1001,7 +1638,7 @@ function applyTod(name) {
   // 环境元素昼夜联动（环境可能尚未构建完成，需判空）
   if (env.lampHeadM) {
     const night = name === 'night';
-    env.lampHeadM.emissiveIntensity = night ? 3.6 : 0.12;
+    env.lampHeadM.emissiveIntensity = night ? 2.2 : 0.12;
     env.lampPools.visible = night;
     env.moon.visible = night;
     if (night) env.moon.position.set(curSunDir.x*1700, Math.max(curSunDir.y*1700, 320), curSunDir.z*1700);
@@ -1012,7 +1649,7 @@ function applyTod(name) {
     env.cloudMat.opacity = name === 'day' ? 0.88 : name === 'sunset' ? 0.8 : 0.45;
   }
   for (const m of lampMats) {
-    if (P.lights) { m.emissive.setHex(0xffffff); m.emissiveIntensity = 2.6; }
+    if (P.lights) { m.emissive.setHex(0xfff4e0); m.emissiveIntensity = 1.7; }
     else { m.emissive.copy(m.userData?.origEmissive || new THREE.Color(0)); m.emissiveIntensity = m.userData?.origEI ?? 1; }
   }
   rebuildEnv();
@@ -1055,7 +1692,7 @@ arrowPivot.visible = false;
 // ---------- 后期 ----------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.55, 0.9);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.35, 0.92);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 let hiQuality = true;
@@ -1080,19 +1717,19 @@ const keys = {};
 const state = {
   pos: new THREE.Vector3(samples[garageIdx].x, samples[garageIdx].y+0.05, samples[garageIdx].z),
   heading: Math.atan2(tangents[garageIdx].x, tangents[garageIdx].z),
-  travel: 0, speed: 0, vx: 0, vz: 0, steer: 0, nitro: 1, roll: 0, pitch: 0
+  travel: 0, speed: 0, vx: 0, vz: 0, vyAir: 0, airborne: false, steer: 0, nitro: 1, roll: 0, pitch: 0
 };
 state.travel = state.heading;
 
 // 让车按地面坡度落稳（车库/静止展示用，消除悬空和穿插）
 function settleCarPose() {
-  const gy = groundHeight(state.pos.x, state.pos.z);
-  state.pos.y = gy + 0.02;
+  const gy = surfaceHeight(state.pos.x, state.pos.z, state.pos.y);
+  state.pos.y = gy;
   const fx = Math.sin(state.heading), fz = Math.cos(state.heading);
-  const hF = groundHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5);
-  const hB = groundHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5);
-  const hR = groundHeight(state.pos.x + fz*0.9, state.pos.z - fx*0.9);
-  const hL = groundHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9);
+  const hF = surfaceHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5, state.pos.y);
+  const hB = surfaceHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5, state.pos.y);
+  const hR = surfaceHeight(state.pos.x + fz*0.9, state.pos.z - fx*0.9, state.pos.y);
+  const hL = surfaceHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9, state.pos.y);
   state.pitch = Math.atan2(hB - hF, 3);
   state.roll = Math.atan2(hR - hL, 1.8);
   car.position.copy(state.pos);
@@ -1109,7 +1746,8 @@ function physics(dt) {
   const boost = (keys['ShiftLeft'] || keys['ShiftRight']) && state.nitro > 0.02 && state.speed > 2;
 
   const nr = nearestRoad(state.pos.x, state.pos.z);
-  const onRoad = nr.dist < HALF_W + 1.2;
+  const bi2 = branchInfo(state.pos.x, state.pos.z);
+  const onRoad = nr.dist < HALF_W + 1.2 || bi2.dist < B_HALF + 1.0;
   let maxSpd = onRoad ? 58 : 20;
   if (boost) { maxSpd = onRoad ? 80 : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
   else state.nitro = Math.min(1, state.nitro + dt*0.06);
@@ -1162,13 +1800,48 @@ function physics(dt) {
   state.speed = vF;
   state.travel = (Math.abs(vF) > 1 || Math.abs(vL) > 1) ? Math.atan2(state.vx, state.vz) : state.heading;
 
-  // —— 贴地与姿态
-  const gy = groundHeight(state.pos.x, state.pos.z);
-  state.pos.y += (gy + 0.02 - state.pos.y) * Math.min(1, dt*10);
-  const hF = groundHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5);
-  const hB = groundHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5);
-  const hR = groundHeight(state.pos.x + fz*0.9, state.pos.z - fx*0.9);
-  const hL = groundHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9);
+  // —— 桥面护栏：把车挡在桥上（高速硬冲仍可突破腾空坠落）
+  if (bi2.bridge && bi2.dist > B_HALF - 0.75 && bi2.dist < B_HALF + 1.0 && Math.abs(vL) < 9) {
+    const bs = bSamples[bi2.idx], bn = bNormals[bi2.idx];
+    const sideSign = Math.sign((state.pos.x - bs.x)*bn.x + (state.pos.z - bs.z)*bn.z) || 1;
+    const lim = B_HALF - 0.75;
+    state.pos.x = bs.x + bn.x*sideSign*lim;
+    state.pos.z = bs.z + bn.z*sideSign*lim;
+    const vn2 = state.vx*bn.x*sideSign + state.vz*bn.z*sideSign;
+    if (vn2 > 0) {
+      state.vx -= bn.x*sideSign*vn2*1.3;
+      state.vz -= bn.z*sideSign*vn2*1.3;
+      if (vn2 > 4) { shake = Math.max(shake, 0.3); sfx('thud', 0.7); }
+    }
+  }
+
+  // —— 贴地 / 腾空物理（冲坡、飞出桥面 → 抛物线 + 落地反馈）
+  const gy = surfaceHeight(state.pos.x, state.pos.z, state.pos.y);
+  if (state.pos.y > gy + 0.35) {
+    state.airborne = true;
+    state.vyAir -= 24*dt;
+    state.pos.y += state.vyAir*dt;
+    if (state.pos.y <= gy) {
+      if (state.vyAir < -7) {
+        shake = Math.max(shake, Math.min(0.6, -state.vyAir*0.045));
+        sfx('thud', Math.min(1.4, -state.vyAir*0.09));
+        if (state.vyAir < -10) skillPop('落地！', true);
+      }
+      state.pos.y = gy;
+      state.vyAir = 0;
+      state.airborne = false;
+    }
+  } else {
+    // 贴地行驶：记录地形下降速度，冲出坡顶时转化为腾空初速
+    const prevY = state.pos.y;
+    state.pos.y += (gy - state.pos.y) * Math.min(1, dt*10);
+    state.vyAir = dt > 0 ? Math.max(-2, Math.min(14, (state.pos.y - prevY)/dt)) : 0;
+    state.airborne = false;
+  }
+  const hF = surfaceHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5, state.pos.y);
+  const hB = surfaceHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5, state.pos.y);
+  const hR = surfaceHeight(state.pos.x + fz*0.9, state.pos.z - fx*0.9, state.pos.y);
+  const hL = surfaceHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9, state.pos.y);
   const tPitch = Math.atan2(hB - hF, 3);
   const tRoll = Math.atan2(hR - hL, 1.8);
   state.pitch += (tPitch + (aF > 2 ? -0.012 : aF < -8 ? 0.02 : 0) - state.pitch) * Math.min(1, dt*6);
@@ -1190,8 +1863,8 @@ function physics(dt) {
     for (const sp of spinPivots) sp.rotation.x += wr;
     for (const st of steerPivots) st.rotation.y = state.steer * 0.45;
   }
-  if (!onRoad && Math.abs(state.speed) > 3) {
-    car.position.y += Math.sin(performance.now()*0.05)*0.025;
+  if (!onRoad && !state.airborne && Math.abs(state.speed) > 6) {
+    car.position.y += Math.sin(performance.now()*0.012)*0.012; // 草地：轻缓起伏而非石子路颠簸
   }
   return {onRoad, boost};
 }
@@ -1333,6 +2006,13 @@ function updateChaseCamera(dt, boost) {
     if (camPos.y < gyC + 0.55) camPos.y = gyC + 0.55;
   }
   camera.position.copy(camPos);
+  // 撞击镜头震动
+  if (shake > 0.004) {
+    camera.position.x += (Math.random()-0.5)*shake;
+    camera.position.y += (Math.random()-0.5)*shake*0.6;
+    camera.position.z += (Math.random()-0.5)*shake;
+    shake *= Math.exp(-dt*5.5);
+  }
   // 视线沿镜头偏航角看向车前方（与机位同源，杜绝左右甩动）
   const ahead = 5.5 + spd*0.08;
   const lookYaw = camMode === 3 ? state.heading : camAng.yaw;
@@ -1484,8 +2164,9 @@ function audioUpdate() {
 }
 
 // ---------- 设置持久化 ----------
+let hintsOn = true, keytipsTimer = null;
 function saveSettings() {
-  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx, curTod, hiQuality, muted, musicOn})); } catch(e) {}
+  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx, curTod, hiQuality, muted, musicOn, hintsOn})); } catch(e) {}
 }
 function loadSettings() {
   try {
@@ -1495,6 +2176,7 @@ function loadSettings() {
     if (typeof s.hiQuality === 'boolean') hiQuality = s.hiQuality;
     if (typeof s.muted === 'boolean') muted = s.muted;
     if (typeof s.musicOn === 'boolean') musicOn = s.musicOn;
+    if (typeof s.hintsOn === 'boolean') hintsOn = s.hintsOn;
   } catch(e) {}
 }
 loadSettings();
@@ -1517,7 +2199,7 @@ function buildRows() {
       const b = document.createElement('button');
       b.className = 'swatch';
       b.title = P.name;
-      b.style.background = i === 0 ? 'conic-gradient(#c8ccd4,#8a8f98,#e8eaee,#c8ccd4)' : '#'+P.c.toString(16).padStart(6,'0');
+      b.style.background = i === 0 ? 'conic-gradient(#c8ccd4,#8a8f98,#e8eaee,#c8ccd4)' : '#'+(P.sw ?? P.c).toString(16).padStart(6,'0');
       b.addEventListener('click', () => { skinIdx = i; applySkin(true); });
       row.appendChild(b);
     });
@@ -1574,6 +2256,7 @@ function setOrbitAroundCar(dist, height) {
 }
 function enterGarage() {
   appState = 'garage';
+  saveBestScore();
   if (race.phase !== 'free') endRace();
   state.speed = 0; state.vx = 0; state.vz = 0;
   settleCarPose();
@@ -1584,9 +2267,21 @@ function enterGarage() {
   controls.enabled = true; controls.autoRotate = true;
   setOrbitAroundCar(7.5, 1.8);
 }
+function refreshKeytips() {
+  const el = document.getElementById('keytips');
+  el.style.display = hintsOn ? '' : 'none';
+}
+function showKeytipsFresh() {
+  const el = document.getElementById('keytips');
+  refreshKeytips();
+  el.classList.remove('dim');
+  clearTimeout(keytipsTimer);
+  keytipsTimer = setTimeout(() => el.classList.add('dim'), 8000); // 8 秒后淡化，不抢画面
+}
 function startDrive(raceMode) {
   initAudio();
   startMusic();
+  showKeytipsFresh();
   appState = 'drive';
   document.body.classList.remove('nohud');
   elGarage.classList.remove('show');
@@ -1601,6 +2296,7 @@ function startDrive(raceMode) {
 }
 function pauseGame() {
   appState = 'pause';
+  saveBestScore();
   elPause.classList.add('show');
   controls.enabled = false;
   if (race.phase === 'racing') race.pauseT = performance.now();
@@ -1661,8 +2357,7 @@ addEventListener('keydown', e => {
     if (appState === 'drive' || appState === 'pause') enterPhoto();
     else if (appState === 'photo') exitPhoto();
   }
-  if (appState === 'garage' || appState === 'photo') return;
-  if (e.code === 'KeyC') camMode = (camMode+1) % 5; // 远追/近追/贴尾(极品飞车式)/座舱/环绕
+  // 全局设置键（车库内同样可用）
   if (e.code === 'KeyV') { skinIdx = (skinIdx+1) % PAINTS.length; applySkin(true); }
   if (e.code === 'KeyN') {
     const ks = Object.keys(PRESETS);
@@ -1672,7 +2367,23 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') { muted = !muted; refreshSettingBtns(); saveSettings(); showMsg(muted?'引擎声 关':'引擎声 开', 800, 24); }
   if (e.code === 'KeyB') { initAudio(); startMusic(); setMusic(!musicOn, true); }
   if (e.code === 'KeyQ') { setQuality(!hiQuality); showMsg(hiQuality?'画质：高':'画质：低', 900, 26); }
+  if (e.code === 'KeyH') {
+    hintsOn = !hintsOn;
+    refreshKeytips();
+    saveSettings();
+    if (hintsOn) showMsg('键位提示 开', 800, 24);
+  }
+  if (appState === 'garage' || appState === 'photo') return;
+  if (e.code === 'KeyC') camMode = (camMode+1) % 5; // 远追/近追/贴尾(极品飞车式)/座舱/环绕
   if (e.code === 'KeyR') toggleRace();
+  if (e.code === 'KeyT') { // 一键复位：卡住/落水/翻出地图都能脱困
+    const nrT = nearestRoad(state.pos.x, state.pos.z);
+    state.pos.set(samples[nrT.idx].x, samples[nrT.idx].y + 0.1, samples[nrT.idx].z);
+    state.heading = state.travel = Math.atan2(tangents[nrT.idx].x, tangents[nrT.idx].z);
+    state.speed = 0; state.vx = 0; state.vz = 0; state.vyAir = 0;
+    settleCarPose();
+    showMsg('已复位到道路', 1000, 28);
+  }
 });
 addEventListener('keyup', e => keys[e.code] = false);
 
@@ -1708,6 +2419,13 @@ function drawMinimap() {
   }
   mm.closePath();
   mm.strokeStyle = 'rgba(255,255,255,.75)'; mm.lineWidth = 3; mm.stroke();
+  // 支线
+  mm.beginPath();
+  for (let i = 0; i < bSamples.length; i += 6) {
+    const p = bSamples[i], [px2, py2] = mmPt(p.x, p.z);
+    i === 0 ? mm.moveTo(px2, py2) : mm.lineTo(px2, py2);
+  }
+  mm.strokeStyle = 'rgba(255,255,255,.4)'; mm.lineWidth = 2; mm.stroke();
   if (race.phase === 'racing' || race.phase === 'countdown') {
     const ti = race.nextCp >= CP_COUNT ? 0 : race.nextCp;
     const tp = cps[ti].userData.pos, [cx, cy] = mmPt(tp.x, tp.z);
@@ -1739,6 +2457,7 @@ function loop() {
     const r = physics(dt);
     onRoad = r.onRoad; boost = r.boost;
     raceUpdate();
+    gameplayUpdate(dt, onRoad);
     updateChaseCamera(dt, boost);
   } else {
     // 暂停时不更新轨道控制器，否则相机会被拉回旧的环绕目标点
@@ -1805,7 +2524,8 @@ addEventListener('resize', () => {
   await stage('构建岛屿地形…', 22, buildTerrain);
   await stage('铺设海岸公路…', 45, buildRoad);
   await stage('生成程序化森林…', 68, buildScenery);
-  await stage('布置灯塔与环境…', 86, buildEnv);
+  await stage('布置灯塔与环境…', 76, buildEnv);
+  await stage('搭建海滩建筑与道具…', 90, buildProps);
   elBT.textContent = '点火启动…';
   elBF.style.width = '100%';
   await new Promise(r => requestAnimationFrame(r));
