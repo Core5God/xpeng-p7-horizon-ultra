@@ -30,6 +30,7 @@ const stars = (() => {
 })();
 
 // 环境反射（由天空生成，可重建）
+export const windU = { value: 0 }; // 叶片风摆时间（main 每帧更新）
 let pmremTex = null;
 const envGroundMat = new THREE.MeshBasicMaterial({color:0x4a4038});
 function rebuildEnv() {
@@ -809,6 +810,22 @@ async function buildScenery() {
       if (!spots.length) return;
       const bm = new THREE.MeshStandardMaterial({map: getTex(barkFile(v.barkType), true), color: v.barkTint, roughness: 0.9});
       const lm = new THREE.MeshStandardMaterial({map: getTex(leafFile(v.leafType)), color: v.leafTint, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, metalness: 0});
+      // 叶片风摆：按实例位置取相位，实例化兼容
+      lm.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = windU;
+        sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+          '#include <begin_vertex>',
+          ['#include <begin_vertex>',
+           '#ifdef USE_INSTANCING',
+           '  float ph = instanceMatrix[3].x + instanceMatrix[3].z;',
+           '#else',
+           '  float ph = 0.0;',
+           '#endif',
+           'float sway = sin(uTime*1.6 + ph*0.35 + position.y*0.6) * 0.05 * (0.3 + uv.y);',
+           'transformed.x += sway;',
+           'transformed.z += sway*0.6;'].join('\n')
+        );
+      };
       const bi = new THREE.InstancedMesh(partGeo(v.parts.branch), bm, spots.length);
       const li = new THREE.InstancedMesh(partGeo(v.parts.leaf), lm, spots.length);
       const srcH = Math.max(v.srcH, 1);
@@ -821,6 +838,9 @@ async function buildScenery() {
         li.setMatrixAt(k, dummy.matrix);
       });
       bi.castShadow = true;
+      // 树叶投影：自定义深度材质支持 alphaTest 镂空
+      li.castShadow = true;
+      li.customDepthMaterial = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking, map: getTex(leafFile(v.leafType)), alphaTest: 0.5});
       bi.instanceMatrix.needsUpdate = true;
       li.instanceMatrix.needsUpdate = true;
       scene.add(bi);

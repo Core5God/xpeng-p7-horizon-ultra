@@ -164,7 +164,7 @@ function applySkin(announce) {
 const state = {
   pos: new THREE.Vector3(samples[garageIdx].x, samples[garageIdx].y+0.05, samples[garageIdx].z),
   heading: Math.atan2(tangents[garageIdx].x, tangents[garageIdx].z),
-  travel: 0, speed: 0, vx: 0, vz: 0, vyAir: 0, airborne: false, steer: 0, nitro: 1, roll: 0, pitch: 0
+  travel: 0, speed: 0, vx: 0, vz: 0, vyAir: 0, airborne: false, steer: 0, nitro: 1, flow: 0, roll: 0, pitch: 0
 };
 state.travel = state.heading;
 
@@ -184,23 +184,29 @@ function settleCarPose() {
 }
 
 function physics(dt) {
-  const fwd = keys['KeyW'] || keys['ArrowUp'];
-  const back = keys['KeyS'] || keys['ArrowDown'];
+  const pad = G.pad, padOn = pad.active;
+  const fwd = keys['KeyW'] || keys['ArrowUp'] || (padOn && pad.throttle > 0.08);
+  const back = keys['KeyS'] || keys['ArrowDown'] || (padOn && pad.brake > 0.08);
   const left = keys['KeyA'] || keys['ArrowLeft'];
   const right = keys['KeyD'] || keys['ArrowRight'];
-  const drift = keys['Space'];
-  const boost = (keys['ShiftLeft'] || keys['ShiftRight']) && state.nitro > 0.02 && state.speed > 2;
+  const drift = keys['Space'] || (padOn && pad.drift);
+  const boost = (keys['ShiftLeft'] || keys['ShiftRight'] || (padOn && pad.boost)) && state.nitro > 0.02 && state.speed > 2;
+  const thrAmt = (padOn && pad.throttle > 0.08) ? pad.throttle : 1; // 手柄线性油门
 
   const nr = nearestRoad(state.pos.x, state.pos.z);
   const bi2 = branchInfo(state.pos.x, state.pos.z);
   const onRoad = nr.dist < HALF_W + 1.2 || bi2.dist < B_HALF + 1.0;
-  let maxSpd = onRoad ? 150 : 45;
-  if (boost) { maxSpd = onRoad ? 200 : 55; state.nitro = Math.max(0, state.nitro - dt*0.30); }
+  // FLOW 状态：在路上保持速度持续充能，下道流失；满状态解锁更高动力（技巧驱动极速）
+  if (onRoad && Math.abs(state.speed) > 8) state.flow = Math.min(1, state.flow + dt*0.04);
+  if (!onRoad) state.flow = Math.max(0, state.flow - dt*0.18);
+  const fl = state.flow;
+  let maxSpd = onRoad ? 65 + 20*fl : 20;
+  if (boost) { maxSpd = onRoad ? 80 + 20*fl : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
   else state.nitro = Math.min(1, state.nitro + dt*0.06);
   const locked = race.phase === 'countdown';
 
   // —— 转向输入曲线：渐进打方向，松手/反打快速回正
-  const steerTarget = (left ? 1 : 0) - (right ? 1 : 0);
+  const steerTarget = (padOn && Math.abs(pad.steer) > 0.01) ? -pad.steer : ((left ? 1 : 0) - (right ? 1 : 0));
   const steerRate = (steerTarget === 0 || steerTarget * state.steer < 0) ? 9 : 5;
   state.steer += THREE.MathUtils.clamp(steerTarget - state.steer, -steerRate*dt, steerRate*dt);
 
@@ -212,12 +218,13 @@ function physics(dt) {
 
   // —— EV 扭矩曲线（起步猛、高速渐缓）+ 刹车/倒车 + 风阻平方
   let aF = 0;
-  if (fwd && !locked) aF = (boost ? 100 : 70) * Math.max(0.22, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2));
+  if (fwd && !locked) aF = (boost ? 28 : 20) * thrAmt * (1 + 0.35*fl) * Math.max(0.22, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2));
   if (back) {
-    if (vF > 1) aF = -50;
-    else if (!locked) aF = -12;
+    if (vF > 1) aF = -26;
+    else if (!locked) aF = -8.5;
   }
-  aF -= 0.004 * vF * Math.abs(vF) + (onRoad ? 0.15 : 0.85) * vF;
+  const dragK = 0.0022 * (1 - 0.45*fl); // FLOW 降低风阻：满状态巡航极速 ~217km/h，叠性能模式 ~264
+  aF -= dragK * vF * Math.abs(vF) + (onRoad ? 0.15 : 0.85) * vF;
   vF = THREE.MathUtils.clamp(vF + aF*dt, -9, maxSpd);
   if (!fwd && !back && Math.abs(vF) < 0.5) vF = 0;
 
@@ -323,6 +330,7 @@ function physics(dt) {
         G.shake = Math.max(G.shake, Math.min(0.6, -state.vyAir*0.045));
         sfx('thud', Math.min(1.4, -state.vyAir*0.09));
         if (state.vyAir < -10) skillPop('落地！', true);
+        state.flow = Math.min(1, state.flow + 0.1);
         if (state.vyAir < -12) unlockAch('fly');
       }
       state.pos.y = gy;
@@ -378,6 +386,14 @@ function physics(dt) {
     }
   } else state.stuckT = 0;
 
+  // 刹车灯/倒车灯
+  brakeMat.opacity = (back && vF > 1) ? 0.95 : 0;
+  revMat.opacity = (vF < -0.5) ? 0.9 : 0;
+  // 接触阴影：贴地跟随，腾空渐隐
+  carShadow.position.set(state.pos.x, gy + 0.04, state.pos.z);
+  carShadow.rotation.y = state.heading;
+  carShadow.material.opacity = 0.4 * Math.max(0.12, Math.min(1, 1 - (state.pos.y - gy)/4));
+
   car.position.copy(state.pos);
   car.rotation.set(state.pitch, state.heading, state.roll, 'YXZ');
 
@@ -422,7 +438,9 @@ function updateChaseCamera(dt, boost) {
   if (!camAng.init) { camAng.yaw = tYaw; camAng.init = true; }
   // 偏航重阻尼：方向键抖动不再传导到镜头
   camAng.yaw = wrapPi(camAng.yaw + wrapAngle(tYaw - camAng.yaw) * Math.min(1, dt*3.0));
-  const dx = Math.sin(camAng.yaw), dz = Math.cos(camAng.yaw);
+  // 倒车镜头：倒车时机位转到车头方向回看
+  const camYawUse = state.speed < -2 ? camAng.yaw + Math.PI : camAng.yaw;
+  const dx = Math.sin(camYawUse), dz = Math.cos(camYawUse);
   if (G.camMode <= 2) {
     const back = G.camMode === 0 ? 9.5 : G.camMode === 1 ? 6.0 : 4.4;
     const up   = G.camMode === 0 ? 3.3 : G.camMode === 1 ? 2.0 : 1.5;
@@ -459,7 +477,7 @@ function updateChaseCamera(dt, boost) {
   }
   // 视线沿镜头偏航角看向车前方（与机位同源，杜绝左右甩动）
   const ahead = 5.5 + spd*0.08;
-  const lookYaw = G.camMode === 3 ? state.heading : camAng.yaw;
+  const lookYaw = G.camMode === 3 ? state.heading : camYawUse;
   camera.lookAt(
     state.pos.x + Math.sin(lookYaw)*ahead,
     state.pos.y + 1.1,
@@ -470,6 +488,43 @@ function updateChaseCamera(dt, boost) {
   camera.updateProjectionMatrix();
 }
 
+
+export function addFlow(d) {
+  state.flow = Math.max(0, Math.min(1, state.flow + d));
+}
+
+// —— 刹车灯 / 倒车灯（独立小灯条，避免动原模型共享材质）
+const brakeMat = new THREE.MeshBasicMaterial({color: 0xff2626, transparent: true, opacity: 0});
+const revMat = new THREE.MeshBasicMaterial({color: 0xfff4e0, transparent: true, opacity: 0});
+{
+  const bb = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.06, 0.04), brakeMat);
+  bb.position.set(0, 0.97, -2.50);
+  car.add(bb);
+  for (const sx of [-0.55, 0.55]) {
+    const rv = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.04), revMat);
+    rv.position.set(sx, 0.80, -2.50);
+    car.add(rv);
+  }
+}
+// —— 车底假接触阴影（柔和椭圆，落地感）
+const carShadow = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const x = cv.getContext('2d');
+  const gr = x.createRadialGradient(64, 64, 8, 64, 64, 62);
+  gr.addColorStop(0, 'rgba(0,0,0,0.85)');
+  gr.addColorStop(0.65, 'rgba(0,0,0,0.4)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = gr;
+  x.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  const g2 = new THREE.PlaneGeometry(3.4, 5.8);
+  g2.rotateX(-Math.PI/2);
+  const m2 = new THREE.Mesh(g2, new THREE.MeshBasicMaterial({map: tex, transparent: true, opacity: 0.4, depthWrite: false}));
+  m2.renderOrder = 1;
+  scene.add(m2);
+  return m2;
+})();
 
 // 幽灵车：半透明克隆（PB 回放用；后续接入多车型时同一管线可复用）
 export function createGhostClone() {

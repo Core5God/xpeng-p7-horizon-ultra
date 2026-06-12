@@ -35,6 +35,10 @@
   #gear{position:absolute;top:36px;width:100%;text-align:center;font-size:17px;font-weight:700;color:var(--cy);letter-spacing:2px}
   #speed{position:absolute;top:54px;width:100%;text-align:center;font-size:58px;font-weight:700;font-style:italic;line-height:1;font-variant-numeric:tabular-nums}
   #speedunit{position:absolute;top:114px;width:100%;text-align:center;font-size:12px;letter-spacing:5px;opacity:.7}
+  #flowwrap{position:absolute;bottom:34px;left:20px;right:20px}
+  #flowlabel{font-size:9px;letter-spacing:2px;opacity:.6;margin-bottom:2px}
+  #flowbar{height:4px;background:rgba(255,255,255,.12);transform:skewX(-20deg);overflow:hidden}
+  #flowfill{height:100%;width:0%;background:linear-gradient(90deg,#19d3ff,#ff5fd0)}
   #nitrowrap{position:absolute;bottom:0;left:20px;right:20px}
   #nitrolabel{font-size:10px;letter-spacing:3px;opacity:.7;margin-bottom:3px}
   #nitrobar{height:7px;background:rgba(255,255,255,.14);transform:skewX(-20deg);overflow:hidden}
@@ -171,13 +175,14 @@
   <div id="gear">N</div>
   <div id="speed">0</div>
   <div id="speedunit">KM/H</div>
-  <div id="nitrowrap"><div id="nitrolabel">NITRO · SHIFT</div><div id="nitrobar"><div id="nitrofill"></div></div></div>
+  <div id="flowwrap"><div id="flowlabel">FLOW · 干净驾驶提升极速</div><div id="flowbar"><div id="flowfill"></div></div></div>
+  <div id="nitrowrap"><div id="nitrolabel">BOOST 性能模式 · SHIFT</div><div id="nitrobar"><div id="nitrofill"></div></div></div>
 </div>
 <div class="hud" id="racebox"><div id="lights"><i></i><i></i><i></i></div><div id="laptime">0:00.00</div><div id="delta"></div><div id="cpinfo"></div><div id="besttime"></div></div>
 <div class="hud" id="driftlive"></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
-<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
+<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示<kbd>🎮</kbd>手柄已支持</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
 

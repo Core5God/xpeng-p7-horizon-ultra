@@ -25,6 +25,7 @@ export const G = {
   water: null,
   waterOK: false,
   carReady: false,
+  pad: {active:false, steer:0, throttle:0, brake:0, drift:false, boost:false},
   headlights: [],
   lampMats: []
 };
@@ -51,8 +52,8 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1536, 1536);
-sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
-sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
+sun.shadow.camera.left = -35; sun.shadow.camera.right = 35;
+sun.shadow.camera.top = 35; sun.shadow.camera.bottom = -35;
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;

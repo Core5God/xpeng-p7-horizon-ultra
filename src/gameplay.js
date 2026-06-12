@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { G, scene, wrapPi } from './core.js';
 import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
-import { state, createGhostClone } from './vehicle.js';
+import { state, createGhostClone, addFlow } from './vehicle.js';
 import { actx, makeNoiseBurst } from './audio.js';
 import { showMsg, keys, refreshRecords } from './ui.js';
 
@@ -345,6 +345,7 @@ function gameplayUpdate(dt, onRoad) {
     else if (!p.nearMiss && spd > 16 && d2 < 11.5) {
       p.nearMiss = true;
       addScore(30, '擦身而过');
+      addFlow(0.08);
     }
   }
   // —— 建筑碰撞：推出 + 反弹 + 连击清零
@@ -369,6 +370,7 @@ function gameplayUpdate(dt, onRoad) {
           } else {
             if (combo > 1) skillPop('撞击！连击中断', true);
             combo = 1; comboEvents = 0; cruiseT = 0;
+            addFlow(-0.5);
             updateScoreChip();
           }
         }
@@ -410,7 +412,7 @@ function gameplayUpdate(dt, onRoad) {
   }
   else if (driftAcc > 0 && !keys['Space']) {
     if (elDrift) elDrift.style.opacity = 0;
-    if (driftAcc > 40) addScore(Math.round(driftAcc/10)*10, '漂移');
+    if (driftAcc > 40) { addScore(Math.round(driftAcc/10)*10, '漂移'); addFlow(Math.min(0.15, driftAcc/1500)); }
     if (driftAcc >= 400) unlockAch('drift');
     driftAcc = 0;
   }

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, sun, rim } from './core.js';
-import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight } from './world.js';
+import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose } from './vehicle.js';
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
-import { showMsg, keys as keysRef, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
+import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
@@ -33,7 +33,31 @@ function loop() {
     }
   } else slowFrames = 0;
 }
+// —— 手柄（标准映射：左摇杆转向 / RT 油门 / LT 刹车 / A 漂移 / B·RB 性能 / Y 视角 / Start 暂停）
+let padPrev = [];
+function pollGamepad() {
+  const gp = navigator.getGamepads && navigator.getGamepads()[0];
+  const pad = G.pad;
+  pad.active = false;
+  if (!gp) return;
+  const dz = (v) => Math.abs(v) > 0.12 ? v : 0;
+  pad.steer = dz(gp.axes[0] || 0);
+  pad.throttle = gp.buttons[7] ? gp.buttons[7].value : 0;
+  pad.brake = gp.buttons[6] ? gp.buttons[6].value : 0;
+  pad.drift = !!(gp.buttons[0] && gp.buttons[0].pressed);
+  pad.boost = !!((gp.buttons[1] && gp.buttons[1].pressed) || (gp.buttons[5] && gp.buttons[5].pressed));
+  if (pad.steer || pad.throttle > 0.05 || pad.brake > 0.05 || pad.drift || pad.boost) pad.active = true;
+  const edge = (i) => gp.buttons[i] && gp.buttons[i].pressed && !padPrev[i];
+  if (edge(3) && G.appState === 'drive') G.camMode = (G.camMode + 1) % 5;
+  if (edge(9)) {
+    if (G.appState === 'drive') pauseGame();
+    else if (G.appState === 'pause') resumeGame();
+  }
+  padPrev = gp.buttons.map(b => b.pressed);
+}
+
 function loopBody() {
+  pollGamepad();
   const now = performance.now();
   const dt = Math.min((now - last)/1000, 0.05);
   last = now;
@@ -66,6 +90,7 @@ function loopBody() {
   rim.target.position.copy(state.pos);
 
   const t = now*0.001;
+  windU.value = t;
   if (cpGroupAll.visible) cps.forEach((g,i)=>{ g.children[2].position.y = g.userData.pos.y + 5.6 + Math.sin(t*2+i)*0.25; });
   arrow.position.y = Math.sin(t*4)*0.15;
 
@@ -79,9 +104,11 @@ function loopBody() {
   if (G.appState === 'drive' && frame++ % 3 === 0) {
     const kmh = Math.abs(state.speed)*3.6;
     elSpeed.textContent = Math.round(kmh);
-    gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/650, 1));
+    gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
     elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
+    const ff = document.getElementById('flowfill');
+    if (ff) ff.style.width = (state.flow*100).toFixed(0) + '%';
     elMode.innerHTML = race.phase === 'free'
       ? '🏝️ 自由漫游 · 小地图彩点 = 路线起点 · <b>R</b> 竞速' + (onRoad ? '' : ' · <span style="color:#ffcc66">越野中</span>')
       : '🏁 竞速赛 · <b>R</b> 退出 · <b>ESC</b> 菜单';
