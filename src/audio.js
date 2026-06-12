@@ -142,7 +142,8 @@ function setMusic(on, announce) {
 function audioUpdate() {
   if (!actx) return;
   if (G.appState !== 'drive') { gMain.gain.value = 0; return; }
-  const s = Math.abs(state.speed);
+  const s0 = Math.abs(state.speed);
+  const s = isFinite(s0) ? s0 : 0; // 守卫：非有限值赋给 AudioParam 会抛异常
   oA.frequency.value = 50 + s*2.4;
   oB.frequency.value = 100 + s*4.8;
   oW.frequency.value = 380 + s*26;
@@ -151,7 +152,8 @@ function audioUpdate() {
   // 漂移摩擦声强度随侧滑速度
   if (scrGain) {
     const fx2 = Math.sin(state.heading), fz2 = Math.cos(state.heading);
-    const vLat = state.vx*fz2 - state.vz*fx2;
+    const vL0 = state.vx*fz2 - state.vz*fx2;
+    const vLat = isFinite(vL0) ? vL0 : 0;
     const drifting = G.appState === 'drive' && keys['Space'] && Math.abs(vLat) > 3.5 && s > 8;
     const tgt = (G.muted || !drifting) ? 0 : Math.min(0.16, Math.abs(vLat)*0.012);
     // 手动插值替代 setTargetAtTime：长时间漂移不再累积音频自动化事件

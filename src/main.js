@@ -16,6 +16,7 @@ function loop() {
   const t0 = performance.now();
   try {
     loopBody();
+    loopErrCount = 0; // 正常帧即清零：只有持续异常才提示
   } catch (err) {
     // 自愈：异常只丢当前帧，不冻死游戏；连续异常时提示玩家
     loopErrCount++;

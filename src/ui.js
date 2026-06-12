@@ -341,6 +341,9 @@ addEventListener('keydown', e => {
     state.pos.set(samples[nrT.idx].x, samples[nrT.idx].y + 0.1, samples[nrT.idx].z);
     state.heading = state.travel = Math.atan2(tangents[nrT.idx].x, tangents[nrT.idx].z);
     state.speed = 0; state.vx = 0; state.vz = 0; state.vyAir = 0;
+    state.airborne = false; state.steer = 0; state.stuckT = 0;
+    if (!isFinite(state.flow)) state.flow = 0;
+    if (!isFinite(state.nitro)) state.nitro = 1;
     settleCarPose();
     showMsg('已复位到道路', 1000, 28);
   }

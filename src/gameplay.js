@@ -223,7 +223,7 @@ function sfx(type, inten) {
   const nowS = performance.now();
   if (nowS - (sfxLast[type] || 0) < 90) return;
   sfxLast[type] = nowS;
-  const i2 = inten || 1;
+  const i2 = isFinite(inten) && inten > 0 ? inten : 1; // 守卫：NaN 强度会让 AudioParam 抛异常
   const t0 = actx.currentTime;
   if (type === 'smash' || type === 'thud') {
     const nb = actx.createBufferSource(); nb.buffer = makeNoiseBurst();

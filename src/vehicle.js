@@ -132,6 +132,22 @@ loader.load(GLB_URL, (gltf) => {
     spinPivots.push(spin);
     if (idx < 2) steerPivots.push(steer);
   });
+  // 尾灯材质克隆：Trunk 贯穿条 + 两侧 BackLens 竖条独立于前灯控制
+  {
+    const cloneMap = new Map();
+    model.traverse((o) => {
+      if (o.isMesh && /Lamps_(Trunk|BackLens)/.test(o.name)) {
+        if (!cloneMap.has(o.material)) {
+          const c = o.material.clone();
+          c.userData = Object.assign({}, o.material.userData);
+          cloneMap.set(o.material, c);
+          rearLampMats.push(c);
+          G.lampMats.push(c); // 夜间点亮逻辑继续生效
+        }
+        o.material = cloneMap.get(o.material);
+      }
+    });
+  }
   G.carReady = true;
   applySkin(false);
   applyTod(G.curTod);
@@ -183,7 +199,34 @@ function settleCarPose() {
   car.rotation.set(state.pitch, state.heading, state.roll, 'YXZ');
 }
 
+// —— NaN 自愈：任何状态量被污染（极端姿态/高度采样异常）都在下一帧入口修复，
+// 杜绝"NaN 传染 → 音频赋值抛异常 → 每帧报错且复位无效"的死锁
+function sanitizeState() {
+  const s = state;
+  if (isFinite(s.pos.x + s.pos.y + s.pos.z + s.vx + s.vz + s.speed + s.vyAir +
+               s.heading + s.pitch + s.roll + s.steer + s.flow + s.nitro + s.travel)) return;
+  if (!isFinite(s.vx)) s.vx = 0;
+  if (!isFinite(s.vz)) s.vz = 0;
+  if (!isFinite(s.speed)) s.speed = 0;
+  if (!isFinite(s.vyAir)) { s.vyAir = 0; s.airborne = false; }
+  if (!isFinite(s.steer)) s.steer = 0;
+  if (!isFinite(s.pitch)) s.pitch = 0;
+  if (!isFinite(s.roll)) s.roll = 0;
+  if (!isFinite(s.flow)) s.flow = 0;
+  if (!isFinite(s.nitro)) s.nitro = 1;
+  if (!isFinite(s.heading)) s.heading = 0;
+  if (!isFinite(s.travel)) s.travel = s.heading;
+  if (!isFinite(s.pos.x + s.pos.y + s.pos.z)) {
+    const px = isFinite(s.pos.x) ? s.pos.x : 0, pz = isFinite(s.pos.z) ? s.pos.z : 0;
+    const nr0 = nearestRoad(px, pz);
+    s.pos.set(samples[nr0.idx].x, samples[nr0.idx].y + 0.1, samples[nr0.idx].z);
+    s.heading = s.travel = Math.atan2(tangents[nr0.idx].x, tangents[nr0.idx].z);
+    s.vx = 0; s.vz = 0; s.speed = 0; s.vyAir = 0; s.airborne = false;
+  }
+}
+
 function physics(dt) {
+  sanitizeState();
   const pad = G.pad, padOn = pad.active;
   const fwd = keys['KeyW'] || keys['ArrowUp'] || (padOn && pad.throttle > 0.08);
   const back = keys['KeyS'] || keys['ArrowDown'] || (padOn && pad.brake > 0.08);
@@ -362,7 +405,8 @@ function physics(dt) {
   const tPitch = THREE.MathUtils.clamp(Math.atan2(hB2 - hF2, 3), -0.38, 0.38);
   const tRoll = THREE.MathUtils.clamp(Math.atan2(hR2 - hL2, 1.8), -0.32, 0.32);
   state.pitch += (tPitch + (aF > 2 ? -0.012 : aF < -8 ? 0.02 : 0) - state.pitch) * Math.min(1, dt*6);
-  state.roll += (tRoll - vL*0.012 - state.roll) * Math.min(1, dt*6);
+  const driftLean = THREE.MathUtils.clamp(vL*0.010, -0.14, 0.14); // 限幅：高速漂移不再侧翻
+  state.roll += (THREE.MathUtils.clamp(tRoll - driftLean, -0.40, 0.40) - state.roll) * Math.min(1, dt*6);
 
   if (gy < -0.5) {
     const ridx = nr.idx;
@@ -386,9 +430,24 @@ function physics(dt) {
     }
   } else state.stuckT = 0;
 
-  // 刹车灯/倒车灯
-  brakeMat.opacity = (back && vF > 1) ? 0.95 : 0;
-  revMat.opacity = (vF < -0.5) ? 0.9 : 0;
+  // 刹车/倒车：驱动原厂贯穿式尾灯条（状态切换时保存/恢复当前昼夜基准）
+  {
+    const want = (back && vF > 1) ? 2 : (vF < -0.5 ? 1 : 0);
+    if (want !== rearLampState && rearLampMats.length) {
+      if (rearLampState === 0) {
+        for (const m of rearLampMats) {
+          m.userData.savedE = m.emissive.getHex();
+          m.userData.savedI = m.emissiveIntensity;
+        }
+      }
+      for (const m of rearLampMats) {
+        if (want === 2) { m.emissive.setHex(0xff1414); m.emissiveIntensity = 3.4; }
+        else if (want === 1) { m.emissive.setHex(0xff6a55); m.emissiveIntensity = 2.0; }
+        else { m.emissive.setHex(m.userData.savedE ?? 0x000000); m.emissiveIntensity = m.userData.savedI ?? 1; }
+      }
+      rearLampState = want;
+    }
+  }
   // 接触阴影：贴地跟随，腾空渐隐
   carShadow.position.set(state.pos.x, gy + 0.04, state.pos.z);
   carShadow.rotation.y = state.heading;
@@ -493,19 +552,9 @@ export function addFlow(d) {
   state.flow = Math.max(0, Math.min(1, state.flow + d));
 }
 
-// —— 刹车灯 / 倒车灯（独立小灯条，避免动原模型共享材质）
-const brakeMat = new THREE.MeshBasicMaterial({color: 0xff2626, transparent: true, opacity: 0});
-const revMat = new THREE.MeshBasicMaterial({color: 0xfff4e0, transparent: true, opacity: 0});
-{
-  const bb = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.06, 0.04), brakeMat);
-  bb.position.set(0, 0.97, -2.50);
-  car.add(bb);
-  for (const sx of [-0.55, 0.55]) {
-    const rv = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.04), revMat);
-    rv.position.set(sx, 0.80, -2.50);
-    car.add(rv);
-  }
-}
+// —— 刹车/倒车灯：直接驱动模型自带的贯穿式尾灯材质（无传统倒车白灯）
+const rearLampMats = [];
+let rearLampState = 0; // 0 常态 / 1 倒车提亮 / 2 刹车深红
 // —— 车底假接触阴影（柔和椭圆，落地感）
 const carShadow = (() => {
   const cv = document.createElement('canvas');
