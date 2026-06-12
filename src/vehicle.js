@@ -194,8 +194,8 @@ function physics(dt) {
   const nr = nearestRoad(state.pos.x, state.pos.z);
   const bi2 = branchInfo(state.pos.x, state.pos.z);
   const onRoad = nr.dist < HALF_W + 1.2 || bi2.dist < B_HALF + 1.0;
-  let maxSpd = onRoad ? 58 : 20;
-  if (boost) { maxSpd = onRoad ? 80 : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
+  let maxSpd = onRoad ? 150 : 45;
+  if (boost) { maxSpd = onRoad ? 200 : 55; state.nitro = Math.max(0, state.nitro - dt*0.30); }
   else state.nitro = Math.min(1, state.nitro + dt*0.06);
   const locked = race.phase === 'countdown';
 
@@ -212,12 +212,12 @@ function physics(dt) {
 
   // —— EV 扭矩曲线（起步猛、高速渐缓）+ 刹车/倒车 + 风阻平方
   let aF = 0;
-  if (fwd && !locked) aF = (boost ? 28 : 20) * Math.max(0.22, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2));
+  if (fwd && !locked) aF = (boost ? 100 : 70) * Math.max(0.22, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2));
   if (back) {
-    if (vF > 1) aF = -26;
-    else if (!locked) aF = -8.5;
+    if (vF > 1) aF = -50;
+    else if (!locked) aF = -12;
   }
-  aF -= 0.011 * vF * Math.abs(vF) + (onRoad ? 0.15 : 0.85) * vF;
+  aF -= 0.004 * vF * Math.abs(vF) + (onRoad ? 0.15 : 0.85) * vF;
   vF = THREE.MathUtils.clamp(vF + aF*dt, -9, maxSpd);
   if (!fwd && !back && Math.abs(vF) < 0.5) vF = 0;
 

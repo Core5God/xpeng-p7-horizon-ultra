@@ -79,7 +79,7 @@ function loopBody() {
   if (G.appState === 'drive' && frame++ % 3 === 0) {
     const kmh = Math.abs(state.speed)*3.6;
     elSpeed.textContent = Math.round(kmh);
-    gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
+    gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/650, 1));
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
     elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
     elMode.innerHTML = race.phase === 'free'
