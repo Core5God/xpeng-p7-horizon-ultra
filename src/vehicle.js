@@ -179,20 +179,6 @@ function settleCarPose() {
   const hL = surfaceHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9, state.pos.y);
   state.pitch = Math.atan2(hB - hF, 3);
   state.roll = Math.atan2(hR - hL, 1.8);
-  // —— 自动脱困：持续给油/倒车但位置几乎不动（被墙体/台阶卡住）→ 2.5 秒后自动回正
-  const movedD = Math.hypot(state.pos.x - prevPX, state.pos.z - prevPZ);
-  if ((fwd || back) && !state.airborne && movedD < 0.02) {
-    state.stuckT = (state.stuckT || 0) + dt;
-    if (state.stuckT > 2.5) {
-      state.stuckT = 0;
-      const nrS = nearestRoad(state.pos.x, state.pos.z);
-      state.pos.set(samples[nrS.idx].x, samples[nrS.idx].y + 0.1, samples[nrS.idx].z);
-      state.heading = state.travel = Math.atan2(tangents[nrS.idx].x, tangents[nrS.idx].z);
-      state.speed = 0; state.vx = 0; state.vz = 0; state.vyAir = 0;
-      showMsg('已自动脱困 🛟', 1400, 30);
-    }
-  } else state.stuckT = 0;
-
   car.position.copy(state.pos);
   car.rotation.set(state.pitch, state.heading, state.roll, 'YXZ');
 }
