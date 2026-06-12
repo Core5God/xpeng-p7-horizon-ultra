@@ -6,6 +6,7 @@
 <title>XPENG THE NEXT P7 · 地平线海岸 ULTRA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="fetch" href="./assets/e29.glb" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{--cy:#19d3ff;--or:#ff7a18}
@@ -89,6 +90,13 @@
   #keytips{bottom:22px;left:50%;transform:translateX(-50%);font-size:12.5px;font-weight:500;color:rgba(255,255,255,.92);white-space:nowrap;transition:opacity 1.2s;background:linear-gradient(90deg,transparent,rgba(4,10,22,.4) 12%,rgba(4,10,22,.4) 88%,transparent);padding:5px 26px}
   #keytips.dim{opacity:.32}
   #keytips kbd{font-size:10.5px;padding:2px 7px;margin:0 4px 0 12px;border-bottom-width:2px}
+  /* —— 战绩 / 成就 —— */
+  #recordsBox{font-size:15px;width:380px}
+  #recordsBox .rrow{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.1);padding:4px 2px}
+  #recordsBox .rname{opacity:.88}
+  #recordsBox .rval{font-variant-numeric:tabular-nums}
+  .achchip{font-size:12.5px;padding:6px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:8px;letter-spacing:.5px;color:#fff}
+  .achchip.locked{opacity:.28;filter:grayscale(1)}
   /* —— 照片工具栏 —— */
   #photobar{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:25;display:none;gap:12px}
   #photobar.show{display:flex}
@@ -103,7 +111,7 @@
   #boottext{font-size:13.5px;opacity:.65;margin-top:12px;letter-spacing:2px}
   @keyframes bpulse{0%,100%{opacity:1}50%{opacity:.45}}
 </style>
-  <script type="module" crossorigin src="./assets/index-3KhiL_zY.js"></script>
+  <script type="module" crossorigin src="./assets/index-DjuKC8b5.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/three-BDvmwi_p.js">
 </head>
 <body class="nohud">
@@ -112,7 +120,29 @@
   <div class="bname">THE NEXT P7</div>
   <div id="bootbar"><div id="bootfill"></div></div>
   <div id="boottext">正在下载渲染引擎…</div>
+  <div id="boottip" style="margin-top:18px;font-size:12.5px;opacity:.5;letter-spacing:1px;max-width:420px;text-align:center;line-height:1.8"></div>
 </div>
+<script>
+(function(){
+  var tips = [
+    '小贴士：SHIFT 性能模式爆发加速，撞碎道具可回充能量',
+    '小贴士：SPACE 漂移过弯，松开结算漂移得分',
+    '小贴士：冲上坡顶可以起跳腾空，注意落地姿态',
+    '小贴士：夜晚模式有路灯长廊、灯塔光束和萤火虫',
+    '小贴士：P 键照片模式可环绕取景并导出品牌海报',
+    '小贴士：T 键随时复位到道路，卡住不用怕',
+    '首次加载需下载 3D 引擎与车辆模型，之后会被浏览器缓存'
+  ];
+  var i = 0, el = document.getElementById('boottip'), t0 = Date.now();
+  function cyc(){
+    if (!document.getElementById('boot')) return;
+    el.textContent = tips[i % tips.length] + '　·　已用时 ' + Math.round((Date.now()-t0)/1000) + 's';
+    i++;
+    setTimeout(cyc, 2600);
+  }
+  cyc();
+})();
+</script>
 <canvas id="c"></canvas>
 <div id="vignette"></div>
 <div class="hud" id="title"><div class="brand">XPENG</div><div class="model">THE NEXT P7<span>地平线海岸 ULTRA</span></div></div>
@@ -133,7 +163,7 @@
 <div class="hud" id="racebox"><div id="laptime">0:00.00</div><div id="cpinfo"></div><div id="besttime"></div></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
-<div class="hud" id="keytips"><kbd>SHIFT</kbd>氮气<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
+<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
 
@@ -149,12 +179,15 @@
     <button class="cta cta2" id="btnRace" disabled><span>竞速赛</span><em>CIRCUIT · 10 CHECKPOINTS</em></button>
     <div class="sec">车漆 PAINT</div><div class="row" id="paintRowG"></div>
     <div class="sec">时间 TIME</div><div class="row" id="todRowG"></div>
+    <div class="sec">路线 ROUTE</div><div class="row" id="routeRow"></div>
+    <div class="sec">战绩 RECORDS</div><div id="recordsBox"></div>
+    <div class="sec">成就 ACHIEVEMENTS</div><div class="row" id="achRow"></div>
     <div class="sec">设置 SETTINGS</div>
     <div class="row"><button class="opt" id="gQuality">画质：高</button><button class="opt" id="gSound">声音：开</button><button class="opt" id="gMusic">音乐：开</button></div>
     <div id="loadbar"><div id="loadfill"></div></div>
     <div id="loadtext">正在加载 E29 车辆模型…</div>
   </div>
-  <div class="hintbar"><kbd>W A S D</kbd>驾驶<kbd>SHIFT</kbd>氮气<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>P</kbd>照片<kbd>ESC</kbd>菜单</div>
+  <div class="hintbar"><kbd>W A S D</kbd>驾驶<kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>P</kbd>照片<kbd>ESC</kbd>菜单</div>
 </div>
 
 <!-- 暂停菜单 -->
@@ -178,6 +211,7 @@
 <!-- 照片模式工具栏 -->
 <div id="photobar">
   <button id="btnShot">📸 保存截图</button>
+  <button id="btnPoster">🖼 生成海报</button>
   <button id="btnPhotoExit">退出（P）</button>
 </div>
 
