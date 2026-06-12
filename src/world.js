@@ -288,6 +288,93 @@ function surfaceHeight(x, z, refY) {
   return meshGroundHeight(x, z);
 }
 
+// —— 多八度值噪声场（细节贴图生成用）
+function makeNoiseField(size, octs) {
+  const f = new Float32Array(size*size);
+  for (const [cells, amp] of octs) {
+    const grid = new Float32Array((cells+1)*(cells+1));
+    for (let i = 0; i < grid.length; i++) grid[i] = Math.random();
+    const cs = size/cells;
+    for (let y = 0; y < size; y++) {
+      const gy = y/cs, iy = Math.floor(gy)%cells, fy = gy-Math.floor(gy);
+      const sy = fy*fy*(3-2*fy);
+      for (let x = 0; x < size; x++) {
+        const gx = x/cs, ix = Math.floor(gx)%cells, fx = gx-Math.floor(gx);
+        const sx = fx*fx*(3-2*fx);
+        const a = grid[iy*(cells+1)+ix], b = grid[iy*(cells+1)+ix+1];
+        const c = grid[(iy+1)*(cells+1)+ix], d = grid[(iy+1)*(cells+1)+ix+1];
+        f[y*size+x] += amp * ((a*(1-sx)+b*sx)*(1-sy) + (c*(1-sx)+d*sx)*sy);
+      }
+    }
+  }
+  return f;
+}
+function fieldToTex(size, fn, post) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const x = cv.getContext('2d');
+  const img = x.createImageData(size, size);
+  fn(img.data, size);
+  x.putImageData(img, 0, 0);
+  if (post) post(x, size);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+function terrainGrassTex() {
+  const S = 512, f = makeNoiseField(S, [[12,0.45],[36,0.3],[110,0.25]]);
+  return fieldToTex(S, (d, s) => {
+    for (let i = 0; i < s*s; i++) {
+      const v = 0.68 + f[i]*0.34;
+      d[i*4] = 255*v*0.92; d[i*4+1] = 255*v*1.0; d[i*4+2] = 255*v*0.85; d[i*4+3] = 255;
+    }
+  }, (x, s) => { // 深色草斑
+    x.fillStyle = 'rgba(30,52,28,0.25)';
+    for (let k = 0; k < 900; k++) {
+      x.beginPath();
+      x.ellipse(Math.random()*s, Math.random()*s, 1 + Math.random()*2.4, 0.8 + Math.random()*1.4, Math.random()*3, 0, 7);
+      x.fill();
+    }
+  });
+}
+function terrainSandTex() {
+  const S = 512, f = makeNoiseField(S, [[16,0.35],[90,0.4],[200,0.25]]);
+  const low = makeNoiseField(S, [[6,1]]);
+  return fieldToTex(S, (d, s) => {
+    for (let i = 0; i < s*s; i++) {
+      const x2 = i % s;
+      const ripple = 0.93 + 0.07*Math.sin((x2 + low[i]*60) * 0.16); // 风纹
+      const v = (0.74 + f[i]*0.3) * ripple;
+      d[i*4] = 255*v*1.04; d[i*4+1] = 255*v*0.97; d[i*4+2] = 255*v*0.82; d[i*4+3] = 255;
+    }
+  });
+}
+function terrainRockTex() {
+  const S = 512, f = makeNoiseField(S, [[10,0.5],[40,0.3],[140,0.2]]);
+  return fieldToTex(S, (d, s) => {
+    for (let i = 0; i < s*s; i++) {
+      const raw = f[i];
+      const v = raw < 0.5 ? 0.55 + raw*0.5 : 0.62 + raw*0.55; // 提高对比
+      d[i*4] = 255*v*0.97; d[i*4+1] = 255*v*0.95; d[i*4+2] = 255*v*0.92; d[i*4+3] = 255;
+    }
+  }, (x, s) => { // 裂缝
+    x.strokeStyle = 'rgba(25,22,20,0.35)';
+    x.lineWidth = 1.2;
+    for (let k = 0; k < 70; k++) {
+      x.beginPath();
+      let px2 = Math.random()*s, py2 = Math.random()*s;
+      x.moveTo(px2, py2);
+      for (let j = 0; j < 4; j++) {
+        px2 += (Math.random()-0.5)*40; py2 += (Math.random()-0.5)*40;
+        x.lineTo(px2, py2);
+      }
+      x.stroke();
+    }
+  });
+}
+
 function buildTerrain() {
   const SEG = 200, SIZE = 1900;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
@@ -313,24 +400,30 @@ function buildTerrain() {
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   terrainField = field;
   g.computeVertexNormals();
-  // 细节噪声贴图：打破大色块的平面感
-  const detailTex = (() => {
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 128;
-    const x = cv.getContext('2d');
-    const img = x.createImageData(128, 128);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = 218 + Math.random()*37;
-      img.data[i] = img.data[i+1] = img.data[i+2] = v;
-      img.data[i+3] = 255;
-    }
-    x.putImageData(img, 0, 0);
-    const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(130, 130);
-    return t;
-  })();
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true, map:detailTex, roughness:0.95, metalness:0, envMapIntensity:0.35}));
+  // 三层细节贴图：草/沙/岩按地形高度混合（splat），顶点色提供大尺度色调
+  const mat = new THREE.MeshStandardMaterial({vertexColors:true, map: terrainGrassTex(), roughness:0.95, metalness:0, envMapIntensity:0.35});
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.tSand = { value: terrainSandTex() };
+    shader.uniforms.tRock = { value: terrainRockTex() };
+    shader.vertexShader = 'varying float vTerrY;\n' + shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n  vTerrY = position.y;'
+    );
+    shader.fragmentShader = 'uniform sampler2D tSand;\nuniform sampler2D tRock;\nvarying float vTerrY;\n' + shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      [
+        'vec2 sUv = vMapUv * 90.0;',
+        'vec3 cG = texture2D(map, sUv).rgb;',
+        'vec3 cS = texture2D(tSand, sUv).rgb;',
+        'vec3 cR = texture2D(tRock, sUv * 0.6).rgb;',
+        'float wS = 1.0 - smoothstep(1.2, 4.0, vTerrY);',
+        'float wR = smoothstep(13.0, 21.0, vTerrY);',
+        'float wG = max(0.0, 1.0 - wS - wR);',
+        'diffuseColor.rgb *= (cG*wG + cS*wS + cR*wR) * 1.18;'
+      ].join('\n')
+    );
+  };
+  const m = new THREE.Mesh(g, mat);
   m.receiveShadow = true;
   scene.add(m);
 }
@@ -514,7 +607,7 @@ async function buildScenery() {
   const trunkGeos = [], palmLeafGeos = [], rockGeos = [];
   const tmpO = new THREE.Object3D();
   let placed = 0, guard = 0;
-  while (placed < 400 && guard++ < 4500) {
+  while (placed < 520 && guard++ < 6000) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
     if (nearestRoad(x, z).dist < 16 || branchInfo(x, z).dist < 14) continue;
@@ -527,9 +620,11 @@ async function buildScenery() {
     if (h >= 3.5 && Math.random() < 0.85) {
       // 收集 EZ-Tree 种植点：高处松树、低处阔叶、部分灌木
       let vi;
-      if (h > 11) vi = 3;
-      else if (Math.random() < 0.16) vi = 4;
-      else vi = Math.floor(Math.random()*3);
+      const rv = Math.random();
+      if (rv < 0.16) vi = 7 + (Math.random() < 0.5 ? 0 : 1);          // 灌木
+      else if (h > 12) vi = Math.random() < 0.6 ? 6 : 5;              // 高地大松/松
+      else if (h > 8) vi = [1, 5, 0][Math.floor(Math.random()*3)];    // 大橡/松/橡
+      else vi = [0, 2, 3, 4][Math.floor(Math.random()*4)];            // 阔叶混交
       treeSpots.push({x, z, h, vi, rot: Math.random()*Math.PI*2, s: 0.75 + Math.random()*0.55});
       placed++;
       continue;
@@ -562,12 +657,61 @@ async function buildScenery() {
     scene.add(new THREE.Mesh(mergeGeometries(palmLeafGeos), leafM));
   }
   if (rockGeos.length) scene.add(new THREE.Mesh(mergeGeometries(rockGeos), rockM));
-  // —— EZ-Tree：生成 5 种树形 → 每种 2 个 InstancedMesh（枝干+树叶）
+  // —— 实例化地被：花簇 / 芦苇 / 海岸礁石（每类仅 1 个 draw call）
+  function scatter(geo, mat2, count, opt) {
+    const inst = new THREE.InstancedMesh(geo, mat2, count);
+    const dum = new THREE.Object3D();
+    const col = new THREE.Color();
+    let n2 = 0, gd = 0;
+    while (n2 < count && gd++ < count*8) {
+      const a = Math.random()*Math.PI*2, r = 40 + Math.random()*600;
+      const x = Math.cos(a)*r, z = Math.sin(a)*r;
+      if (nearestRoad(x, z).dist < opt.minRoad || branchInfo(x, z).dist < opt.minRoad) continue;
+      const h = groundHeight(x, z);
+      if (h < opt.hMin || h > opt.hMax) continue;
+      const slope = Math.abs(groundHeight(x+4, z) - groundHeight(x-4, z))
+                  + Math.abs(groundHeight(x, z+4) - groundHeight(x, z-4));
+      if (slope > 3) continue;
+      dum.position.set(x, h - (opt.sink || 0.05), z);
+      dum.rotation.y = Math.random()*Math.PI;
+      const sc = opt.s0 + Math.random()*opt.s1;
+      dum.scale.set(sc, sc*(opt.ys || 1), sc);
+      dum.updateMatrix();
+      inst.setMatrixAt(n2, dum.matrix);
+      inst.setColorAt(n2, opt.color(col));
+      n2++;
+    }
+    inst.count = n2;
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    scene.add(inst);
+  }
+  const crossG = (() => {
+    const a = new THREE.PlaneGeometry(0.3, 0.3); a.translate(0, 0.15, 0);
+    const b = a.clone(); b.rotateY(Math.PI/2);
+    return mergeGeometries([a, b]);
+  })();
+  const reedG = (() => {
+    const a = new THREE.PlaneGeometry(0.22, 1.5); a.translate(0, 0.7, 0);
+    const b = a.clone(); b.rotateY(Math.PI/2);
+    return mergeGeometries([a, b]);
+  })();
+  const floraM = new THREE.MeshLambertMaterial({color:0xffffff, side:THREE.DoubleSide});
+  scatter(crossG, floraM, 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 0.7, s1: 0.8, sink: 0.04,
+    color: (c) => c.setHSL([0.95, 0.13, 0.0, 0.78][Math.floor(Math.random()*4)], 0.7, 0.66) }); // 花簇
+  scatter(reedG, floraM, 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.7, s1: 0.9, ys: 1.2, sink: 0.06,
+    color: (c) => c.setHSL(0.13 + Math.random()*0.04, 0.42, 0.34 + Math.random()*0.12) }); // 芦苇/滨草
+  const reefG = new THREE.DodecahedronGeometry(1, 0);
+  const reefM = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.9, flatShading:true});
+  scatter(reefG, reefM, 120, { minRoad: 12, hMin: -0.2, hMax: 1.0, s0: 0.5, s1: 1.1, ys: 0.6, sink: 0.3,
+    color: (c) => c.setHSL(0.08, 0.08, 0.3 + Math.random()*0.12) }); // 水线礁石
+
+  // —— EZ-Tree：生成 9 种树形 → 每种 2 个 InstancedMesh（枝干+树叶）
   try {
     // 动态导入：ez-tree（含 4MB 内嵌纹理）拆出首包，本阶段并行加载
     const { Tree: EZTree } = await import('@dgreenheck/ez-tree');
-    const TREE_PRESETS = ['Oak Medium', 'Ash Medium', 'Aspen Medium', 'Pine Medium', 'Bush 2'];
-    const TARGET_H = [9, 8.5, 9.5, 11.5, 2.2];
+    const TREE_PRESETS = ['Oak Medium', 'Oak Large', 'Ash Medium', 'Aspen Medium', 'Aspen Small', 'Pine Medium', 'Pine Large', 'Bush 1', 'Bush 2'];
+    const TARGET_H = [9, 13, 8.5, 9.5, 5.5, 11.5, 16, 1.8, 2.3];
     const dummy = new THREE.Object3D();
     TREE_PRESETS.forEach((name, vi) => {
       const spots = treeSpots.filter(s => s.vi === vi);
