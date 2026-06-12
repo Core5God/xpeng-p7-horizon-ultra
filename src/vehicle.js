@@ -348,8 +348,13 @@ function physics(dt) {
   const hB = surfaceHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5, state.pos.y);
   const hR = surfaceHeight(state.pos.x + fz*0.9, state.pos.z - fx*0.9, state.pos.y);
   const hL = surfaceHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9, state.pos.y);
-  const tPitch = THREE.MathUtils.clamp(Math.atan2(hB - hF, 3), -0.38, 0.38);
-  const tRoll = THREE.MathUtils.clamp(Math.atan2(hR - hL, 1.8), -0.32, 0.32);
+  // 边缘钳制：与车底落差超过 1.2m 的采样点（墙外/桥外深沟）不参与姿态计算
+  const hF2 = Math.abs(hF - gy) > 1.2 ? gy : hF;
+  const hB2 = Math.abs(hB - gy) > 1.2 ? gy : hB;
+  const hR2 = Math.abs(hR - gy) > 1.2 ? gy : hR;
+  const hL2 = Math.abs(hL - gy) > 1.2 ? gy : hL;
+  const tPitch = THREE.MathUtils.clamp(Math.atan2(hB2 - hF2, 3), -0.38, 0.38);
+  const tRoll = THREE.MathUtils.clamp(Math.atan2(hR2 - hL2, 1.8), -0.32, 0.32);
   state.pitch += (tPitch + (aF > 2 ? -0.012 : aF < -8 ? 0.02 : 0) - state.pitch) * Math.min(1, dt*6);
   state.roll += (tRoll - vL*0.012 - state.roll) * Math.min(1, dt*6);
 

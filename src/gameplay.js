@@ -186,12 +186,12 @@ function addScore(base, label, big) {
     const g = new THREE.Group();
     const ringG = new THREE.RingGeometry(4.2, 5.0, 36);
     ringG.rotateX(-Math.PI/2);
-    const ring = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false}));
+    const ring = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false}));
     ring.position.set(p.x, p.y + 0.12, p.z);
     g.add(ring);
     const beam2 = new THREE.Mesh(
-      new THREE.CylinderGeometry(4.6, 4.6, 26, 20, 1, true),
-      new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
+      new THREE.CylinderGeometry(5.2, 5.2, 30, 20, 1, true),
+      new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
     beam2.position.set(p.x, p.y + 13, p.z);
     g.add(beam2);
     const cv3 = document.createElement('canvas');
@@ -201,11 +201,11 @@ function addScore(base, label, big) {
     c3.fillStyle = '#fff'; c3.font = '700 56px "Noto Sans SC", sans-serif'; c3.textAlign = 'center';
     c3.fillText(r.name, 256, 82);
     const tag = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cv3), transparent: true, depthWrite: false}));
-    tag.scale.set(8, 2, 1);
-    tag.position.set(p.x, p.y + 7.5, p.z);
+    tag.scale.set(12, 3, 1);
+    tag.position.set(p.x, p.y + 9, p.z);
     g.add(tag);
     zoneGrp.add(g);
-    zones.push({i, x: p.x, z: p.z, ring, hold: 0});
+    zones.push({i, x: p.x, z: p.z, ring, hold: 0, color: zoneColors[i]});
   });
   scene.add(zoneGrp);
   updateScoreChip();
@@ -348,8 +348,8 @@ function gameplayUpdate(dt, onRoad) {
       state.pos.z = b.z + nz*rr;
       const vn = state.vx*nx + state.vz*nz;
       if (vn < 0) {
-        state.vx -= nx*vn*(b.soft ? 1.75 : 1.5);
-        state.vz -= nz*vn*(b.soft ? 1.75 : 1.5);
+        state.vx -= nx*vn*(b.soft ? 1.8 : 1.7);
+        state.vz -= nz*vn*(b.soft ? 1.8 : 1.7);
         const imp = -vn;
         if (imp > 5) {
           G.shake = Math.max(G.shake, Math.min(0.9, imp*0.035));
@@ -850,4 +850,4 @@ function fmt(t) {
   return m + ':' + (s<10?'0':'') + s.toFixed(2);
 }
 
-export { sfx, skillPop, saveBestScore, gameplayUpdate, buildProps, race, toggleRace, startRace, endRace, raceUpdate, fmt, cps, cpGroupAll, arrow, arrowPivot, ROUTES, selectRoute, getRecordsView, getShareStats, raceBestText, unlockAch, spawnBreakDebris };
+export { sfx, skillPop, saveBestScore, gameplayUpdate, buildProps, race, toggleRace, startRace, endRace, raceUpdate, fmt, cps, cpGroupAll, arrow, arrowPivot, ROUTES, selectRoute, getRecordsView, getShareStats, raceBestText, unlockAch, spawnBreakDebris, zones };

@@ -4,7 +4,7 @@ import { G, camera, renderer, canvas, composer, bloomPass } from './core.js';
 import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
-import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats } from './gameplay.js';
+import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic } from './audio.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
@@ -386,6 +386,14 @@ function drawMinimap() {
     i === 0 ? mm.moveTo(px2, py2) : mm.lineTo(px2, py2);
   }
   mm.strokeStyle = 'rgba(255,255,255,.4)'; mm.lineWidth = 2; mm.stroke();
+  if (race.phase === 'free') {
+    for (const z of zones) {
+      const [zx2, zy2] = mmPt(z.x, z.z);
+      mm.fillStyle = '#' + z.color.toString(16).padStart(6, '0');
+      mm.beginPath(); mm.arc(zx2, zy2, 4, 0, Math.PI*2); mm.fill();
+      mm.strokeStyle = 'rgba(255,255,255,.85)'; mm.lineWidth = 1.2; mm.stroke();
+    }
+  }
   if ((race.phase === 'racing' || race.phase === 'countdown') && race.targets[race.ti]) {
     const tp = race.targets[race.ti].userData.pos, [cx, cy] = mmPt(tp.x, tp.z);
     mm.fillStyle = '#76ff03';

@@ -375,6 +375,66 @@ function terrainRockTex() {
   });
 }
 
+// —— 植物剪影贴图（alpha 镂空，消除"纸片感"）
+function plantTex(draw) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const x = cv.getContext('2d');
+  x.clearRect(0, 0, 64, 64);
+  draw(x);
+  const t2 = new THREE.CanvasTexture(cv);
+  t2.colorSpace = THREE.SRGBColorSpace;
+  return t2;
+}
+function bladeTexture() {
+  return plantTex((x) => {
+    x.fillStyle = '#fff';
+    for (let k = 0; k < 7; k++) {
+      const bx = 8 + k*7 + Math.random()*4;
+      const h2 = 28 + Math.random()*30;
+      const lean = (Math.random()-0.5)*10;
+      x.beginPath();
+      x.moveTo(bx - 2.2, 64);
+      x.quadraticCurveTo(bx + lean*0.4, 64 - h2*0.6, bx + lean, 64 - h2);
+      x.quadraticCurveTo(bx + lean*0.4 + 1.5, 64 - h2*0.6, bx + 2.2, 64);
+      x.fill();
+    }
+  });
+}
+function flowerTexture() {
+  return plantTex((x) => {
+    for (let k = 0; k < 5; k++) {
+      const cx2 = 12 + Math.random()*40, cy2 = 12 + Math.random()*34;
+      x.fillStyle = '#fff';
+      for (let p2 = 0; p2 < 5; p2++) {
+        const a = p2/5*Math.PI*2;
+        x.beginPath();
+        x.ellipse(cx2 + Math.cos(a)*4, cy2 + Math.sin(a)*4, 3.4, 2.2, a, 0, 7);
+        x.fill();
+      }
+      x.fillStyle = '#999';
+      x.beginPath(); x.arc(cx2, cy2, 2, 0, 7); x.fill();
+      x.fillStyle = '#fff';
+      x.fillRect(cx2 - 0.8, cy2, 1.6, 64 - cy2); // 茎
+    }
+  });
+}
+function reedTexture() {
+  return plantTex((x) => {
+    x.fillStyle = '#fff';
+    for (let k = 0; k < 5; k++) {
+      const bx = 8 + k*11 + Math.random()*4;
+      const lean = (Math.random()-0.5)*8;
+      x.beginPath();
+      x.moveTo(bx - 1.6, 64);
+      x.lineTo(bx + lean - 0.5, 4 + Math.random()*8);
+      x.lineTo(bx + lean + 0.9, 4 + Math.random()*8);
+      x.lineTo(bx + 1.6, 64);
+      x.fill();
+    }
+  });
+}
+
 function buildTerrain() {
   const SEG = 200, SIZE = 1900;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
@@ -696,10 +756,11 @@ async function buildScenery() {
     const b = a.clone(); b.rotateY(Math.PI/2);
     return mergeGeometries([a, b]);
   })();
-  const floraM = new THREE.MeshLambertMaterial({color:0xffffff, side:THREE.DoubleSide});
-  scatter(crossG, floraM, 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 0.7, s1: 0.8, sink: 0.04,
+  const flowerM = new THREE.MeshLambertMaterial({color:0xffffff, map: flowerTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
+  const reedM2 = new THREE.MeshLambertMaterial({color:0xffffff, map: reedTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
+  scatter(crossG, flowerM, 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 1.0, s1: 1.0, sink: 0.04,
     color: (c) => c.setHSL([0.95, 0.13, 0.0, 0.78][Math.floor(Math.random()*4)], 0.7, 0.66) }); // 花簇
-  scatter(reedG, floraM, 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.7, s1: 0.9, ys: 1.2, sink: 0.06,
+  scatter(reedG, reedM2, 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.8, s1: 1.0, ys: 1.2, sink: 0.06,
     color: (c) => c.setHSL(0.13 + Math.random()*0.04, 0.42, 0.34 + Math.random()*0.12) }); // 芦苇/滨草
   const reefG = new THREE.DodecahedronGeometry(1, 0);
   const reefM = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.9, flatShading:true});
@@ -904,7 +965,7 @@ function buildEnv() {
   const g2 = g1.clone();
   g2.rotateY(Math.PI/2);
   const gg = mergeGeometries([g1, g2]);
-  const gm = new THREE.MeshLambertMaterial({color:0xffffff, side:THREE.DoubleSide});
+  const gm = new THREE.MeshLambertMaterial({color:0xffffff, map: bladeTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
   const GCOUNT = 1000;
   const inst = new THREE.InstancedMesh(gg, gm, GCOUNT);
   const dummy = new THREE.Object3D();

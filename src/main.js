@@ -61,7 +61,7 @@ function loop() {
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
     elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
     elMode.innerHTML = race.phase === 'free'
-      ? '🏝️ 自由漫游 · <b>R</b> 竞速 · <b>ESC</b> 菜单' + (onRoad ? '' : ' · <span style="color:#ffcc66">越野中</span>')
+      ? '🏝️ 自由漫游 · 小地图彩点 = 路线起点 · <b>R</b> 竞速' + (onRoad ? '' : ' · <span style="color:#ffcc66">越野中</span>')
       : '🏁 竞速赛 · <b>R</b> 退出 · <b>ESC</b> 菜单';
     if (race.phase === 'racing') {
       elLap.textContent = fmt(race.time);
