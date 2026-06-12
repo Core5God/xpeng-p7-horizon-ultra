@@ -54,165 +54,6 @@ function addScore(base, label, big) {
   }
   if (score >= 15000) unlockAch('score15k');
   skillPop('+' + pts + '  ' + label, big);
-  // —— 赛道道具：弯道路锥（可撞碎）/ 轮胎墙（软碰撞）/ 终点拱门
-  const coneM = new THREE.MeshStandardMaterial({color:0xff6a13, roughness:0.6});
-  const coneBaseM = new THREE.MeshStandardMaterial({color:0x222428, roughness:0.8});
-  const coneG = new THREE.CylinderGeometry(0.045, 0.17, 0.52, 8); coneG.translate(0, 0.31, 0);
-  const coneBaseG = new THREE.BoxGeometry(0.42, 0.06, 0.42); coneBaseG.translate(0, 0.03, 0);
-  function mkCone(x, z) {
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(coneG, coneM));
-    g.add(new THREE.Mesh(coneBaseG, coneBaseM));
-    reg(g, x, z, 0, 0.35, 'cone');
-  }
-  const curv = [];
-  for (let i = 0; i < NS; i += 8) {
-    const t1 = tangents[i], t2 = tangents[(i+12) % NS];
-    curv.push({i, c: 1 - (t1.x*t2.x + t1.z*t2.z)});
-  }
-  curv.sort((a, b) => b.c - a.c);
-  const tyreM2 = new THREE.MeshStandardMaterial({color:0x16181c, roughness:0.95});
-  const tyreBandM = new THREE.MeshStandardMaterial({color:0xe8e4da, roughness:0.8});
-  const tyreG2 = new THREE.CylinderGeometry(0.36, 0.36, 0.25, 10);
-  const used = [];
-  for (const cv of curv) {
-    if (used.length >= 4) break;
-    if (used.some(u => Math.min(Math.abs(u - cv.i), NS - Math.abs(u - cv.i)) < 60)) continue;
-    const i = cv.i;
-    const dA0 = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
-    const dB0 = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
-    if (dA0 < 20 || dB0 < 20) continue; // 支线汇入口让位
-    used.push(i);
-    const p = samples[i], n = normals[i], tg = tangents[i];
-    const p2 = samples[(i+12) % NS];
-    const turnDir = Math.sign((p2.x - p.x)*n.x + (p2.z - p.z)*n.z) || 1;
-    const out = -turnDir;
-    // 弯外侧轮胎墙（3 组叠放，软碰撞）
-    for (let k = -1; k <= 1; k++) {
-      const j = (i + k*5 + NS) % NS;
-      const pp = samples[j], nn = normals[j];
-      const bx = pp.x + nn.x*out*(HALF_W + 2.2), bz = pp.z + nn.z*out*(HALF_W + 2.2);
-      const by = groundHeight(bx, bz);
-      const stack = new THREE.Group();
-      for (const [ox, oy] of [[-0.4, 0.18], [0.4, 0.18], [0, 0.62]]) {
-        const ty = new THREE.Mesh(tyreG2, oy > 0.3 ? tyreBandM : tyreM2);
-        ty.rotation.z = Math.PI/2;
-        ty.position.set(ox, oy, 0);
-        stack.add(ty);
-      }
-      stack.position.set(bx, by, bz);
-      stack.rotation.y = Math.atan2(tg.x, tg.z);
-      stack.traverse(o => { if (o.isMesh) o.castShadow = true; });
-      scene.add(stack);
-      buildingCols.push({x: bx, z: bz, r: 1.0, soft: true});
-    }
-    // 弯内侧路肩锥桶
-    for (let k = 0; k < 4; k++) {
-      const j = (i + k*3 + NS) % NS;
-      const pp = samples[j], nn = normals[j];
-      mkCone(pp.x + nn.x*turnDir*(HALF_W - 0.5), pp.z + nn.z*turnDir*(HALF_W - 0.5));
-    }
-  }
-  // 终点拱门（起跑线上方，XPENG 横幅）
-  {
-    const p = samples[0], n = normals[0];
-    const archM = new THREE.MeshStandardMaterial({color:0x2a2e36, roughness:0.5, metalness:0.6});
-    const arch = new THREE.Group();
-    for (const s2 of [-1, 1]) {
-      const py = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.5), archM);
-      py.position.set(n.x*s2*(HALF_W + 0.9), 3.5, n.z*s2*(HALF_W + 0.9));
-      arch.add(py);
-      buildingCols.push({x: p.x + n.x*s2*(HALF_W + 0.9), z: p.z + n.z*s2*(HALF_W + 0.9), r: 0.7});
-    }
-    const beamLen = (HALF_W + 0.9)*2 + 0.5;
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, beamLen), archM);
-    beam.position.set(0, 7, 0);
-    beam.lookAt(n.x, 7, n.z);
-    arch.add(beam);
-    const cv2 = document.createElement('canvas');
-    cv2.width = 1024; cv2.height = 128;
-    const cx2 = cv2.getContext('2d');
-    cx2.fillStyle = '#0b1220'; cx2.fillRect(0, 0, 1024, 128);
-    cx2.fillStyle = '#19d3ff'; cx2.fillRect(0, 0, 1024, 8);
-    cx2.fillStyle = '#fff';
-    cx2.font = 'italic 700 64px Arial';
-    cx2.textAlign = 'center';
-    cx2.fillText('XPENG · HORIZON COAST', 512, 86);
-    const bt = new THREE.CanvasTexture(cv2);
-    bt.colorSpace = THREE.SRGBColorSpace;
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(beamLen - 1, 1.2),
-      new THREE.MeshBasicMaterial({map: bt, side: THREE.DoubleSide}));
-    banner.position.set(0, 6.2, 0);
-    banner.lookAt(tangents[0].x, 6.2, tangents[0].z);
-    arch.add(banner);
-    arch.position.set(p.x, p.y, p.z);
-    arch.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    scene.add(arch);
-  }
-  // —— 悬崖护栏（轻薄栏杆：高速可直接冲破撞飞，支线汇入口自动让位）
-  const rPostG = new THREE.BoxGeometry(0.18, 1.0, 0.18); rPostG.translate(0, 0.5, 0);
-  const rPostM = new THREE.MeshStandardMaterial({color:0xc9ccd0, roughness:0.45, metalness:0.7});
-  const rBeamM = new THREE.MeshStandardMaterial({color:0xaab0b6, roughness:0.4, metalness:0.8});
-  for (let i = 0; i < NS; i += 8) {
-    const dA = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
-    const dB = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
-    if (dA < 16 || dB < 16) continue;
-    const p = samples[i], n = normals[i];
-    const hL = islandBase(p.x + n.x*28, p.z + n.z*28);
-    const hR = islandBase(p.x - n.x*28, p.z - n.z*28);
-    const side = hL < hR ? 1 : -1;
-    if (Math.min(hL, hR) > p.y - 4) continue;
-    const j = (i + 8) % NS;
-    const p2 = samples[j], n2 = normals[j];
-    const off = HALF_W + 1.3;
-    const ax = p.x + n.x*side*off, az = p.z + n.z*side*off;
-    const bx2 = p2.x + n2.x*side*off, bz2 = p2.z + n2.z*side*off;
-    const g = new THREE.Group();
-    const post1 = new THREE.Mesh(rPostG, rPostM);
-    g.add(post1);
-    const post2 = new THREE.Mesh(rPostG, rPostM);
-    post2.position.set(bx2 - ax, p2.y - p.y, bz2 - az);
-    g.add(post2);
-    const L = Math.hypot(bx2 - ax, bz2 - az);
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, L + 0.1), rBeamM);
-    beam.position.set((bx2 - ax)/2, 0.95 + (p2.y - p.y)/2, (bz2 - az)/2);
-    g.add(beam);
-    g.position.set(ax, p.y, az);
-    scene.add(g);
-    g.updateMatrixWorld(true);
-    beam.lookAt(bx2, p2.y + 0.95, bz2);
-    railSegs.push({ax, az, bx: bx2, bz: bz2, group: g, pieces: g.children.slice(), intact: true});
-  }
-  // —— 路线任务点：开进光圈停稳 3 秒自动开赛（探索式启动）
-  const zoneColors = [0x19d3ff, 0xff9a3d, 0x7dff9a];
-  zoneGrp = new THREE.Group();
-  ROUTES.forEach((r, i) => {
-    const p = samples[r.startIdx];
-    const g = new THREE.Group();
-    const ringG = new THREE.RingGeometry(4.2, 5.0, 36);
-    ringG.rotateX(-Math.PI/2);
-    const ring = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false}));
-    ring.position.set(p.x, p.y + 0.12, p.z);
-    g.add(ring);
-    const beam2 = new THREE.Mesh(
-      new THREE.CylinderGeometry(5.2, 5.2, 30, 20, 1, true),
-      new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
-    beam2.position.set(p.x, p.y + 13, p.z);
-    g.add(beam2);
-    const cv3 = document.createElement('canvas');
-    cv3.width = 512; cv3.height = 128;
-    const c3 = cv3.getContext('2d');
-    c3.fillStyle = 'rgba(4,10,22,0.72)'; c3.fillRect(0, 0, 512, 128);
-    c3.fillStyle = '#fff'; c3.font = '700 56px "Noto Sans SC", sans-serif'; c3.textAlign = 'center';
-    c3.fillText(r.name, 256, 82);
-    const tag = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cv3), transparent: true, depthWrite: false}));
-    tag.scale.set(12, 3, 1);
-    tag.position.set(p.x, p.y + 9, p.z);
-    g.add(tag);
-    zoneGrp.add(g);
-    zones.push({i, x: p.x, z: p.z, ring, hold: 0, color: zoneColors[i]});
-  });
-  scene.add(zoneGrp);
   updateScoreChip();
 }
 // 撞击/踢球音效
@@ -665,6 +506,165 @@ function buildProps() {
     mkSign(p.x + n.x*side*8.5, p.z + n.z*side*8.5, Math.atan2(-n.x*side, -n.z*side));
   }
   updateScoreChip();
+  // —— 赛道道具：弯道路锥（可撞碎）/ 轮胎墙（软碰撞）/ 终点拱门
+  const coneM = new THREE.MeshStandardMaterial({color:0xff6a13, roughness:0.6});
+  const coneBaseM = new THREE.MeshStandardMaterial({color:0x222428, roughness:0.8});
+  const coneG = new THREE.CylinderGeometry(0.045, 0.17, 0.52, 8); coneG.translate(0, 0.31, 0);
+  const coneBaseG = new THREE.BoxGeometry(0.42, 0.06, 0.42); coneBaseG.translate(0, 0.03, 0);
+  function mkCone(x, z) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(coneG, coneM));
+    g.add(new THREE.Mesh(coneBaseG, coneBaseM));
+    reg(g, x, z, 0, 0.35, 'cone');
+  }
+  const curv = [];
+  for (let i = 0; i < NS; i += 8) {
+    const t1 = tangents[i], t2 = tangents[(i+12) % NS];
+    curv.push({i, c: 1 - (t1.x*t2.x + t1.z*t2.z)});
+  }
+  curv.sort((a, b) => b.c - a.c);
+  const tyreM2 = new THREE.MeshStandardMaterial({color:0x16181c, roughness:0.95});
+  const tyreBandM = new THREE.MeshStandardMaterial({color:0xe8e4da, roughness:0.8});
+  const tyreG2 = new THREE.CylinderGeometry(0.36, 0.36, 0.25, 10);
+  const used = [];
+  for (const cv of curv) {
+    if (used.length >= 4) break;
+    if (used.some(u => Math.min(Math.abs(u - cv.i), NS - Math.abs(u - cv.i)) < 60)) continue;
+    const i = cv.i;
+    const dA0 = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
+    const dB0 = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
+    if (dA0 < 20 || dB0 < 20) continue; // 支线汇入口让位
+    used.push(i);
+    const p = samples[i], n = normals[i], tg = tangents[i];
+    const p2 = samples[(i+12) % NS];
+    const turnDir = Math.sign((p2.x - p.x)*n.x + (p2.z - p.z)*n.z) || 1;
+    const out = -turnDir;
+    // 弯外侧轮胎墙（3 组叠放，软碰撞）
+    for (let k = -1; k <= 1; k++) {
+      const j = (i + k*5 + NS) % NS;
+      const pp = samples[j], nn = normals[j];
+      const bx = pp.x + nn.x*out*(HALF_W + 2.2), bz = pp.z + nn.z*out*(HALF_W + 2.2);
+      const by = groundHeight(bx, bz);
+      const stack = new THREE.Group();
+      for (const [ox, oy] of [[-0.4, 0.18], [0.4, 0.18], [0, 0.62]]) {
+        const ty = new THREE.Mesh(tyreG2, oy > 0.3 ? tyreBandM : tyreM2);
+        ty.rotation.z = Math.PI/2;
+        ty.position.set(ox, oy, 0);
+        stack.add(ty);
+      }
+      stack.position.set(bx, by, bz);
+      stack.rotation.y = Math.atan2(tg.x, tg.z);
+      stack.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      scene.add(stack);
+      buildingCols.push({x: bx, z: bz, r: 1.0, soft: true});
+    }
+    // 弯内侧路肩锥桶
+    for (let k = 0; k < 4; k++) {
+      const j = (i + k*3 + NS) % NS;
+      const pp = samples[j], nn = normals[j];
+      mkCone(pp.x + nn.x*turnDir*(HALF_W - 0.5), pp.z + nn.z*turnDir*(HALF_W - 0.5));
+    }
+  }
+  // 终点拱门（起跑线上方，XPENG 横幅）
+  {
+    const p = samples[0], n = normals[0];
+    const archM = new THREE.MeshStandardMaterial({color:0x2a2e36, roughness:0.5, metalness:0.6});
+    const arch = new THREE.Group();
+    for (const s2 of [-1, 1]) {
+      const py = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.5), archM);
+      py.position.set(n.x*s2*(HALF_W + 0.9), 3.5, n.z*s2*(HALF_W + 0.9));
+      arch.add(py);
+      buildingCols.push({x: p.x + n.x*s2*(HALF_W + 0.9), z: p.z + n.z*s2*(HALF_W + 0.9), r: 0.7});
+    }
+    const beamLen = (HALF_W + 0.9)*2 + 0.5;
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, beamLen), archM);
+    beam.position.set(0, 7, 0);
+    beam.lookAt(n.x, 7, n.z);
+    arch.add(beam);
+    const cv2 = document.createElement('canvas');
+    cv2.width = 1024; cv2.height = 128;
+    const cx2 = cv2.getContext('2d');
+    cx2.fillStyle = '#0b1220'; cx2.fillRect(0, 0, 1024, 128);
+    cx2.fillStyle = '#19d3ff'; cx2.fillRect(0, 0, 1024, 8);
+    cx2.fillStyle = '#fff';
+    cx2.font = 'italic 700 64px Arial';
+    cx2.textAlign = 'center';
+    cx2.fillText('XPENG · HORIZON COAST', 512, 86);
+    const bt = new THREE.CanvasTexture(cv2);
+    bt.colorSpace = THREE.SRGBColorSpace;
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(beamLen - 1, 1.2),
+      new THREE.MeshBasicMaterial({map: bt, side: THREE.DoubleSide}));
+    banner.position.set(0, 6.2, 0);
+    banner.lookAt(tangents[0].x, 6.2, tangents[0].z);
+    arch.add(banner);
+    arch.position.set(p.x, p.y, p.z);
+    arch.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(arch);
+  }
+  // —— 悬崖护栏（轻薄栏杆：高速可直接冲破撞飞，支线汇入口自动让位）
+  const rPostG = new THREE.BoxGeometry(0.18, 1.0, 0.18); rPostG.translate(0, 0.5, 0);
+  const rPostM = new THREE.MeshStandardMaterial({color:0xc9ccd0, roughness:0.45, metalness:0.7});
+  const rBeamM = new THREE.MeshStandardMaterial({color:0xaab0b6, roughness:0.4, metalness:0.8});
+  for (let i = 0; i < NS; i += 8) {
+    const dA = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
+    const dB = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
+    if (dA < 16 || dB < 16) continue;
+    const p = samples[i], n = normals[i];
+    const hL = islandBase(p.x + n.x*28, p.z + n.z*28);
+    const hR = islandBase(p.x - n.x*28, p.z - n.z*28);
+    const side = hL < hR ? 1 : -1;
+    if (Math.min(hL, hR) > p.y - 4) continue;
+    const j = (i + 8) % NS;
+    const p2 = samples[j], n2 = normals[j];
+    const off = HALF_W + 1.3;
+    const ax = p.x + n.x*side*off, az = p.z + n.z*side*off;
+    const bx2 = p2.x + n2.x*side*off, bz2 = p2.z + n2.z*side*off;
+    const g = new THREE.Group();
+    const post1 = new THREE.Mesh(rPostG, rPostM);
+    g.add(post1);
+    const post2 = new THREE.Mesh(rPostG, rPostM);
+    post2.position.set(bx2 - ax, p2.y - p.y, bz2 - az);
+    g.add(post2);
+    const L = Math.hypot(bx2 - ax, bz2 - az);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, L + 0.1), rBeamM);
+    beam.position.set((bx2 - ax)/2, 0.95 + (p2.y - p.y)/2, (bz2 - az)/2);
+    g.add(beam);
+    g.position.set(ax, p.y, az);
+    scene.add(g);
+    g.updateMatrixWorld(true);
+    beam.lookAt(bx2, p2.y + 0.95, bz2);
+    railSegs.push({ax, az, bx: bx2, bz: bz2, group: g, pieces: g.children.slice(), intact: true});
+  }
+  // —— 路线任务点：开进光圈停稳 3 秒自动开赛（探索式启动）
+  const zoneColors = [0x19d3ff, 0xff9a3d, 0x7dff9a];
+  zoneGrp = new THREE.Group();
+  ROUTES.forEach((r, i) => {
+    const p = samples[r.startIdx];
+    const g = new THREE.Group();
+    const ringG = new THREE.RingGeometry(4.2, 5.0, 36);
+    ringG.rotateX(-Math.PI/2);
+    const ring = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false}));
+    ring.position.set(p.x, p.y + 0.12, p.z);
+    g.add(ring);
+    const beam2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(5.2, 5.2, 30, 20, 1, true),
+      new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
+    beam2.position.set(p.x, p.y + 13, p.z);
+    g.add(beam2);
+    const cv3 = document.createElement('canvas');
+    cv3.width = 512; cv3.height = 128;
+    const c3 = cv3.getContext('2d');
+    c3.fillStyle = 'rgba(4,10,22,0.72)'; c3.fillRect(0, 0, 512, 128);
+    c3.fillStyle = '#fff'; c3.font = '700 56px "Noto Sans SC", sans-serif'; c3.textAlign = 'center';
+    c3.fillText(r.name, 256, 82);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cv3), transparent: true, depthWrite: false}));
+    tag.scale.set(12, 3, 1);
+    tag.position.set(p.x, p.y + 9, p.z);
+    g.add(tag);
+    zoneGrp.add(g);
+    zones.push({i, x: p.x, z: p.z, ring, hold: 0, color: zoneColors[i]});
+  });
+  scene.add(zoneGrp);
 }
 
 // ---------- 路线 / 检查点 / 竞速赛 / 战绩 / 成就 ----------

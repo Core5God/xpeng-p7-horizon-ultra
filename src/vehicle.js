@@ -243,8 +243,8 @@ function physics(dt) {
   if (onRoad && Math.abs(state.speed) > 8) state.flow = Math.min(1, state.flow + dt*0.04);
   if (!onRoad) state.flow = Math.max(0, state.flow - dt*0.18);
   const fl = state.flow;
-  let maxSpd = onRoad ? 65 + 20*fl : 20;
-  if (boost) { maxSpd = onRoad ? 80 + 20*fl : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
+  let maxSpd = onRoad ? 55 + 10*fl : 20;
+  if (boost) { maxSpd = onRoad ? 70 + 10*fl : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
   else state.nitro = Math.min(1, state.nitro + dt*0.06);
   const locked = race.phase === 'countdown';
 
@@ -261,13 +261,16 @@ function physics(dt) {
 
   // —— EV 扭矩曲线（起步猛、高速渐缓）+ 刹车/倒车 + 风阻平方
   let aF = 0;
-  if (fwd && !locked) aF = (boost ? 28 : 20) * thrAmt * (1 + 0.35*fl) * Math.max(0.22, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2));
+  if (fwd && !locked) {
+    // 三段式：0-60 推背（punch），60-160 主区间渐缓，160+ 贴近极速每公里都难啃
+    const punch = Math.abs(vF) < 8 ? 1.22 : 1;
+    aF = (boost ? 15 : 8.5) * thrAmt * punch * (1 + 0.2*fl) * Math.max(0, 1 - Math.pow(Math.max(vF, 0)/maxSpd, 2.1));
+  }
   if (back) {
     if (vF > 1) aF = -26;
     else if (!locked) aF = -8.5;
   }
-  const dragK = 0.0022 * (1 - 0.45*fl); // FLOW 降低风阻：满状态巡航极速 ~217km/h，叠性能模式 ~264
-  aF -= dragK * vF * Math.abs(vF) + (onRoad ? 0.15 : 0.85) * vF;
+  aF -= 0.0005 * vF * Math.abs(vF) + (onRoad ? 0.04 : 0.85) * vF; // 风阻平方 + 滚阻
   vF = THREE.MathUtils.clamp(vF + aF*dt, -9, maxSpd);
   if (!fwd && !back && Math.abs(vF) < 0.5) vF = 0;
 
@@ -534,6 +537,9 @@ function updateChaseCamera(dt, boost) {
     camera.position.z += (Math.random()-0.5)*G.shake;
     G.shake *= Math.exp(-dt*5.5);
   }
+  if (G.appState === 'drive' && spd > 42) {
+    G.shake = Math.max(G.shake, Math.min(0.10, (spd - 42)*0.004)); // 高速路感微震
+  }
   // 视线沿镜头偏航角看向车前方（与机位同源，杜绝左右甩动）
   const ahead = 5.5 + spd*0.08;
   const lookYaw = G.camMode === 3 ? state.heading : camYawUse;
@@ -542,8 +548,8 @@ function updateChaseCamera(dt, boost) {
     state.pos.y + 1.1,
     state.pos.z + Math.cos(lookYaw)*ahead
   );
-  const targetFov = 70 + (boost ? 12 : Math.min(spd*0.12, 6));
-  camera.fov += (targetFov - camera.fov) * Math.min(1, dt*5);
+  const targetFov = 66 + Math.min(14, spd*0.21) + (boost ? 6 : 0); // 速度感：FOV 随速外扩
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt*3);
   camera.updateProjectionMatrix();
 }
 
