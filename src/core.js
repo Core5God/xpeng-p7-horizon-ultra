@@ -4,6 +4,14 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+// 常数时间角度回绕：取模实现，对 NaN/Infinity 免疫（while 减法回绕在异常值下会死循环）
+export function wrapPi(a) {
+  a = a % (Math.PI*2);
+  if (a > Math.PI) a -= Math.PI*2;
+  else if (a < -Math.PI) a += Math.PI*2;
+  return a === a ? a : 0;
+}
+
 // ---------- 跨模块共享的可变状态 ----------
 export const G = {
   appState: 'garage',   // garage | drive | pause | photo

@@ -56,6 +56,7 @@ export function fxUpdate(dt, onRoad, boost) {
   const dusty = G.appState === 'drive' && !onRoad && spd > 9 && !state.airborne;
   if (drifting || dusty) {
     spawnAcc += dt * (drifting ? 38 : 22);
+    if (!isFinite(spawnAcc)) spawnAcc = 0;
     while (spawnAcc >= 1) {
       spawnAcc -= 1;
       for (const sx of [-0.85, 0.85]) {

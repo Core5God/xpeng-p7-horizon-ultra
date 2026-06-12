@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { G, scene, camera } from './core.js';
+import { G, scene, camera, wrapPi } from './core.js';
 import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod } from './world.js';
 import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
@@ -235,13 +235,11 @@ function physics(dt) {
   state.heading += yaw * THREE.MathUtils.clamp(vF, -10, 30) * dt * 0.034;
   // 漂移自动回正辅助（轻微朝速度方向收敛，避免原地打转）
   if (drift && Math.abs(vL) > 2 && Math.abs(vF) > 2) {
-    let dT = Math.atan2(state.vx, state.vz) - state.heading;
-    while (dT > Math.PI) dT -= Math.PI*2;
-    while (dT < -Math.PI) dT += Math.PI*2;
-    state.heading += dT * Math.min(1, dt*0.9);
+    state.heading += wrapPi(Math.atan2(state.vx, state.vz) - state.heading) * Math.min(1, dt*0.9);
   }
 
   const prevPX = state.pos.x, prevPZ = state.pos.z;
+  state.heading = wrapPi(state.heading);
   state.pos.x += state.vx * dt;
   state.pos.z += state.vz * dt;
   state.speed = vF;
@@ -408,11 +406,7 @@ function sdamp(cur, tgt, s, st, dt) {
 }
 // 相机独立偏航角：重阻尼跟随，车先转、镜头慢半拍（赛车游戏标准做法）
 const camAng = { yaw: 0, init: false };
-function wrapAngle(a) {
-  while (a > Math.PI) a -= Math.PI*2;
-  while (a < -Math.PI) a += Math.PI*2;
-  return a;
-}
+const wrapAngle = wrapPi;
 function updateChaseCamera(dt, boost) {
   const spd = Math.abs(state.speed);
   const fx = Math.sin(state.heading), fz = Math.cos(state.heading);
@@ -427,7 +421,7 @@ function updateChaseCamera(dt, boost) {
   }
   if (!camAng.init) { camAng.yaw = tYaw; camAng.init = true; }
   // 偏航重阻尼：方向键抖动不再传导到镜头
-  camAng.yaw += wrapAngle(tYaw - camAng.yaw) * Math.min(1, dt*3.0);
+  camAng.yaw = wrapPi(camAng.yaw + wrapAngle(tYaw - camAng.yaw) * Math.min(1, dt*3.0));
   const dx = Math.sin(camAng.yaw), dz = Math.cos(camAng.yaw);
   if (G.camMode <= 2) {
     const back = G.camMode === 0 ? 9.5 : G.camMode === 1 ? 6.0 : 4.4;

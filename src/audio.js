@@ -154,7 +154,8 @@ function audioUpdate() {
     const vLat = state.vx*fz2 - state.vz*fx2;
     const drifting = G.appState === 'drive' && keys['Space'] && Math.abs(vLat) > 3.5 && s > 8;
     const tgt = (G.muted || !drifting) ? 0 : Math.min(0.16, Math.abs(vLat)*0.012);
-    scrGain.gain.setTargetAtTime(tgt, actx.currentTime, 0.08);
+    // 手动插值替代 setTargetAtTime：长时间漂移不再累积音频自动化事件
+    scrGain.gain.value = scrGain.gain.value + (tgt - scrGain.gain.value) * 0.22;
     scrFilt.frequency.value = 800 + Math.min(600, Math.abs(vLat)*30);
   }
 }

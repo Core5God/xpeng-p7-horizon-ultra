@@ -5,14 +5,15 @@ import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose } fro
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
-import { showMsg, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
+import { showMsg, keys as keysRef, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
 let fpsAcc = 0, fpsN = 0, autoDropped = false;
-let loopErrCount = 0;
+let loopErrCount = 0, slowFrames = 0;
 function loop() {
   requestAnimationFrame(loop);
+  const t0 = performance.now();
   try {
     loopBody();
   } catch (err) {
@@ -21,6 +22,16 @@ function loop() {
     if (loopErrCount === 1 || loopErrCount % 300 === 0) console.error('[loop]', err);
     if (loopErrCount === 30) showMsg('检测到异常已自动恢复，如持续请按 T 复位', 2500, 22);
   }
+  // 看门狗：连续超长帧 → 紧急刹停失控状态
+  if (performance.now() - t0 > 350) {
+    slowFrames++;
+    if (slowFrames >= 3) {
+      slowFrames = 0;
+      state.vx = 0; state.vz = 0; state.speed = 0; state.vyAir = 0;
+      for (const k in keysRef) keysRef[k] = false;
+      showMsg('检测到卡顿，已自动恢复', 2000, 24);
+    }
+  } else slowFrames = 0;
 }
 function loopBody() {
   const now = performance.now();

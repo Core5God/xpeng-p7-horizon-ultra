@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { G, scene } from './core.js';
+import { G, scene, wrapPi } from './core.js';
 import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
 import { state, createGhostClone } from './vehicle.js';
 import { actx, makeNoiseBurst } from './audio.js';
@@ -402,7 +402,7 @@ function gameplayUpdate(dt, onRoad) {
   const vLat = state.vx*fz2 - state.vz*fx2;
   const elDrift = document.getElementById('driftlive');
   if (keys['Space'] && onRoad && Math.abs(vLat) > 3.5 && spd > 8) {
-    driftAcc += Math.abs(vLat)*dt*9;
+    driftAcc = Math.min(2000, driftAcc + Math.abs(vLat)*dt*9);
     if (elDrift) {
       elDrift.style.opacity = 1;
       elDrift.textContent = '漂移 +' + Math.round(driftAcc);
@@ -901,9 +901,7 @@ function raceUpdate() {
         ghostData[a2] + (ghostData[b2] - ghostData[a2])*f2,
         ghostData[a2+1] + (ghostData[b2+1] - ghostData[a2+1])*f2,
         ghostData[a2+2] + (ghostData[b2+2] - ghostData[a2+2])*f2);
-      let dh2 = ghostData[b2+3] - ghostData[a2+3];
-      while (dh2 > Math.PI) dh2 -= Math.PI*2;
-      while (dh2 < -Math.PI) dh2 += Math.PI*2;
+      const dh2 = wrapPi(ghostData[b2+3] - ghostData[a2+3]);
       ghostObj.rotation.set(0, ghostData[a2+3] + dh2*f2, 0);
     } else ghostObj.visible = false;
   }
