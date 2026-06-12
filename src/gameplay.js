@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { G, scene } from './core.js';
 import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
-import { state } from './vehicle.js';
+import { state, createGhostClone } from './vehicle.js';
 import { actx, makeNoiseBurst } from './audio.js';
 import { showMsg, keys, refreshRecords } from './ui.js';
 
@@ -22,7 +22,12 @@ function saveBestScore() {
   }
 }
 const SMASH_LABEL = { parasol:'遮阳伞 粉碎', chair:'躺椅 粉碎', crate:'木箱 粉碎', fence:'栅栏 粉碎', sign:'路牌 粉碎', cone:'路锥 粉碎' };
+let popLastText = '', popLastT = 0;
 function skillPop(text, big) {
+  // 去重限流：相同文案 500ms 内只弹一次（持续碰撞时避免 DOM 风暴）
+  const nowP = performance.now();
+  if (text === popLastText && nowP - popLastT < 500) return;
+  popLastText = text; popLastT = nowP;
   const stack = document.getElementById('skillstack');
   const d = document.createElement('div');
   d.className = 'skill' + (big ? ' big' : '');
@@ -211,8 +216,13 @@ function addScore(base, label, big) {
   updateScoreChip();
 }
 // 撞击/踢球音效
+const sfxLast = {};
 function sfx(type, inten) {
   if (!actx || G.muted) return;
+  // 限流：同类音效 90ms 内只发一次（持续蹭墙时避免每帧创建音频节点导致卡死）
+  const nowS = performance.now();
+  if (nowS - (sfxLast[type] || 0) < 90) return;
+  sfxLast[type] = nowS;
   const i2 = inten || 1;
   const t0 = actx.currentTime;
   if (type === 'smash' || type === 'thud') {
@@ -390,13 +400,24 @@ function gameplayUpdate(dt, onRoad) {
   // —— 漂移结算
   const fx2 = Math.sin(state.heading), fz2 = Math.cos(state.heading);
   const vLat = state.vx*fz2 - state.vz*fx2;
-  if (keys['Space'] && onRoad && Math.abs(vLat) > 3.5 && spd > 8) driftAcc += Math.abs(vLat)*dt*9;
+  const elDrift = document.getElementById('driftlive');
+  if (keys['Space'] && onRoad && Math.abs(vLat) > 3.5 && spd > 8) {
+    driftAcc += Math.abs(vLat)*dt*9;
+    if (elDrift) {
+      elDrift.style.opacity = 1;
+      elDrift.textContent = '漂移 +' + Math.round(driftAcc);
+    }
+  }
   else if (driftAcc > 0 && !keys['Space']) {
+    if (elDrift) elDrift.style.opacity = 0;
     if (driftAcc > 40) addScore(Math.round(driftAcc/10)*10, '漂移');
     if (driftAcc >= 400) unlockAch('drift');
     driftAcc = 0;
   }
-  if (!onRoad) driftAcc = 0;
+  if (!onRoad) {
+    if (driftAcc > 0 && elDrift) elDrift.style.opacity = 0;
+    driftAcc = 0;
+  }
   // —— 悬崖护栏线段碰撞：冲破撞飞
   for (const rs of railSegs) {
     if (!rs.intact) continue;
@@ -751,6 +772,28 @@ function getShareStats() {
   };
 }
 
+// —— 幽灵车 / 起跑灯带 / 差值显示
+let ghostObj = null, ghostData = null, recSamples = null, lastRecT = 0;
+function setLights(n, go) {
+  const el = document.getElementById('lights');
+  if (!el) return;
+  el.style.display = (n > 0 || go) ? 'flex' : 'none';
+  el.querySelectorAll('i').forEach((d, i2) => {
+    d.className = go ? 'go' : (i2 < n ? 'on' : '');
+  });
+  if (go) setTimeout(() => { el.style.display = 'none'; }, 900);
+}
+let deltaTimer = null;
+function showDelta(d) {
+  const el = document.getElementById('delta');
+  if (!el) return;
+  el.textContent = (d >= 0 ? '+' : '') + d.toFixed(2);
+  el.style.color = d <= 0 ? '#7dff9a' : '#ff8a72';
+  el.style.opacity = 1;
+  clearTimeout(deltaTimer);
+  deltaTimer = setTimeout(() => { el.style.opacity = 0; }, 1800);
+}
+
 // —— 竞速状态机
 const race = { phase:'free', routeIdx:0, route:ROUTES[0], targets:[], ti:0, t0:0, time:0, count:0, pauseT:0 };
 const raceBox = document.getElementById('racebox');
@@ -768,6 +811,13 @@ function startRace() {
   race.phase = 'countdown'; race.count = 3;
   race.targets = r.loop ? [...r.gateGroups.slice(1), r.gateGroups[0]] : r.gateGroups;
   race.ti = 0;
+  race.splits = [];
+  recSamples = [];
+  lastRecT = 0;
+  ghostData = (records[r.id] && records[r.id].ghost) || null;
+  if (ghostData && !ghostObj) ghostObj = createGhostClone();
+  if (ghostObj) ghostObj.visible = false;
+  setLights(0, false);
   for (const rr of ROUTES) rr.grp.visible = rr === r;
   cpGroupAll.visible = true;
   arrowPivot.visible = true;
@@ -777,6 +827,8 @@ function startRace() {
 }
 function endRace() {
   race.phase = 'free';
+  if (ghostObj) ghostObj.visible = false;
+  setLights(0, false);
   cpGroupAll.visible = false;
   arrowPivot.visible = false;
   raceBox.style.display = 'none';
@@ -791,10 +843,12 @@ function countdownTick() {
   if (G.appState === 'pause' || G.appState === 'photo') { setTimeout(countdownTick, 300); return; }
   if (race.count > 0) {
     showMsg(String(race.count), 850, 90);
+    setLights(4 - race.count, false);
     race.count--;
     setTimeout(countdownTick, 1000);
   } else {
     showMsg('GO!', 800, 90);
+    setLights(3, true);
     race.phase = 'racing';
     race.t0 = performance.now();
   }
@@ -811,7 +865,11 @@ function finishRace(t) {
   const med = medalFor(r, t);
   const rec = records[r.id] || {};
   const isPB = !rec.best || t < rec.best;
-  if (isPB) rec.best = t;
+  if (isPB) {
+    rec.best = t;
+    if (recSamples && recSamples.length > 8) rec.ghost = recSamples;
+    rec.splits = race.splits.slice();
+  }
   const order = { gold: 3, silver: 2, bronze: 1 };
   if (med && (order[med] > (order[rec.medal] || 0))) rec.medal = med;
   records[r.id] = rec;
@@ -831,7 +889,33 @@ function raceUpdate() {
   if (!target) return;
   const tp = target.userData.pos;
   const dx = state.pos.x - tp.x, dz = state.pos.z - tp.z;
+  // PB 幽灵回放（10Hz 采样线性插值）
+  if (ghostObj && ghostData) {
+    const fi = race.time / 0.1;
+    const maxI = ghostData.length/4 - 2;
+    if (fi < maxI) {
+      const i0 = Math.floor(fi), f2 = fi - i0;
+      const a2 = i0*4, b2 = a2 + 4;
+      ghostObj.visible = true;
+      ghostObj.position.set(
+        ghostData[a2] + (ghostData[b2] - ghostData[a2])*f2,
+        ghostData[a2+1] + (ghostData[b2+1] - ghostData[a2+1])*f2,
+        ghostData[a2+2] + (ghostData[b2+2] - ghostData[a2+2])*f2);
+      let dh2 = ghostData[b2+3] - ghostData[a2+3];
+      while (dh2 > Math.PI) dh2 -= Math.PI*2;
+      while (dh2 < -Math.PI) dh2 += Math.PI*2;
+      ghostObj.rotation.set(0, ghostData[a2+3] + dh2*f2, 0);
+    } else ghostObj.visible = false;
+  }
+  // 路径录制 10Hz
+  if (recSamples && race.time - lastRecT >= 0.1) {
+    lastRecT = race.time;
+    recSamples.push(+state.pos.x.toFixed(2), +state.pos.y.toFixed(2), +state.pos.z.toFixed(2), +state.heading.toFixed(3));
+  }
   if (dx*dx + dz*dz < 100) {
+    race.splits.push(race.time);
+    const rec0 = records[race.route.id];
+    if (rec0 && rec0.splits && rec0.splits[race.ti] != null) showDelta(race.time - rec0.splits[race.ti]);
     race.ti++;
     if (race.ti >= race.targets.length) { finishRace(race.time); return; }
     showMsg('检查点 ' + race.ti + '/' + race.targets.length, 700, 30);

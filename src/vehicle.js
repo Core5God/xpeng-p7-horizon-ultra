@@ -477,4 +477,18 @@ function updateChaseCamera(dt, boost) {
 }
 
 
+// 幽灵车：半透明克隆（PB 回放用；后续接入多车型时同一管线可复用）
+export function createGhostClone() {
+  if (!G.carReady) return null;
+  const gm = new THREE.MeshBasicMaterial({color: 0x5fd8ff, transparent: true, opacity: 0.3, depthWrite: false});
+  const ghost = car.clone(true);
+  ghost.traverse(o => {
+    if (o.isMesh) { o.material = gm; o.castShadow = false; o.receiveShadow = false; }
+    if (o.isLight || o.isSprite) o.visible = false;
+  });
+  ghost.visible = false;
+  scene.add(ghost);
+  return ghost;
+}
+
 export { car, state, PAINTS, applySkin, setGlassSeeThru, settleCarPose, physics, updateChaseCamera, camPos, camDamp, camAng };

@@ -10,8 +10,19 @@ import { showMsg, controls, drawMinimap, setQuality, enterGarage, initUI, elSpee
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
 let fpsAcc = 0, fpsN = 0, autoDropped = false;
+let loopErrCount = 0;
 function loop() {
   requestAnimationFrame(loop);
+  try {
+    loopBody();
+  } catch (err) {
+    // 自愈：异常只丢当前帧，不冻死游戏；连续异常时提示玩家
+    loopErrCount++;
+    if (loopErrCount === 1 || loopErrCount % 300 === 0) console.error('[loop]', err);
+    if (loopErrCount === 30) showMsg('检测到异常已自动恢复，如持续请按 T 复位', 2500, 22);
+  }
+}
+function loopBody() {
   const now = performance.now();
   const dt = Math.min((now - last)/1000, 0.05);
   last = now;

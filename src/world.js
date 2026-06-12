@@ -769,29 +769,49 @@ async function buildScenery() {
 
   // —— EZ-Tree：生成 9 种树形 → 每种 2 个 InstancedMesh（枝干+树叶）
   try {
-    // 动态导入：ez-tree（含 4MB 内嵌纹理）拆出首包，本阶段并行加载
-    const { Tree: EZTree } = await import('@dgreenheck/ez-tree');
-    const TREE_PRESETS = ['Oak Medium', 'Oak Large', 'Ash Medium', 'Aspen Medium', 'Aspen Small', 'Pine Medium', 'Pine Large', 'Bush 1', 'Bush 2'];
+    // 预烘焙树木资产（node bake-trees.mjs 离线生成）：免去 4MB 运行时代码包与生成耗时
+    const [meta, bin] = await Promise.all([
+      fetch('assets/trees/trees.json').then(r => r.json()),
+      fetch('assets/trees/trees.bin').then(r => r.arrayBuffer())
+    ]);
     const TARGET_H = [9, 13, 8.5, 9.5, 5.5, 11.5, 16, 1.8, 2.3];
+    const texLoader = new THREE.TextureLoader();
+    const texCache = {};
+    const getTex = (f, wrap) => {
+      if (!texCache[f]) {
+        const tx = texLoader.load('assets/trees/' + f);
+        tx.colorSpace = THREE.SRGBColorSpace;
+        if (wrap) tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+        texCache[f] = tx;
+      }
+      return texCache[f];
+    };
+    const leafFile = (ty) => ({oak:'oak_color.png', ash:'ash_color.png', aspen:'aspen_color.png', pine:'pine_color.png'}[ty] || 'oak_color.png');
+    const barkFile = (ty) => (ty === 'pine' || ty === 'birch') ? 'pine_color_1k.jpg' : 'oak_color_1k.jpg';
+    function partGeo(p) {
+      const g2 = new THREE.BufferGeometry();
+      const n = p.vcount;
+      const qp = new Int16Array(bin, p.pos, n*3);
+      const qn = new Int8Array(bin, p.nor, n*3);
+      const qu = new Uint16Array(bin, p.uv, n*2);
+      const pos = new Float32Array(n*3), nor = new Float32Array(n*3), uv = new Float32Array(n*2);
+      for (let i = 0; i < n*3; i++) { pos[i] = qp[i]/32760*p.posScale; nor[i] = qn[i]/127; }
+      for (let i = 0; i < n*2; i++) uv[i] = qu[i]/65535*p.uvScale;
+      g2.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g2.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      g2.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g2.setIndex(new THREE.BufferAttribute(p.idx32 ? new Uint32Array(bin, p.idx, p.icount) : new Uint16Array(bin, p.idx, p.icount), 1));
+      return g2;
+    }
     const dummy = new THREE.Object3D();
-    TREE_PRESETS.forEach((name, vi) => {
+    meta.variants.forEach((v, vi) => {
       const spots = treeSpots.filter(s => s.vi === vi);
       if (!spots.length) return;
-      const t = new EZTree();
-      t.loadPreset(name);
-      t.options.seed = 1000 + vi*77;
-      t.generate();
-      t.branchesMesh.geometry.computeBoundingBox();
-      const srcH = Math.max(t.branchesMesh.geometry.boundingBox.max.y, 1);
-      // 叶片换成支持实例化的标准材质（原风动 shader 与 InstancedMesh 不兼容）
-      const srcLeafM = t.leavesMesh.material;
-      const leafInstM = new THREE.MeshStandardMaterial({
-        map: srcLeafM.map || null,
-        color: srcLeafM.color ? srcLeafM.color.clone() : new THREE.Color(0xffffff),
-        alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, metalness: 0
-      });
-      const bi = new THREE.InstancedMesh(t.branchesMesh.geometry, t.branchesMesh.material, spots.length);
-      const li = new THREE.InstancedMesh(t.leavesMesh.geometry, leafInstM, spots.length);
+      const bm = new THREE.MeshStandardMaterial({map: getTex(barkFile(v.barkType), true), color: v.barkTint, roughness: 0.9});
+      const lm = new THREE.MeshStandardMaterial({map: getTex(leafFile(v.leafType)), color: v.leafTint, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, metalness: 0});
+      const bi = new THREE.InstancedMesh(partGeo(v.parts.branch), bm, spots.length);
+      const li = new THREE.InstancedMesh(partGeo(v.parts.leaf), lm, spots.length);
+      const srcH = Math.max(v.srcH, 1);
       spots.forEach((s, k) => {
         dummy.position.set(s.x, s.h - 0.15, s.z);
         dummy.rotation.set(0, s.rot, 0);

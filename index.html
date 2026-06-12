@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="fetch" href="./assets/e29.glb" crossorigin>
+<link rel="preload" as="fetch" href="./assets/trees/trees.bin" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{--cy:#19d3ff;--or:#ff7a18}
@@ -76,6 +77,13 @@
   #loadtext{font-size:13.5px;opacity:.65;margin-top:9px;letter-spacing:1px}
   .hintbar{position:absolute;bottom:24px;right:28px;display:flex;align-items:center;font-size:14.5px;color:rgba(255,255,255,.88);flex-wrap:wrap;max-width:62vw;justify-content:flex-end;row-gap:9px}
   kbd{font-family:inherit;font-size:12.5px;font-weight:700;letter-spacing:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-bottom-width:3px;border-radius:5px;padding:4px 10px;margin:0 7px 0 16px}
+  /* —— 起跑灯带 / 差值 / 实时漂移 —— */
+  #lights{display:none;justify-content:center;gap:10px;margin-bottom:6px}
+  #lights i{width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);transition:background .15s}
+  #lights i.on{background:#ff4040;box-shadow:0 0 12px rgba(255,64,64,.9)}
+  #lights i.go{background:#46ff7a;box-shadow:0 0 14px rgba(70,255,122,.9)}
+  #delta{font-size:20px;font-weight:700;font-style:italic;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .4s;min-height:24px}
+  #driftlive{bottom:64px;left:50%;transform:translateX(-50%) skewX(-8deg);font-size:26px;font-weight:700;font-style:italic;color:#ffb054;text-shadow:0 2px 12px rgba(0,0,0,.8);opacity:0;transition:opacity .25s}
   /* —— 计分牌与技能弹字 —— */
   #scorechip{top:16px;right:16px;text-align:right;background:linear-gradient(90deg,rgba(4,10,22,.15),rgba(4,10,22,.72));border-right:3px solid var(--cy);padding:6px 16px;transform:skewX(-8deg)}
   #scorechip .slabel{font-size:10px;letter-spacing:3px;opacity:.65}
@@ -165,7 +173,8 @@
   <div id="speedunit">KM/H</div>
   <div id="nitrowrap"><div id="nitrolabel">NITRO · SHIFT</div><div id="nitrobar"><div id="nitrofill"></div></div></div>
 </div>
-<div class="hud" id="racebox"><div id="laptime">0:00.00</div><div id="cpinfo"></div><div id="besttime"></div></div>
+<div class="hud" id="racebox"><div id="lights"><i></i><i></i><i></i></div><div id="laptime">0:00.00</div><div id="delta"></div><div id="cpinfo"></div><div id="besttime"></div></div>
+<div class="hud" id="driftlive"></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
 <div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
