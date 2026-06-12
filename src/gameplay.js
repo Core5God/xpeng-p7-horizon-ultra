@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene } from './core.js';
-import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, railFlags, bSamples, bNormals } from './world.js';
+import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
 import { state } from './vehicle.js';
 import { actx, makeNoiseBurst } from './audio.js';
 import { showMsg, keys, refreshRecords } from './ui.js';
@@ -9,7 +9,9 @@ import { showMsg, keys, refreshRecords } from './ui.js';
 const props = [];          // 可破坏道具与沙滩球
 const debris = [];         // 飞散碎片
 const buildingCols = [];   // 建筑碰撞体
-let trackPropsBuilt = false;
+const railSegs = [];       // 可破坏悬崖护栏（线段碰撞）
+const zones = [];          // 路线任务点（光圈停车开赛）
+let zoneGrp = null;
 let score = 0, scoreBest = 0, combo = 1, comboEvents = 0, lastScoreT = 0;
 let cruiseT = 0, driftAcc = 0;
 try { const b = localStorage.getItem('p7_scoreBest'); if (b) scoreBest = parseInt(b) || 0; } catch(e) {}
@@ -20,12 +22,6 @@ function saveBestScore() {
   }
 }
 const SMASH_LABEL = { parasol:'遮阳伞 粉碎', chair:'躺椅 粉碎', crate:'木箱 粉碎', fence:'栅栏 粉碎', sign:'路牌 粉碎', cone:'路锥 粉碎' };
-function reg(group, x, z, rotY, r, type) {
-  group.position.set(x, groundHeight(x, z), z);
-  group.rotation.y = rotY;
-  scene.add(group);
-  props.push({x, z, r, type, group, pieces: group.children.slice(), intact: true, nearMiss: false});
-}
 function skillPop(text, big) {
   const stack = document.getElementById('skillstack');
   const d = document.createElement('div');
@@ -53,8 +49,6 @@ function addScore(base, label, big) {
   }
   if (score >= 15000) unlockAch('score15k');
   skillPop('+' + pts + '  ' + label, big);
-  if (!trackPropsBuilt) {
-  trackPropsBuilt = true;
   // —— 赛道道具：弯道路锥（可撞碎）/ 轮胎墙（软碰撞）/ 终点拱门
   const coneM = new THREE.MeshStandardMaterial({color:0xff6a13, roughness:0.6});
   const coneBaseM = new THREE.MeshStandardMaterial({color:0x222428, roughness:0.8});
@@ -80,7 +74,9 @@ function addScore(base, label, big) {
     if (used.length >= 4) break;
     if (used.some(u => Math.min(Math.abs(u - cv.i), NS - Math.abs(u - cv.i)) < 60)) continue;
     const i = cv.i;
-    if (railFlags[i] !== 0) continue; // 悬崖护栏弯不重复布置
+    const dA0 = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
+    const dB0 = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
+    if (dA0 < 20 || dB0 < 20) continue; // 支线汇入口让位
     used.push(i);
     const p = samples[i], n = normals[i], tg = tangents[i];
     const p2 = samples[(i+12) % NS];
@@ -148,7 +144,70 @@ function addScore(base, label, big) {
     arch.traverse(o => { if (o.isMesh) o.castShadow = true; });
     scene.add(arch);
   }
+  // —— 悬崖护栏（轻薄栏杆：高速可直接冲破撞飞，支线汇入口自动让位）
+  const rPostG = new THREE.BoxGeometry(0.18, 1.0, 0.18); rPostG.translate(0, 0.5, 0);
+  const rPostM = new THREE.MeshStandardMaterial({color:0xc9ccd0, roughness:0.45, metalness:0.7});
+  const rBeamM = new THREE.MeshStandardMaterial({color:0xaab0b6, roughness:0.4, metalness:0.8});
+  for (let i = 0; i < NS; i += 8) {
+    const dA = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
+    const dB = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
+    if (dA < 16 || dB < 16) continue;
+    const p = samples[i], n = normals[i];
+    const hL = islandBase(p.x + n.x*28, p.z + n.z*28);
+    const hR = islandBase(p.x - n.x*28, p.z - n.z*28);
+    const side = hL < hR ? 1 : -1;
+    if (Math.min(hL, hR) > p.y - 4) continue;
+    const j = (i + 8) % NS;
+    const p2 = samples[j], n2 = normals[j];
+    const off = HALF_W + 1.3;
+    const ax = p.x + n.x*side*off, az = p.z + n.z*side*off;
+    const bx2 = p2.x + n2.x*side*off, bz2 = p2.z + n2.z*side*off;
+    const g = new THREE.Group();
+    const post1 = new THREE.Mesh(rPostG, rPostM);
+    g.add(post1);
+    const post2 = new THREE.Mesh(rPostG, rPostM);
+    post2.position.set(bx2 - ax, p2.y - p.y, bz2 - az);
+    g.add(post2);
+    const L = Math.hypot(bx2 - ax, bz2 - az);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, L + 0.1), rBeamM);
+    beam.position.set((bx2 - ax)/2, 0.95 + (p2.y - p.y)/2, (bz2 - az)/2);
+    g.add(beam);
+    g.position.set(ax, p.y, az);
+    scene.add(g);
+    g.updateMatrixWorld(true);
+    beam.lookAt(bx2, p2.y + 0.95, bz2);
+    railSegs.push({ax, az, bx: bx2, bz: bz2, group: g, pieces: g.children.slice(), intact: true});
   }
+  // —— 路线任务点：开进光圈停稳 3 秒自动开赛（探索式启动）
+  const zoneColors = [0x19d3ff, 0xff9a3d, 0x7dff9a];
+  zoneGrp = new THREE.Group();
+  ROUTES.forEach((r, i) => {
+    const p = samples[r.startIdx];
+    const g = new THREE.Group();
+    const ringG = new THREE.RingGeometry(4.2, 5.0, 36);
+    ringG.rotateX(-Math.PI/2);
+    const ring = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false}));
+    ring.position.set(p.x, p.y + 0.12, p.z);
+    g.add(ring);
+    const beam2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(4.6, 4.6, 26, 20, 1, true),
+      new THREE.MeshBasicMaterial({color: zoneColors[i], transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
+    beam2.position.set(p.x, p.y + 13, p.z);
+    g.add(beam2);
+    const cv3 = document.createElement('canvas');
+    cv3.width = 512; cv3.height = 128;
+    const c3 = cv3.getContext('2d');
+    c3.fillStyle = 'rgba(4,10,22,0.72)'; c3.fillRect(0, 0, 512, 128);
+    c3.fillStyle = '#fff'; c3.font = '700 56px "Noto Sans SC", sans-serif'; c3.textAlign = 'center';
+    c3.fillText(r.name, 256, 82);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cv3), transparent: true, depthWrite: false}));
+    tag.scale.set(8, 2, 1);
+    tag.position.set(p.x, p.y + 7.5, p.z);
+    g.add(tag);
+    zoneGrp.add(g);
+    zones.push({i, x: p.x, z: p.z, ring, hold: 0});
+  });
+  scene.add(zoneGrp);
   updateScoreChip();
 }
 // 撞击/踢球音效
@@ -179,6 +238,36 @@ function sfx(type, inten) {
     g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.2);
     o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.22);
   }
+}
+function smashRail(rs, spd) {
+  rs.intact = false;
+  for (const m of rs.pieces) {
+    scene.attach(m);
+    debris.push({ m,
+      vx: state.vx*0.7 + (Math.random()-0.5)*4,
+      vy: 3 + Math.random()*3 + spd*0.15,
+      vz: state.vz*0.7 + (Math.random()-0.5)*4,
+      rx: (Math.random()-0.5)*10, ry: (Math.random()-0.5)*10, rz: (Math.random()-0.5)*10,
+      life: 2.6 + Math.random() });
+  }
+  while (debris.length > 90) { scene.remove(debris[0].m); debris.shift(); }
+  scene.remove(rs.group);
+  addScore(40, '护栏 冲破');
+  G.shake = Math.max(G.shake, Math.min(0.7, spd*0.02));
+  sfx('smash', Math.min(1.8, 0.6 + spd*0.03));
+  state.vx *= 0.93; state.vz *= 0.93;
+}
+function spawnBreakDebris(x, y, z, vx, vz) {
+  const m0 = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
+  for (let k = 0; k < 4; k++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 1.0 + Math.random()), m0);
+    m.position.set(x, y, z);
+    scene.add(m);
+    debris.push({ m,
+      vx: vx*0.6 + (Math.random()-0.5)*5, vy: 3.5 + Math.random()*3, vz: vz*0.6 + (Math.random()-0.5)*5,
+      rx: (Math.random()-0.5)*10, ry: (Math.random()-0.5)*10, rz: (Math.random()-0.5)*10, life: 2.4 });
+  }
+  while (debris.length > 90) { scene.remove(debris[0].m); debris.shift(); }
 }
 function smashProp(p, spd) {
   p.intact = false;
@@ -308,6 +397,42 @@ function gameplayUpdate(dt, onRoad) {
     driftAcc = 0;
   }
   if (!onRoad) driftAcc = 0;
+  // —— 悬崖护栏线段碰撞：冲破撞飞
+  for (const rs of railSegs) {
+    if (!rs.intact) continue;
+    const abx = rs.bx - rs.ax, abz = rs.bz - rs.az;
+    const L2 = abx*abx + abz*abz;
+    if (L2 < 1e-6) continue;
+    let tt = ((px - rs.ax)*abx + (pz - rs.az)*abz) / L2;
+    tt = Math.max(0, Math.min(1, tt));
+    const ddx = px - (rs.ax + abx*tt), ddz = pz - (rs.az + abz*tt);
+    if (ddx*ddx + ddz*ddz < 1.69 && spd > 4) smashRail(rs, spd);
+  }
+  // —— 任务点：光圈内停稳 3 秒自动开赛
+  if (zoneGrp) {
+    const show = race.phase === 'free' && G.appState === 'drive';
+    zoneGrp.visible = show;
+    if (show) {
+      const tz = performance.now()*0.001;
+      for (const z of zones) {
+        const dxz = px - z.x, dzz = pz - z.z;
+        if (dxz*dxz + dzz*dzz < 27 && spd < 2.5) {
+          z.hold += dt;
+          z.ring.scale.setScalar(1 + Math.sin(tz*8)*0.06);
+          showMsg('启动 ' + ROUTES[z.i].name + ' · ' + Math.max(0, 3 - z.hold).toFixed(1) + 's', 260, 32);
+          if (z.hold >= 3) {
+            z.hold = 0;
+            selectRoute(z.i);
+            startRace();
+            break;
+          }
+        } else {
+          z.hold = 0;
+          z.ring.scale.setScalar(1);
+        }
+      }
+    }
+  }
   // —— 连击衰减
   if (combo > 1 && now - lastScoreT > 18000) {
     combo = 1; comboEvents = 0;
@@ -540,8 +665,8 @@ function mkGate(pos, nrm, first) {
 const ROUTES = [
   { id:'classic', name:'经典环线', loop:true, gold:78, silver:95, bronze:118, startIdx:0,
     gates: () => Array.from({length:10}, (_, i) => { const idx = i*(NS/10); return {p: samples[idx], n: normals[idx]}; }) },
-  { id:'sprint', name:'黄昏冲刺', loop:false, gold:42, silver:52, bronze:66, startIdx:0,
-    gates: () => [80, 160, 240, 320, 400].map(idx => ({p: samples[idx], n: normals[idx]})) },
+  { id:'sprint', name:'黄昏冲刺', loop:false, gold:42, silver:52, bronze:66, startIdx:400,
+    gates: () => [480, 560, 640, 720, 760].map(idx => ({p: samples[idx % NS], n: normals[idx % NS]})) },
   { id:'bridge', name:'跨谷挑战', loop:false, gold:40, silver:50, bronze:64, startIdx:120,
     gates: () => {
       const a = [50, 110, 170, 230].map(i => ({p: bSamples[i], n: bNormals[i]}));
@@ -636,7 +761,8 @@ function selectRoute(i) {
 function startRace() {
   const r = race.route;
   const si = r.startIdx;
-  state.pos.set(samples[si].x, samples[si].y + 0.05, samples[si].z);
+  const dsx = state.pos.x - samples[si].x, dsz = state.pos.z - samples[si].z;
+  if (dsx*dsx + dsz*dsz > 64) state.pos.set(samples[si].x, samples[si].y + 0.05, samples[si].z);
   state.heading = state.travel = Math.atan2(tangents[si].x, tangents[si].z);
   state.speed = 0; state.vx = 0; state.vz = 0; state.nitro = 1;
   race.phase = 'countdown'; race.count = 3;
@@ -724,4 +850,4 @@ function fmt(t) {
   return m + ':' + (s<10?'0':'') + s.toFixed(2);
 }
 
-export { sfx, skillPop, saveBestScore, gameplayUpdate, buildProps, race, toggleRace, startRace, endRace, raceUpdate, fmt, cps, cpGroupAll, arrow, arrowPivot, ROUTES, selectRoute, getRecordsView, getShareStats, raceBestText, unlockAch };
+export { sfx, skillPop, saveBestScore, gameplayUpdate, buildProps, race, toggleRace, startRace, endRace, raceUpdate, fmt, cps, cpGroupAll, arrow, arrowPivot, ROUTES, selectRoute, getRecordsView, getShareStats, raceBestText, unlockAch, spawnBreakDebris };

@@ -283,13 +283,14 @@ document.getElementById('btnPoster').addEventListener('click', () => {
   const d = new Date();
   x.fillText(d.getFullYear() + '.' + (d.getMonth()+1) + '.' + d.getDate() + ' · horizon.beastle.cn', 1036, 1356);
   pc.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'XPENG_P7_POSTER_' + Date.now() + '.png';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const url = URL.createObjectURL(blob);
+    document.getElementById('posterImg').src = url;
+    document.getElementById('posterDl').href = url;
+    document.getElementById('posterView').classList.add('show');
   });
-  showMsg('海报已生成 🖼', 1400, 30);
+});
+document.getElementById('posterClose').addEventListener('click', () => {
+  document.getElementById('posterView').classList.remove('show');
 });
 document.getElementById('btnShot').addEventListener('click', () => {
   composer.render();

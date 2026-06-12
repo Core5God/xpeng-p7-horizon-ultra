@@ -164,9 +164,10 @@ function groundHeight(x, z) {
 }
 // ---------- 支线公路与跨谷桥 ----------
 const B_HALF = 5.0;
+const BRANCH_A = 120, BRANCH_B = 480; // 支线汇入主路的采样位置（护栏/道具让位用）
 const bSamples = [], bTangents = [], bNormals = [], bBridge = [];
 {
-  const A = 120, B = 480;
+  const A = BRANCH_A, B = BRANCH_B;
   const pa = samples[A].clone(), pb = samples[B].clone();
   const mids = [];
   for (const t of [0.3, 0.5, 0.7]) {
@@ -367,7 +368,6 @@ new THREE.TextureLoader().load(
 );
 
 // ---------- 公路 ----------
-const railFlags = new Int8Array(NS); // 每个主路采样：悬崖护栏所在侧（0=无，±1=法线方向）
 function buildRoad() {
   // 程序化沥青：噪点 + 车辙磨痕
   const asphaltTex = (() => {
@@ -496,33 +496,7 @@ function buildRoad() {
     rm.castShadow = true;
     scene.add(rm);
   }
-  // 护栏（烘焙合并：全部立柱 1 个网格 + 全部横梁 1 个网格）
-  const postGeo = new THREE.BoxGeometry(0.18, 1.0, 0.18);
-  const postMat = new THREE.MeshStandardMaterial({color:0xc9ccd0, roughness:0.45, metalness:0.7});
-  const railMat = new THREE.MeshStandardMaterial({color:0xaab0b6, roughness:0.4, metalness:0.8});
-  const postGeos = [], railGeos = [];
-  const tmpO = new THREE.Object3D();
-  for (let i = 0; i < NS; i += 8) {
-    const p = samples[i], n = normals[i];
-    const hL = islandBase(p.x + n.x*28, p.z + n.z*28);
-    const hR = islandBase(p.x - n.x*28, p.z - n.z*28);
-    const side = hL < hR ? 1 : -1;
-    if (Math.min(hL, hR) > p.y - 4) continue;
-    for (let k = 0; k < 8; k++) railFlags[(i+k) % NS] = side; // 该段有实体护栏
-    tmpO.position.set(p.x + n.x*side*(HALF_W+1.3), p.y + 0.5, p.z + n.z*side*(HALF_W+1.3));
-    tmpO.rotation.set(0, 0, 0);
-    tmpO.updateMatrix();
-    postGeos.push(postGeo.clone().applyMatrix4(tmpO.matrix));
-    const p2 = samples[(i+8)%NS], n2 = normals[(i+8)%NS];
-    const a = new THREE.Vector3(p.x+n.x*side*(HALF_W+1.3), p.y+0.95, p.z+n.z*side*(HALF_W+1.3));
-    const b = new THREE.Vector3(p2.x+n2.x*side*(HALF_W+1.3), p2.y+0.95, p2.z+n2.z*side*(HALF_W+1.3));
-    tmpO.position.copy(a).lerp(b, 0.5);
-    tmpO.lookAt(b);
-    tmpO.updateMatrix();
-    railGeos.push(new THREE.BoxGeometry(0.08, 0.28, a.distanceTo(b)).applyMatrix4(tmpO.matrix));
-  }
-  if (postGeos.length) scene.add(new THREE.Mesh(mergeGeometries(postGeos), postMat));
-  if (railGeos.length) scene.add(new THREE.Mesh(mergeGeometries(railGeos), railMat));
+  // （悬崖护栏已改为可破坏道具，见 gameplay.buildProps）
 }
 
 // ---------- 植被 / 岩石（EZ-Tree 程序化森林，实例化渲染） ----------
@@ -881,4 +855,4 @@ function applyTod(name) {
 }
 
 
-export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, bSamples, bNormals, bBridge, railFlags, env, fallbackOcean, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };
+export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, BRANCH_A, BRANCH_B, bSamples, bNormals, bBridge, env, fallbackOcean, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };

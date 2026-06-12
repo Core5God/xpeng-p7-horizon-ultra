@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { G, scene, camera } from './core.js';
-import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, railFlags, applyTod } from './world.js';
-import { sfx, skillPop, race, unlockAch } from './gameplay.js';
+import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod } from './world.js';
+import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
 
 const GLB_URL = 'assets/e29.glb';
@@ -179,6 +179,20 @@ function settleCarPose() {
   const hL = surfaceHeight(state.pos.x - fz*0.9, state.pos.z + fx*0.9, state.pos.y);
   state.pitch = Math.atan2(hB - hF, 3);
   state.roll = Math.atan2(hR - hL, 1.8);
+  // —— 自动脱困：持续给油/倒车但位置几乎不动（被墙体/台阶卡住）→ 2.5 秒后自动回正
+  const movedD = Math.hypot(state.pos.x - prevPX, state.pos.z - prevPZ);
+  if ((fwd || back) && !state.airborne && movedD < 0.02) {
+    state.stuckT = (state.stuckT || 0) + dt;
+    if (state.stuckT > 2.5) {
+      state.stuckT = 0;
+      const nrS = nearestRoad(state.pos.x, state.pos.z);
+      state.pos.set(samples[nrS.idx].x, samples[nrS.idx].y + 0.1, samples[nrS.idx].z);
+      state.heading = state.travel = Math.atan2(tangents[nrS.idx].x, tangents[nrS.idx].z);
+      state.speed = 0; state.vx = 0; state.vz = 0; state.vyAir = 0;
+      showMsg('已自动脱困 🛟', 1400, 30);
+    }
+  } else state.stuckT = 0;
+
   car.position.copy(state.pos);
   car.rotation.set(state.pitch, state.heading, state.roll, 'YXZ');
 }
@@ -261,38 +275,22 @@ function physics(dt) {
       const crossed = Math.abs(svPrev) <= lim + 0.2 && aN > lim;
       if ((aN > lim && aN < B_HALF + 1.6) || crossed) {
         const sideSign = Math.sign(svNew) || Math.sign(svPrev) || 1;
-        state.pos.x = bs.x + bn.x*sideSign*lim;
-        state.pos.z = bs.z + bn.z*sideSign*lim;
         const vn2 = state.vx*bn.x*sideSign + state.vz*bn.z*sideSign;
-        if (vn2 > 0) {
-          state.vx -= bn.x*sideSign*vn2*1.35;
-          state.vz -= bn.z*sideSign*vn2*1.35;
-          if (vn2 > 4) { G.shake = Math.max(G.shake, 0.3); sfx('thud', 0.7); }
-        }
-      }
-    }
-  }
-
-  // —— 主路悬崖护栏：实体墙（只挡护栏侧，离路过远/已坠下不回拉）
-  {
-    const nr3 = nearestRoad(state.pos.x, state.pos.z);
-    const rs = railFlags[nr3.idx];
-    if (rs !== 0) {
-      const p3 = samples[nr3.idx], n3 = normals[nr3.idx];
-      const sideVal = (state.pos.x - p3.x)*n3.x + (state.pos.z - p3.z)*n3.z;
-      const sidePrev = (prevPX - p3.x)*n3.x + (prevPZ - p3.z)*n3.z;
-      const lim = HALF_W + 1.3 - CAR_R; // 视觉护栏位置 - 车体半宽，画面与碰撞一致
-      const crossed = Math.sign(sidePrev) === rs && Math.abs(sidePrev) <= lim + 0.2 && Math.abs(sideVal) > lim;
-      if (Math.sign(sideVal) === rs
-          && ((Math.abs(sideVal) > lim && Math.abs(sideVal) < lim + 3) || crossed)
-          && state.pos.y > p3.y - 1.2 && state.pos.y < p3.y + 3) {
-        state.pos.x = p3.x + n3.x*rs*lim;
-        state.pos.z = p3.z + n3.z*rs*lim;
-        const vn3 = state.vx*n3.x*rs + state.vz*n3.z*rs;
-        if (vn3 > 0) {
-          state.vx -= n3.x*rs*vn3*1.35;
-          state.vz -= n3.z*rs*vn3*1.35;
-          if (vn3 > 4) { G.shake = Math.max(G.shake, 0.3); sfx('thud', 0.7); }
+        if (vn2 > 12) {
+          // GTA 式冲破：高速猛撞直接撞飞护栏、腾空冲出桥外
+          spawnBreakDebris(state.pos.x + bn.x*sideSign*1.2, bi3.y + 0.6, state.pos.z + bn.z*sideSign*1.2, state.vx, state.vz);
+          sfx('smash', 1.6);
+          G.shake = Math.max(G.shake, 0.8);
+          skillPop('冲破护栏！', true);
+          state.vx *= 0.82; state.vz *= 0.82;
+        } else {
+          state.pos.x = bs.x + bn.x*sideSign*lim;
+          state.pos.z = bs.z + bn.z*sideSign*lim;
+          if (vn2 > 0) {
+            state.vx -= bn.x*sideSign*vn2*1.35;
+            state.vz -= bn.z*sideSign*vn2*1.35;
+            if (vn2 > 4) { G.shake = Math.max(G.shake, 0.3); sfx('thud', 0.7); }
+          }
         }
       }
     }
@@ -347,17 +345,18 @@ function physics(dt) {
       state.vyAir = 0;
       state.airborne = false;
     }
-  } else if (gap > 1.0 && state.vyAir > 1.5) {
+  } else if (gap > 1.0 && state.vyAir > 2.5 && Math.abs(state.speed) > 15) {
     state.airborne = true; // 高速冲出坡顶：带上坡赋予的垂直初速起跳
-  } else if (gap > 2.2) {
+  } else if (gap > 2.6) {
     state.airborne = true; // 突然悬空（冲出桥面/悬崖）
     state.vyAir = Math.min(state.vyAir, 0);
   } else {
     // 贴地：下坡快速贴附（杜绝下坡误入腾空态造成的颠簸），上坡平滑
     const prevY = state.pos.y;
-    const rate = gy < state.pos.y ? 18 : 10;
+    const rate = gy < state.pos.y ? 30 : 12;
     state.pos.y += (gy - state.pos.y) * Math.min(1, dt*rate);
-    state.vyAir = dt > 0 ? Math.max(-2, Math.min(14, (state.pos.y - prevY)/dt)) : 0;
+    const instV = dt > 0 ? (state.pos.y - prevY)/dt : 0;
+    state.vyAir = Math.max(-2, Math.min(14, state.vyAir*0.65 + instV*0.35)); // 平滑，滤掉起伏毛刺
   }
   const hF = surfaceHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5, state.pos.y);
   const hB = surfaceHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5, state.pos.y);

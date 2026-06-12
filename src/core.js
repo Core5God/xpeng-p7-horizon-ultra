@@ -7,7 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // ---------- 跨模块共享的可变状态 ----------
 export const G = {
   appState: 'garage',   // garage | drive | pause | photo
-  camMode: 0,
+  camMode: 1, // 默认近追视角，更好展示车身材质
   muted: false,
   musicOn: true,
   hiQuality: true,

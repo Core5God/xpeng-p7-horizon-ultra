@@ -97,6 +97,13 @@
   #recordsBox .rval{font-variant-numeric:tabular-nums}
   .achchip{font-size:12.5px;padding:6px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:8px;letter-spacing:.5px;color:#fff}
   .achchip.locked{opacity:.28;filter:grayscale(1)}
+  body.nohud #msg{display:block!important} /* 照片模式下保留中央提示反馈 */
+  #posterView{position:fixed;inset:0;z-index:60;background:rgba(2,5,10,.88);display:none;align-items:center;justify-content:center}
+  #posterView.show{display:flex}
+  #posterView .pwrap{text-align:center}
+  #posterImg{max-height:76vh;max-width:88vw;border:1px solid rgba(255,255,255,.22);box-shadow:0 10px 60px rgba(0,0,0,.65)}
+  .pbtns{display:flex;gap:14px;justify-content:center;margin-top:18px}
+  .pbtns .opt{text-decoration:none;display:inline-block}
   /* —— 照片工具栏 —— */
   #photobar{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:25;display:none;gap:12px}
   #photobar.show{display:flex}
@@ -207,6 +214,7 @@
 </div>
 
 <!-- 照片模式工具栏 -->
+<div id="posterView"><div class="pwrap"><img id="posterImg" alt="poster"><div class="pbtns"><a id="posterDl" class="opt" download="XPENG_P7_POSTER.png">⬇ 下载海报</a><button id="posterClose" class="opt">关闭</button></div></div></div>
 <div id="photobar">
   <button id="btnShot">📸 保存截图</button>
   <button id="btnPoster">🖼 生成海报</button>
