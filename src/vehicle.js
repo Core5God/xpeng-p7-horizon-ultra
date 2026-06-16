@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { G, scene, camera, wrapPi } from './core.js';
+import { G, scene, camera, renderer, wrapPi } from './core.js';
 import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod } from './world.js';
 import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
@@ -22,6 +22,20 @@ const PAINTS = [
 ];
 const car = new THREE.Group();
 scene.add(car);
+
+// —— 车辆反射探针：CubeCamera 把真实周围环境（路面/地形/天空/道具）渲染进 cubemap 作为车的环境贴图，
+// 让玻璃/车漆反射真实世界而非仅天空 IBL（主机赛车游戏的反射探针思路）。每 5 帧更新一次、隐藏自身避免自反射。
+const reflectRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
+let _reflN = 0;
+export function updateCarReflection() {
+  if (!G.carReady) return;
+  if ((_reflN++ % 8) !== 0) return; // 每 8 帧更新，降低帧时间尖峰（行车更平稳）
+  reflectCam.position.set(state.pos.x, state.pos.y + 1.0, state.pos.z);
+  const vis = car.visible; car.visible = false;
+  reflectCam.update(renderer, scene);
+  car.visible = vis;
+}
 const paintMats = [];
 const glassMats = [];
 let glassSeeThru = false;
@@ -113,9 +127,10 @@ loader.load(GLB_URL, (gltf) => {
           m.metalness = 0.92;
           m.roughness = 0.2;            // 0.35→0.2：反射更锐利，去掉"油腻软糊"感，呈现金属反射
           m.envMapIntensity = 1.7;
+          m.envMap = reflectRT.texture; // 真实环境反射探针（反射路面/地形/天空）
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
-            m.clearcoatRoughness = 0.04; // 锐利清漆层
+            m.clearcoatRoughness = 0.05; // 锐利清漆（太阳已在反射环境钳制，可恢复锐利反射）
           }
           m.normalMap = flakeNormalTex;  // 金属闪片
           m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
@@ -129,7 +144,9 @@ loader.load(GLB_URL, (gltf) => {
         }
         if (m.name === 'Mat_E29_Glass') {
           // 默认保持原厂深色玻璃；仅座舱视角动态切换为半透明（见 setGlassSeeThru）
-          m.envMapIntensity = 2.0;
+          m.envMapIntensity = 1.8; // 镜面玻璃：高反射
+          m.roughness = 0.06;      // 近镜面、清晰反射真实环境
+          m.envMap = reflectRT.texture; // 真实环境反射探针 → 玻璃镜面反射周围世界
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;
@@ -277,8 +294,8 @@ function physics(dt) {
   if (onRoad && Math.abs(state.speed) > 8) state.flow = Math.min(1, state.flow + dt*0.04);
   if (!onRoad) state.flow = Math.max(0, state.flow - dt*0.18);
   const fl = state.flow;
-  let maxSpd = onRoad ? 55 + 10*fl : 20;
-  if (boost) { maxSpd = onRoad ? 70 + 10*fl : 25; state.nitro = Math.max(0, state.nitro - dt*0.30); }
+  let maxSpd = onRoad ? 55 + 10*fl : 34;   // 草地限速 20→34：平地草坪不再憋速
+  if (boost) { maxSpd = onRoad ? 70 + 10*fl : 42; state.nitro = Math.max(0, state.nitro - dt*0.30); }
   else state.nitro = Math.min(1, state.nitro + dt*0.06);
   const locked = race.phase === 'countdown';
 
@@ -304,7 +321,7 @@ function physics(dt) {
     if (vF > 1) aF = -26;
     else if (!locked) aF = -8.5;
   }
-  aF -= 0.0005 * vF * Math.abs(vF) + (onRoad ? 0.04 : 0.85) * vF; // 风阻平方 + 滚阻
+  aF -= 0.0005 * vF * Math.abs(vF) + (onRoad ? 0.04 : 0.30) * vF; // 风阻平方 + 滚阻（草地 0.85→0.30，减速阻尼不再过强）
   vF = THREE.MathUtils.clamp(vF + aF*dt, -9, maxSpd);
   if (!fwd && !back && Math.abs(vF) < 0.5) vF = 0;
 

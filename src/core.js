@@ -58,10 +58,10 @@ const hemi = new THREE.HemisphereLight(0xffd9b0, 0x33405e, 0.65);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024); // 1536→1024：阴影开销大幅下降，车底接地阴影仍清晰
-sun.shadow.camera.left = -35; sun.shadow.camera.right = 35;
-sun.shadow.camera.top = 35; sun.shadow.camera.bottom = -35;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -90; sun.shadow.camera.right = 90; // ±90：覆盖近景且阴影分辨率/性能更平衡（提帧）
+sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 900;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun); scene.add(sun.target);
@@ -90,7 +90,7 @@ gtaoPass.updateGtaoMaterial({
 gtaoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, rings: 2, samples: 4 });
 // 默认关闭：GTAO 会把整个场景深度/法线重渲一遍（≈绘制翻倍），中低端 GPU 扛不住。
 // 改成可选项，由 G.aoOn 控制（设置里可开）；普通高画质只保留便宜的 SMAA + 照片电影感
-gtaoPass.enabled = !!G.aoOn;
+gtaoPass.enabled = !!G.aoOn; // 关闭：GTAO 后期 pass 与透明烟雾/粒子冲突(黑块)且会在地面产生随视角移动的白膜，留待用更干净的 AO 方案
 composer.addPass(gtaoPass);
 
 // Bloom 在半分辨率下计算：本就是模糊辉光，半分辨率肉眼几乎无差，开销减半

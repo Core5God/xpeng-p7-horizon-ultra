@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, sun, rim } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
-import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle } from './vehicle.js';
+import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
 import { buildCharacter, characterUpdate, characterCamera, charState } from './character.js';
 import { buildSkyCycle, skyCycleUpdate } from './skycycle.js';
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
@@ -143,6 +143,7 @@ function loopBody() {
     }
     drawMinimap();
   }
+  if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（自限每5帧）
   composer.render();
   // 帧率自适应：持续偏低时自动降画质（一次性，Q 可切回）
   fpsAcc += dt; fpsN++;
@@ -151,7 +152,7 @@ function loopBody() {
     if (!autoDropped && G.hiQuality && avg < 42 && G.appState === 'drive') {
       autoDropped = true;
       setQuality(false);
-      showMsg('帧率偏低，已自动切换低画质（Q 可切回）', 2400, 24);
+      showMsg('已自动优化画质以保持流畅', 2200, 24);
     }
     fpsAcc = 0; fpsN = 0;
   }

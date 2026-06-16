@@ -181,6 +181,12 @@ function islandBase(x, z) {
   if (d < 520) h = Math.max(h, 0.8);
   return h;
 }
+// 地形网格分辨率：buildTerrain 与 meshGroundHeight 必须共用同一组常量（否则碰撞高度场错位）
+const TERR_SEG = 300, TERR_SIZE = 1900, TERR_HALF = 950, TERR_ST = TERR_SIZE / TERR_SEG;
+// 中频起伏细节：让地表丰富、不像平面（仅叠加在路外地形上；路面走廊仍由压平带保持平整）
+function detail(x, z) {
+  return Math.sin(x*0.075 + z*0.05)*1.4 + Math.sin(x*0.12 - z*0.10)*0.9 + Math.sin(x*0.26 + z*0.21)*0.45;
+}
 // 路面高度沿路段插值（消除逐采样点的台阶抖动）
 function roadYAt(x, z, idx) {
   const a = samples[idx];
@@ -203,7 +209,7 @@ function groundHeight(x, z) {
     const bi = branchInfo(x, z);
     if (!bi.bridge && bi.dist < dRoad) { dRoad = bi.dist; ry = bi.y; }
   }
-  const base = islandBase(x, z);
+  const base = islandBase(x, z) + detail(x, z); // 叠加中频起伏，地表更丰富
   // 压平带 15m：保证地形网格在路两侧必有顶点被压平，杜绝顶点间插值隆起盖住路面
   if (dRoad < 15) return ry - 0.05;
   if (dRoad < 60) {
@@ -289,9 +295,9 @@ function branchInfo(x, z) {
 let terrainField = null;
 function meshGroundHeight(x, z) {
   if (!terrainField) return groundHeight(x, z);
-  const g = 201, st = 9.5;
-  const gx = (x + 950)/st, gz = (z + 950)/st;
-  if (gx < 0 || gz < 0 || gx >= 200 || gz >= 200) return groundHeight(x, z);
+  const g = TERR_SEG + 1, st = TERR_ST;
+  const gx = (x + TERR_HALF)/st, gz = (z + TERR_HALF)/st;
+  if (gx < 0 || gz < 0 || gx >= TERR_SEG || gz >= TERR_SEG) return groundHeight(x, z);
   const ix = Math.floor(gx), iz = Math.floor(gz);
   const u = gx - ix, v = gz - iz;
   const h00 = terrainField[iz*g+ix], h10 = terrainField[iz*g+ix+1];
@@ -482,7 +488,7 @@ function reedTexture() {
 }
 
 function buildTerrain() {
-  const SEG = 200, SIZE = 1900;
+  const SEG = TERR_SEG, SIZE = TERR_SIZE;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   g.rotateX(-Math.PI/2);
   const pos = g.attributes.position;
@@ -503,6 +509,28 @@ function buildTerrain() {
     colors[i*3] = tmp.r*v; colors[i*3+1] = tmp.g*v; colors[i*3+2] = tmp.b*v;
     field[i] = h; // 记录高度场（与渲染网格一致的越野贴地）
   }
+  // —— 烘焙 AO（地平线遮蔽）：谷地/坡脚/凹处变暗，立体感；与时段无关、零每帧开销，写入顶点色
+  {
+    const gsz = SEG + 1, cell = SIZE / SEG;
+    const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    const STEPS = [2, 5, 11];
+    for (let i = 0; i < pos.count; i++) {
+      const ix = i % gsz, iz = (i / gsz) | 0, h = field[i];
+      let occ = 0;
+      for (const [dx, dz] of DIRS) {
+        let maxAng = 0;
+        for (const s of STEPS) {
+          const nx = ix + dx*s, nz = iz + dz*s;
+          if (nx < 0 || nz < 0 || nx >= gsz || nz >= gsz) continue;
+          const ang = (field[nz*gsz + nx] - h) / (s * cell); // 邻居更高=遮挡
+          if (ang > maxAng) maxAng = ang;
+        }
+        occ += Math.min(maxAng, 1.0);
+      }
+      const ao = THREE.MathUtils.clamp(1.0 - (occ / DIRS.length) * 1.4, 0.5, 1.0);
+      colors[i*3] *= ao; colors[i*3+1] *= ao; colors[i*3+2] *= ao;
+    }
+  }
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   terrainField = field;
   g.computeVertexNormals();
@@ -513,12 +541,12 @@ function buildTerrain() {
   const sandD = texColor(TP+'sand_diff.jpg'), forestD = texColor(TP+'forest_diff.jpg'), rockD = texColor(TP+'rock_diff.jpg'), dryD = texColor(TP+'dry_diff.jpg');
   const sandR = texData(TP+'sand_rough.webp'), rockR = texData(TP+'rock_rough.webp'), dryR = texData(TP+'dry_rough.webp'), forestR = texData(TP+'forest_rough.webp');
   const forestN = texData(TP+'forest_nrm.webp');
-  const mat = new THREE.MeshStandardMaterial({ vertexColors:true, map: forestD, normalMap: forestN, roughnessMap: forestR, roughness:1.0, metalness:0, envMapIntensity:0.5 });
-  mat.normalScale.set(0.7, 0.7);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors:true, map: forestD, normalMap: forestN, roughnessMap: forestR, roughness:1.0, metalness:0, envMapIntensity:0.55 });
+  mat.normalScale.set(1.0, 1.0); // 法线强度回到 1.0：保留凹凸但不至于在暗部糊成死黑
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.tSandD = { value: sandD }; shader.uniforms.tRockD = { value: rockD }; shader.uniforms.tDryD = { value: dryD };
     shader.uniforms.tSandR = { value: sandR }; shader.uniforms.tRockR = { value: rockR }; shader.uniforms.tDryR = { value: dryR };
-    shader.uniforms.uTile = { value: 80.0 };
+    shader.uniforms.uTile = { value: 320.0 }; // 平铺更密 → 贴图颗粒回到真实尺寸（~6m/铺），不再像被放大
     shader.vertexShader = 'varying vec4 vW;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
       '#include <begin_vertex>',
       'float H = position.y;',
@@ -604,7 +632,13 @@ function buildRoad() {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
-  const roadMat = new THREE.MeshStandardMaterial({map:asphaltTex, color:0xffffff, roughness:0.85, metalness:0, envMapIntensity:0.5});
+  // 路面：Road009B 真实沥青 PBR（含居中黄线）。横向不平铺(ClampToEdge → 黄线居中) + 沿长度平铺
+  const _rl2 = new THREE.TextureLoader();
+  const rd2D = _rl2.load('assets/terrain/road2_diff.jpg'); rd2D.colorSpace = THREE.SRGBColorSpace; rd2D.wrapS = THREE.ClampToEdgeWrapping; rd2D.wrapT = THREE.RepeatWrapping; rd2D.repeat.set(1, 0.55); rd2D.anisotropy = 8;
+  const rd2N = _rl2.load('assets/terrain/road2_nrm.webp'); rd2N.wrapS = THREE.ClampToEdgeWrapping; rd2N.wrapT = THREE.RepeatWrapping; rd2N.repeat.set(1, 0.55); rd2N.anisotropy = 8;
+  const rd2R = _rl2.load('assets/terrain/road2_rough.webp'); rd2R.wrapS = THREE.ClampToEdgeWrapping; rd2R.wrapT = THREE.RepeatWrapping; rd2R.repeat.set(1, 0.55); rd2R.anisotropy = 8;
+  const roadMat = new THREE.MeshStandardMaterial({ map: rd2D, normalMap: rd2N, roughnessMap: rd2R, roughness:1.0, metalness:0, envMapIntensity:0.4 });
+  roadMat.normalScale.set(0.5, 0.5);
   const shoulderMat = new THREE.MeshStandardMaterial({color:0x615a50, roughness:1});
   const lineMat = new THREE.MeshStandardMaterial({color:0xdadada, roughness:0.85, emissive:0x0a0a0a});
   const dashMat = new THREE.MeshStandardMaterial({color:0xe8c44a, roughness:0.85, emissive:0x141000});

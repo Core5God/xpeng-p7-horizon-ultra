@@ -8,9 +8,9 @@ import { curSunDir, env, sky, stars, fallbackOcean } from './world.js';
 // 每帧插值 太阳方向/色/强度、半球光、雾色、曝光、水色、Bloom、夜间灯光；
 // 反射环境用「混合天空 + 环境色地面」周期重建（反射带环境色，而非纯天光）。
 const KEYS = [
-  { f:'day3',    dir:[0,0.33,0.95],     sunC:0xfff4e0, sunI:7.5, hemiI:1.3,  hemiC:0xcfe5ff, fog:0xaec6da, exp:0.85, envI:1.5,  water:0x0d4a66, bloom:0.12, night:0, grd:0x9a875c },
-  { f:'day2',    dir:[0.79,0.12,0.60],  sunC:0xdfe6ee, sunI:3.0, hemiI:1.6,  hemiC:0xc8d2dc, fog:0xc2c8cf, exp:1.05, envI:1.5,  water:0x294a5a, bloom:0.10, night:0, grd:0x6f6a5e },
-  { f:'evening', dir:[0.05,0.09,0.99],  sunC:0xffc792, sunI:6.0, hemiI:1.3,  hemiC:0xffd9b0, fog:0xcf7a72, exp:0.90, envI:1.2,  water:0x06283a, bloom:0.22, night:0, grd:0x6e5a44 },
+  { f:'day3',    dir:[0,0.33,0.95],     sunC:0xfff4e0, sunI:7.5, hemiI:1.3,  hemiC:0xcfe5ff, fog:0xaec6da, exp:0.82, envI:1.5,  water:0x0d4a66, bloom:0.06, night:0, grd:0x9a875c },
+  { f:'day2',    dir:[0.79,0.12,0.60],  sunC:0xdfe6ee, sunI:3.0, hemiI:1.6,  hemiC:0xc8d2dc, fog:0xc2c8cf, exp:1.0,  envI:1.5,  water:0x294a5a, bloom:0.05, night:0, grd:0x6f6a5e },
+  { f:'evening', dir:[0.05,0.09,0.99],  sunC:0xffc792, sunI:6.0, hemiI:1.3,  hemiC:0xffd9b0, fog:0xcf7a72, exp:0.88, envI:1.2,  water:0x06283a, bloom:0.15, night:0, grd:0x6e5a44 },
   { f:'night2',  dir:[0.016,0.45,0.89], sunC:0x9fb6e0, sunI:1.8, hemiI:0.6,  hemiC:0x2a3a55, fog:0x141d2e, exp:1.30, envI:0.85, water:0x04141f, bloom:0.50, night:1, grd:0x20242e },
   { f:'night1',  dir:[0.32,0.945,0.04], sunC:0x8aa0cc, sunI:1.2, hemiI:0.5,  hemiC:0x223355, fog:0x0a1020, exp:1.40, envI:0.70, water:0x02101a, bloom:0.60, night:1, grd:0x171a22 },
 ];
@@ -25,7 +25,7 @@ const CYCLE_SEC = 84;          // 整圈时长（越小越快），约每段 14s
 const SEG = CYCLE_SEC / N;
 const texs = new Array(N);
 let phase = 0, ready = false, loaded = 0, envTimer = 0, lastEnvTex = null;
-let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem;
+let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem, envSrcRT, clampScene, clampMat;
 
 export function buildSkyCycle() {
   // 背景：把"当前/下一张"等距天空按淡入系数混合渲染到一张 HalfFloat RT，再交给原生 scene.background。
@@ -45,9 +45,22 @@ export function buildSkyCycle() {
   });
   blendScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blendMat));
 
-  // 反射环境：用混合后的等距天空(blendRT)做背景 + 暗地面 → 干净无两极挤压，车漆反射锐利且带环境色
+  // 反射钳制：天空 HDRI 太阳高达 3 万，会在镜面上溢出成"方块"。把反射环境的亮度上限钳到 ~12，
+  // 太阳变成有界的圆亮点 → 玻璃可做镜面 + 锐利天空反射而不出方块。
+  envSrcRT = new THREE.WebGLRenderTarget(1024, 512, { type: THREE.HalfFloatType, depthBuffer: false });
+  envSrcRT.texture.mapping = THREE.EquirectangularReflectionMapping;
+  envSrcRT.texture.minFilter = THREE.LinearFilter; envSrcRT.texture.magFilter = THREE.LinearFilter; envSrcRT.texture.generateMipmaps = false;
+  clampScene = new THREE.Scene();
+  clampMat = new THREE.ShaderMaterial({
+    uniforms: { tBlend: { value: null }, uMax: { value: 12.0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform sampler2D tBlend; uniform float uMax; varying vec2 vUv; void main(){ vec3 c = texture2D(tBlend, vUv).rgb; gl_FragColor = vec4(min(c, vec3(uMax)), 1.0); }',
+    depthTest: false, depthWrite: false
+  });
+  clampScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), clampMat));
+  // 反射环境：钳制后的等距天空做背景 + 暗地面 → 镜面反射锐利、太阳不溢出、带环境色
   envScene = new THREE.Scene();
-  envScene.background = blendRT.texture;
+  envScene.background = envSrcRT.texture;
   envGround = new THREE.Mesh(new THREE.CircleGeometry(160, 48), new THREE.MeshBasicMaterial({ color: 0x5a5348, toneMapped: false }));
   envGround.rotation.x = -Math.PI / 2; envGround.position.y = -6;
   envScene.add(envGround);
@@ -117,11 +130,7 @@ export function skyCycleUpdate(dt) {
   // 旧程序化云片(sprite)与 HDRI 自带云层重叠成"白色圆斑"，直接隐藏，改用 HDRI 云
   if (env.clouds) for (const c of env.clouds) c.visible = false;
   // 星空只在深夜出现：nightAmt 0.55 起淡入、0.8 全亮；天一变亮(nightAmt 降到 0.55 以下)即消失，黎明/白天不残留
-  if (stars) {
-    const sv = THREE.MathUtils.clamp((nightAmt - 0.55) / 0.25, 0, 1);
-    stars.visible = sv > 0.01;
-    if (stars.material) stars.material.opacity = 0.9 * sv;
-  }
+  if (stars) stars.visible = false; // 直接移除程序化星点（白天残留+反射问题难根治），夜空用 HDRI 自带内容
   for (const m of G.lampMats) {
     if (isNight) { m.emissive.setHex(0xfff4e0); m.emissiveIntensity = 1.7; }
     else { m.emissive.copy(m.userData?.origEmissive || _z); m.emissiveIntensity = m.userData?.origEI ?? 1; }
@@ -132,7 +141,13 @@ export function skyCycleUpdate(dt) {
   if (envTimer >= (G.hiQuality ? 0.2 : 0.5)) {
     envTimer = 0;
     envGround.material.color.copy(A._grd).lerp(B._grd, f);
-    const rt = pmrem.fromScene(envScene, 0.02); // 干净等距天空+暗地面 → 锐利反射，车漆金属感
+    // 先把混合天空钳制亮度写入 envSrcRT（太阳有界、不溢出），再 PMREM
+    clampMat.uniforms.tBlend.value = blendRT.texture;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(envSrcRT);
+    renderer.render(clampScene, blendCam);
+    renderer.setRenderTarget(prev);
+    const rt = pmrem.fromScene(envScene, 0.06); // 锐利反射：镜面玻璃反射清晰天空；太阳已钳制故不再方块
     if (lastEnvTex) lastEnvTex.dispose();
     lastEnvTex = rt.texture;
     scene.environment = lastEnvTex;

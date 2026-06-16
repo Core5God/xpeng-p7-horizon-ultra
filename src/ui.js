@@ -35,7 +35,7 @@ function loadSettings() {
     const s = JSON.parse(localStorage.getItem('p7_set') || '{}');
     if (typeof s.skinIdx === 'number' && s.skinIdx >= 0 && s.skinIdx < PAINTS.length) G.skinIdx = s.skinIdx;
     if (s.curTod && PRESETS[s.curTod]) G.curTod = s.curTod;
-    if (typeof s.hiQuality === 'boolean') G.hiQuality = s.hiQuality;
+    // 画质统一：始终以最高画质启动（不再从存档恢复低画质），运行时由系统按帧率自适应
     if (typeof s.muted === 'boolean') G.muted = s.muted;
     if (typeof s.musicOn === 'boolean') G.musicOn = s.musicOn;
     if (typeof s.hintsOn === 'boolean') hintsOn = s.hintsOn;
@@ -144,7 +144,7 @@ function setQuality(q) {
   composer.setPixelRatio(pr);
   refreshSettingBtns(); saveSettings();
 }
-for (const id of ['gQuality','pQuality']) document.getElementById(id).addEventListener('click', () => setQuality(!G.hiQuality));
+for (const id of ['gQuality','pQuality']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; } // 画质统一：隐藏手动切换
 for (const id of ['gSound','pSound']) document.getElementById(id).addEventListener('click', () => { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); });
 for (const id of ['gMusic','pMusic']) document.getElementById(id).addEventListener('click', () => { initAudio(); startMusic(); setMusic(!G.musicOn, false); });
 
@@ -339,7 +339,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'KeyM') { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); showMsg(G.muted?'引擎声 关':'引擎声 开', 800, 24); }
   if (e.code === 'KeyB') { initAudio(); startMusic(); setMusic(!G.musicOn, true); }
-  if (e.code === 'KeyQ') { setQuality(!G.hiQuality); showMsg(G.hiQuality?'画质：高':'画质：低', 900, 26); }
+  // 画质统一：取消手动切换，默认最高、系统自适应降级（Q 键不再切画质）
   if (e.code === 'KeyH') {
     hintsOn = !hintsOn;
     refreshKeytips();
