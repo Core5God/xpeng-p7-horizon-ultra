@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, sun, rim } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
-import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose } from './vehicle.js';
+import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle } from './vehicle.js';
+import { buildCharacter, characterUpdate, characterCamera, charState } from './character.js';
+import { buildSkyCycle, skyCycleUpdate } from './skycycle.js';
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
@@ -63,7 +65,7 @@ function loopBody() {
   const dt = Math.min((now - last)/1000, 0.05);
   last = now;
 
-  if (G.waterOK && G.water.visible) G.water.material.uniforms['time'].value += dt*0.6;
+  if (G.waterOK && G.water.material.normalMap) { const n = G.water.material.normalMap; n.offset.x += dt*0.012; n.offset.y += dt*0.008; } // 法线滚动 → 动态波纹
 
   let onRoad = true, boost = false;
   // 仅座舱视角玻璃透明，其余视角保持原厂深色玻璃
@@ -75,6 +77,11 @@ function loopBody() {
     gameplayUpdate(dt, onRoad);
     fxUpdate(dt, onRoad, boost);
     updateChaseCamera(dt, boost);
+  } else if (G.appState === 'walk') {
+    // 步行模式：角色控制器接管；无人车自然滚停
+    characterUpdate(dt);
+    characterCamera(dt);
+    coastVehicle(dt);
   } else {
     // 暂停时不更新轨道控制器，否则相机会被拉回旧的环绕目标点
     if (G.appState !== 'pause') {
@@ -84,11 +91,27 @@ function loopBody() {
     }
   }
   audioUpdate();
+  skyCycleUpdate(dt); // 动态天空/天气循环（接管太阳/雾/曝光/反射）
 
-  sun.position.copy(state.pos).addScaledVector(curSunDir, 220);
-  sun.target.position.copy(state.pos);
-  rim.position.copy(state.pos).add(new THREE.Vector3(-curSunDir.x*120, 60, -curSunDir.z*120));
-  rim.target.position.copy(state.pos);
+  // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
+  // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
+  if (G.hiQuality && G.appState === 'drive') {
+    const sp = Math.abs(state.speed);
+    let want = G._prTier || 1.25;
+    if (sp < 4) want = 1.5; else if (sp > 10) want = 1.2;
+    if (want !== G._prTier) {
+      G._prTier = want;
+      const pr = Math.min(window.devicePixelRatio, want);
+      renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+    }
+  }
+
+  // 阴影/补光跟随焦点：步行时跟角色，否则跟车
+  const focus = G.appState === 'walk' ? charState.pos : state.pos;
+  sun.position.copy(focus).addScaledVector(curSunDir, 220);
+  sun.target.position.copy(focus);
+  rim.position.copy(focus).add(new THREE.Vector3(-curSunDir.x*120, 60, -curSunDir.z*120));
+  rim.target.position.copy(focus);
 
   const t = now*0.001;
   windU.value = t;
@@ -155,7 +178,9 @@ addEventListener('resize', () => {
   await stage('铺设海岸公路…', 45, buildRoad);
   await stage('生成程序化森林…', 68, () => { buildScenery(); }); // 树木后台加载，就绪后自动出现
   await stage('布置灯塔与环境…', 76, buildEnv);
-  await stage('搭建海滩建筑与道具…', 90, buildProps);
+  await stage('搭建海滩建筑与道具…', 88, buildProps);
+  await stage('唤醒步行角色…', 92, () => { buildCharacter(); }); // 角色后台加载，就绪后 F 键可切换
+  await stage('载入动态天空…', 95, () => { buildSkyCycle(); });   // 6 时段天空后台加载，就绪后自动循环
   elBT.textContent = '点火启动…';
   elBF.style.width = '100%';
   await new Promise(r => requestAnimationFrame(r));

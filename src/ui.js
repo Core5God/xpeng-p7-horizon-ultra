@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { G, camera, renderer, canvas, composer, bloomPass } from './core.js';
+import { G, camera, renderer, canvas, composer, bloomPass, photoPass } from './core.js';
 import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic } from './audio.js';
+import { spawnCharacter, setCharacterVisible } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -137,8 +138,8 @@ function refreshSettingBtns() {
 function setQuality(q) {
   G.hiQuality = q;
   bloomPass.strength = G.hiQuality ? PRESETS[G.curTod].bloom : 0;
-  if (G.waterOK) { G.water.visible = G.hiQuality; fallbackOcean.visible = !G.hiQuality; }
-  const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.5 : 1);
+  if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，高低画质都常开
+  const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.25 : 1); // 高画质像素比 1.5→1.25：填充率约降 30%，车身仍锐利
   renderer.setPixelRatio(pr);
   composer.setPixelRatio(pr);
   refreshSettingBtns(); saveSettings();
@@ -158,6 +159,8 @@ function setOrbitAroundCar(dist, height) {
 }
 function enterGarage() {
   G.appState = 'garage';
+  document.body.style.cursor = '';
+  setCharacterVisible(false);
   saveBestScore();
   if (race.phase !== 'free') endRace();
   state.speed = 0; state.vx = 0; state.vz = 0;
@@ -185,6 +188,7 @@ function startDrive(raceMode) {
   startMusic();
   showKeytipsFresh();
   G.appState = 'drive';
+  document.body.style.cursor = 'none';
   document.body.classList.remove('nohud');
   elGarage.classList.remove('show');
   elPause.classList.remove('show');
@@ -197,24 +201,32 @@ function startDrive(raceMode) {
   if (!raceMode) showMsg('自由漫游 · 祝你玩得开心', 1600, 34);
 }
 function pauseGame() {
+  G.pausedFrom = G.appState === 'walk' ? 'walk' : 'drive';
+  G._pauseT = performance.now();
   G.appState = 'pause';
   clearKeys();
   saveBestScore();
+  if (document.pointerLockElement) document.exitPointerLock?.();
+  document.body.style.cursor = '';
   elPause.classList.add('show');
   controls.enabled = false;
   if (race.phase === 'racing') race.pauseT = performance.now();
 }
 function resumeGame() {
-  G.appState = 'drive';
+  G.appState = G.pausedFrom === 'walk' ? 'walk' : 'drive';
   elPause.classList.remove('show');
+  document.body.style.cursor = 'none';
+  if (G.appState === 'walk') canvas.requestPointerLock?.();
   if (race.phase === 'racing') race.t0 += performance.now() - race.pauseT;
 }
 function enterPhoto() {
   const fromDrive = G.appState === 'drive';
   G.appState = 'photo';
+  document.body.style.cursor = '';
   clearKeys();
   document.body.classList.add('nohud');
   document.body.classList.add('photo');
+  photoPass.enabled = true; // 启用暗角+色差电影感（海报导出也会带上）
   elPause.classList.remove('show');
   elPhotobar.classList.add('show');
   controls.enabled = true; controls.autoRotate = false;
@@ -226,6 +238,7 @@ function exitPhoto() {
   G.appState = 'drive';
   document.body.classList.remove('nohud');
   document.body.classList.remove('photo');
+  photoPass.enabled = false;
   elPhotobar.classList.remove('show');
   controls.enabled = false;
   if (race.phase === 'racing') race.t0 += performance.now() - race.pauseT;
@@ -309,8 +322,8 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') {
-    if (G.appState === 'drive') pauseGame();
-    else if (G.appState === 'pause') resumeGame();
+    if (G.appState === 'drive' || G.appState === 'walk') pauseGame();
+    else if (G.appState === 'pause') { if (performance.now() - (G._pauseT || 0) > 350) resumeGame(); }
     else if (G.appState === 'photo') exitPhoto();
   }
   if (e.code === 'KeyP') {
@@ -334,6 +347,28 @@ addEventListener('keydown', e => {
     if (hintsOn) showMsg('键位提示 开', 800, 24);
   }
   if (G.appState === 'garage' || G.appState === 'photo') return;
+  if (e.code === 'KeyF') { // 上/下车：在驾驶与步行之间切换
+    if (G.appState === 'drive') {
+      const h = state.heading;
+      const lx = Math.cos(h), lz = -Math.sin(h); // 车体左向，角色从左侧"下车"
+      if (spawnCharacter(state.pos.x + lx*2.4, state.pos.z + lz*2.4, h)) {
+        // 下车：保留车速，由 coastVehicle 自然滚停（不瞬停、不飞出）
+        G.appState = 'walk';
+        document.body.classList.remove('nohud');
+        document.body.style.cursor = 'none';
+        canvas.requestPointerLock?.(); // 按键即用户手势，直接锁定鼠标控镜头，无需再点屏幕
+        showMsg('🚶 步行模式｜WASD 移动(跟随镜头) · 鼠标转视角 · SHIFT 跑 · SPACE 跳 · F 上车 · ESC 菜单', 5200, 21);
+      } else showMsg('角色还在加载…', 1200, 24);
+    } else if (G.appState === 'walk') {
+      G.appState = 'drive'; // 先切状态，避免 exitPointerLock 的 pointerlockchange 误触发暂停
+      setCharacterVisible(false);
+      document.body.style.cursor = 'none';
+      camPos.copy(camera.position);
+      camDamp.x.v = camDamp.y.v = camDamp.z.v = 0;
+      camAng.init = false;
+      showMsg('🚗 已上车', 1200, 26);
+    }
+  }
   if (e.code === 'KeyC') G.camMode = (G.camMode+1) % 5; // 远追/近追/贴尾(极品飞车式)/座舱/环绕
   if (e.code === 'KeyR') toggleRace();
   if (e.code === 'KeyT') { // 一键复位：卡住/落水/翻出地图都能脱困
@@ -349,6 +384,10 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => keys[e.code] = false);
+// 步行时按 ESC 会先被浏览器用于退出指针锁定 → 监听解锁事件来打开菜单（单次 ESC 即可进菜单）
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && G.appState === 'walk') pauseGame();
+});
 
 // ---------- HUD / 小地图 ----------
 const elSpeed = document.getElementById('speed');

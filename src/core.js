@@ -3,6 +3,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 
 // 常数时间角度回绕：取模实现，对 NaN/Infinity 免疫（while 减法回绕在异常值下会死循环）
 export function wrapPi(a) {
@@ -19,6 +22,7 @@ export const G = {
   muted: false,
   musicOn: true,
   hiQuality: true,
+  weatherOn: true,      // 动态天空/天气循环
   skinIdx: 0,
   curTod: 'sunset',
   shake: 0,
@@ -32,7 +36,8 @@ export const G = {
 
 // ---------- 渲染器 ----------
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true});
+// antialias 关闭：使用 EffectComposer 时画面经离屏 RT 合成，画布 MSAA 无效且白白占显存；抗锯齿交给末端 SMAA
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false, preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -43,7 +48,9 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xc97e58, 260, 1600);
-const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 4000);
+// near 抬到 0.3：开放世界 far=4000 时深度精度有限，GTAO 依赖深度重建，
+// 近裁面拉远能显著降低环境光遮蔽的噪点（座舱视角仍不会穿模）
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.3, 4000);
 
 // ---------- 光照 ----------
 const sunDir = new THREE.Vector3(-0.55, 0.30, -0.81).normalize();
@@ -51,7 +58,7 @@ const hemi = new THREE.HemisphereLight(0xffd9b0, 0x33405e, 0.65);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1536, 1536);
+sun.shadow.mapSize.set(1024, 1024); // 1536→1024：阴影开销大幅下降，车底接地阴影仍清晰
 sun.shadow.camera.left = -35; sun.shadow.camera.right = 35;
 sun.shadow.camera.top = 35; sun.shadow.camera.bottom = -35;
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
@@ -63,11 +70,67 @@ const rim = new THREE.DirectionalLight(0x88aaff, 0.7);
 scene.add(rim); scene.add(rim.target);
 
 // ---------- 后期 ----------
+// 管线顺序：RenderPass → GTAO（环境光遮蔽）→ Bloom → OutputPass（色调映射/sRGB）
+//          → 照片电影感（暗角+色差，仅拍照启用）→ SMAA（抗锯齿，末端 LDR 处理）
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.35, 0.92);
+
+// 环境光遮蔽：给道具/树/建筑与地面补接触阴影，消除"飘"感。开销较大，仅高画质启用
+const gtaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+gtaoPass.output = GTAOPass.OUTPUT.Default;
+gtaoPass.updateGtaoMaterial({
+  radius: 0.7,            // 世界单位（米）：车身~4m、道具~1-2m，0.7 抓接触缝隙不糊大面
+  distanceExponent: 1.0,
+  thickness: 1.0,
+  scale: 1.0,
+  samples: 8,
+  distanceFallOff: 1.0,
+  screenSpaceRadius: false
+});
+gtaoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, rings: 2, samples: 4 });
+// 默认关闭：GTAO 会把整个场景深度/法线重渲一遍（≈绘制翻倍），中低端 GPU 扛不住。
+// 改成可选项，由 G.aoOn 控制（设置里可开）；普通高画质只保留便宜的 SMAA + 照片电影感
+gtaoPass.enabled = !!G.aoOn;
+composer.addPass(gtaoPass);
+
+// Bloom 在半分辨率下计算：本就是模糊辉光，半分辨率肉眼几乎无差，开销减半
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.42, 0.35, 0.92);
 composer.addPass(bloomPass);
+
 composer.addPass(new OutputPass());
 
+// 照片模式电影感：径向色差 + 暗角（仅 G.appState==='photo' 时启用，平时跳过）
+const PhotoGradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    vignette: { value: 0.85 },    // 暗角强度（0=无）
+    aberration: { value: 0.0045 } // 色差像素偏移系数
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float vignette;
+    uniform float aberration;
+    varying vec2 vUv;
+    void main(){
+      vec2 dir = vUv - 0.5;
+      float d = length(dir);
+      vec2 off = dir * aberration * d * 2.0;   // 边缘偏移更大，中心干净
+      float r = texture2D(tDiffuse, vUv + off).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - off).b;
+      vec3 col = vec3(r, g, b);
+      float v = smoothstep(0.85, 0.25, d);     // 1 中心 → 0 边缘
+      col *= mix(1.0, v, vignette);
+      gl_FragColor = vec4(col, 1.0);
+    }`
+};
+const photoPass = new ShaderPass(PhotoGradeShader);
+photoPass.enabled = false;
+composer.addPass(photoPass);
 
-export { canvas, renderer, scene, camera, sunDir, hemi, sun, rim, composer, bloomPass };
+const smaaPass = new SMAAPass(innerWidth, innerHeight);
+composer.addPass(smaaPass);
+
+
+export { canvas, renderer, scene, camera, sunDir, hemi, sun, rim, composer, bloomPass, gtaoPass, photoPass, smaaPass };

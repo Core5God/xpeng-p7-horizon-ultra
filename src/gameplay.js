@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, wrapPi } from './core.js';
-import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
+import { samples, tangents, normals, NS, HALF_W, groundHeight, meshGroundHeight, surfaceHeight, nearestRoad, branchInfo, islandBase, env, BRANCH_A, BRANCH_B, bSamples, bNormals } from './world.js';
 import { state, createGhostClone, addFlow } from './vehicle.js';
 import { actx, makeNoiseBurst } from './audio.js';
 import { showMsg, keys, refreshRecords } from './ui.js';
@@ -327,7 +327,8 @@ function buildProps() {
   const sgPanelG = new THREE.BoxGeometry(0.8, 0.55, 0.05); sgPanelG.translate(0, 1.55, 0);
   const ballG = new THREE.SphereGeometry(0.36, 12, 10);
   function reg(group, x, z, rotY, r, type) {
-    group.position.set(x, groundHeight(x, z), z);
+    // 贴"可行驶表面"：近路取路面高度（路锥不沉入路面），路外取渲染网格（道具不悬浮）
+    group.position.set(x, surfaceHeight(x, z), z);
     group.rotation.y = rotY;
     scene.add(group);
     props.push({x, z, r, type, group, pieces: group.children.slice(), intact: true, nearMiss: false});
@@ -379,7 +380,7 @@ function buildProps() {
   }
   function mkBall(x, z) {
     const m = new THREE.Mesh(ballG, ballMs[Math.floor(Math.random()*3)]);
-    m.position.set(x, groundHeight(x, z) + 0.36, z);
+    m.position.set(x, surfaceHeight(x, z) + 0.36, z);
     scene.add(m);
     props.push({x, z, r:0.36, type:'ball', group:m, pieces:[m], intact:true, nearMiss:true, vx:0, vy:0, vz:0, kickT:0});
   }
@@ -399,7 +400,7 @@ function buildProps() {
   }
   // —— 建筑（不可破坏，有碰撞）
   function addBuilding(g, x, z, rotY, r) {
-    g.position.set(x, groundHeight(x, z), z);
+    g.position.set(x, surfaceHeight(x, z), z);
     g.rotation.y = rotY;
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     scene.add(g);
@@ -544,7 +545,7 @@ function buildProps() {
       const j = (i + k*5 + NS) % NS;
       const pp = samples[j], nn = normals[j];
       const bx = pp.x + nn.x*out*(HALF_W + 2.2), bz = pp.z + nn.z*out*(HALF_W + 2.2);
-      const by = groundHeight(bx, bz);
+      const by = surfaceHeight(bx, bz);
       const stack = new THREE.Group();
       for (const [ox, oy] of [[-0.4, 0.18], [0.4, 0.18], [0, 0.62]]) {
         const ty = new THREE.Mesh(tyreG2, oy > 0.3 ? tyreBandM : tyreM2);

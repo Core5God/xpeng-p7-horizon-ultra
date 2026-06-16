@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass } from './core.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
@@ -52,6 +53,40 @@ function rebuildEnv() {
   pmrem.dispose();
 }
 
+// ---------- 白天 HDRI 天空（Poly Haven，真实天光与反射；其余时段仍用程序化大气散射） ----------
+let dayBg = null, dayEnv = null, hdrReady = false;
+new RGBELoader().load('assets/sky_day.hdr', (tex) => {
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  dayBg = tex; // 背景仍用完整天空
+  // 反射环境 = HDRI 天空 + 暗色地面：纯天空 HDRI 没有地面，会让车身上下都反射亮天 → 发"平/塑料"；
+  // 补一块暗地面盖住下半球，车漆才有"上亮天、下暗地"的金属反射梯度（产品级渲染惯用手法）。
+  const pm = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  envScene.background = tex;
+  const grd = new THREE.Mesh(new THREE.CircleGeometry(3000, 32), new THREE.MeshBasicMaterial({ color: 0x4a453c }));
+  grd.rotation.x = -Math.PI / 2;
+  grd.position.y = -2;
+  envScene.add(grd);
+  dayEnv = pm.fromScene(envScene, 0.06, 0.1, 12000).texture; // 轻微模糊：反射有云形与地平线但不噪
+  pm.dispose();
+  hdrReady = true;
+  if (G.curTod === 'day') applySkyForTod(); // 当前就是白天则立即生效
+}, undefined, (e) => console.warn('白天 HDRI 加载失败，回退程序化天空：', e));
+
+// 按当前时段选择天空/环境：白天用 HDRI（背景+IBL，隐藏程序化天空盒），落日/夜晚用程序化
+function applySkyForTod() {
+  if (G.weatherOn) return; // 动态天气接管时，静态天空逻辑让位
+  if (G.curTod === 'day' && hdrReady) {
+    sky.visible = false;
+    scene.background = dayBg;
+    scene.environment = dayEnv;
+  } else {
+    sky.visible = true;
+    scene.background = null;
+    rebuildEnv();
+  }
+}
+
 // ---------- 时间预设 ----------
 const PRESETS = {
   sunset: {
@@ -73,21 +108,35 @@ const PRESETS = {
 const curSunDir = sunDir.clone();
 
 // ---------- 赛道曲线 ----------
+// 道路 XZ 走向由控制点决定，高度贴合地形（draping）：路铺在地面上、不再悬浮。
+// 贴地查询已是三角面精确插值，故无需把路架高来躲网格误差。
+// （islandBase/hills 为函数声明，已提升，可在此安全调用）
 const ctrl = [];
 for (let i = 0; i < 12; i++) {
   const a = i/12 * Math.PI*2;
   const r = 310 + 100*Math.sin(a*2.3+1.0) + 55*Math.sin(a*3.7+0.3);
-  const y = 13 + 8*Math.sin(a*2+0.5) + 5*Math.sin(a*3.1+1.2);
-  ctrl.push(new THREE.Vector3(Math.cos(a)*r, Math.max(y,3.5), Math.sin(a)*r));
+  const cx = Math.cos(a)*r, cz = Math.sin(a)*r;
+  ctrl.push(new THREE.Vector3(cx, Math.max(islandBase(cx, cz), 1.0), cz));
 }
 const curve = new THREE.CatmullRomCurve3(ctrl, true, 'catmullrom', 0.55);
 const NS = 800, samples = [], tangents = [], normals = [];
 for (let i = 0; i < NS; i++) {
   const t = i/NS;
-  samples.push(curve.getPointAt(t));
+  const p = curve.getPointAt(t);
+  p.y = islandBase(p.x, p.z); // 采样点高度取地形
+  samples.push(p);
   const tg = curve.getTangentAt(t);
   tangents.push(tg);
   normals.push(new THREE.Vector3(-tg.z, 0, tg.x).normalize());
+}
+// 沿环线平滑路面高度：滤掉地形高频颠簸，保留大尺度坡道（可顺畅驾驶）
+{
+  const W = 8, ys = samples.map(s => s.y);
+  for (let i = 0; i < NS; i++) {
+    let acc = 0;
+    for (let k = -W; k <= W; k++) acc += ys[(i + k + NS) % NS];
+    samples[i].y = Math.max(acc / (2*W + 1), 0.8);
+  }
 }
 const HALF_W = 6.2;
 
@@ -183,41 +232,33 @@ const bSamples = [], bTangents = [], bNormals = [], bBridge = [];
   const b2 = pb.clone().addScaledVector(tangents[B], -26);
   const bc = new THREE.CatmullRomCurve3([pa, a2, ...mids, b2, pb], false, 'catmullrom', 0.4);
   const NB = 260;
-  // 桥判定必须与"主路压平后的地面"比较——路口附近地形被主路抬升过，
-  // 用原始地形会把汇入口误判成桥，凭空生成横穿路面的幽灵护栏/空气墙
-  function gMain(x, z) {
-    const nr2 = nearestRoad(x, z);
-    const ry2 = roadYAt(x, z, nr2.idx);
-    const base2 = islandBase(x, z);
-    if (nr2.dist < 15) return ry2;
-    if (nr2.dist < 60) {
-      const t2 = THREE.MathUtils.smoothstep(nr2.dist, 15, 60);
-      return ry2*(1-t2) + base2*t2;
-    }
-    return base2;
-  }
-  const rawB = [];
+  // 支线同样贴合地形（draping）：不再架设跨谷桥——桥的纸片侧裙、塌陷接坡、
+  // 碰撞与视觉不一致导致"车开到地面以下"等问题，统一改为贴地内陆公路根除。
   for (let i = 0; i <= NB; i++) {
     const t = i/NB;
     const p = bc.getPointAt(t);
     const tg = bc.getTangentAt(t);
+    p.y = Math.max(islandBase(p.x, p.z), 1.0); // 高度取地形
     bSamples.push(p);
     bTangents.push(tg);
     bNormals.push(new THREE.Vector3(-tg.z, 0, tg.x).normalize());
-    rawB.push(i > 25 && i < NB - 25 && p.y - gMain(p.x, p.z) > 3);
   }
-  // 桥段必须连续 ≥14 个采样，去除碎片护栏
-  for (let i = 0; i <= NB; i++) bBridge.push(false);
-  let runStart = -1;
-  for (let i = 0; i <= NB + 1; i++) {
-    const v = i <= NB ? rawB[i] : false;
-    if (v && runStart < 0) runStart = i;
-    if (!v && runStart >= 0) {
-      const len = i - runStart;
-      if (len >= 14) for (let j = runStart; j < i; j++) bBridge[j] = true;
-      runStart = -1;
+  // 纵坡低通平滑 + 两端对齐主路汇入高度（消除接缝）
+  {
+    const W = 6, ys = bSamples.map(s => s.y);
+    for (let i = 0; i <= NB; i++) {
+      let acc = 0, n = 0;
+      for (let k = -W; k <= W; k++) { const j = i + k; if (j >= 0 && j <= NB) { acc += ys[j]; n++; } }
+      bSamples[i].y = acc / n;
+    }
+    const blend = 14;
+    for (let i = 0; i <= blend; i++) {
+      const w = i / blend;
+      bSamples[i].y = pa.y * (1 - w) + bSamples[i].y * w;
+      bSamples[NB - i].y = pb.y * (1 - w) + bSamples[NB - i].y * w;
     }
   }
+  for (let i = 0; i <= NB; i++) bBridge.push(false); // 全程贴地，无桥段
 }
 function branchInfo(x, z) {
   let best = 1e18, bi = 0;
@@ -252,10 +293,14 @@ function meshGroundHeight(x, z) {
   const gx = (x + 950)/st, gz = (z + 950)/st;
   if (gx < 0 || gz < 0 || gx >= 200 || gz >= 200) return groundHeight(x, z);
   const ix = Math.floor(gx), iz = Math.floor(gz);
-  const fx2 = gx - ix, fz2 = gz - iz;
+  const u = gx - ix, v = gz - iz;
   const h00 = terrainField[iz*g+ix], h10 = terrainField[iz*g+ix+1];
   const h01 = terrainField[(iz+1)*g+ix], h11 = terrainField[(iz+1)*g+ix+1];
-  return h00*(1-fx2)*(1-fz2) + h10*fx2*(1-fz2) + h01*(1-fx2)*fz2 + h11*fx2*fz2;
+  // 三角面精确插值：与 PlaneGeometry 实际三角剖分一致（对角线 (ix,iz+1)-(ix+1,iz)），
+  // 取代双线性——双线性与渲染三角面在起伏处可差 ~0.5m，正是"车陷进土里"的根因。
+  // 对角线 u+v=1：左下三角(含 h00) / 右上三角(含 h11)
+  if (u + v <= 1) return h00 + u*(h10 - h00) + v*(h01 - h00);
+  return h11 + (1 - u)*(h01 - h11) + (1 - v)*(h10 - h11);
 }
 
 // 车辆贴地用的"可行驶表面"高度：主路/支线/桥面取路面顶面，路外取渲染地形
@@ -461,64 +506,72 @@ function buildTerrain() {
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   terrainField = field;
   g.computeVertexNormals();
-  // 三层细节贴图：草/沙/岩按地形高度混合（splat），顶点色提供大尺度色调
-  const mat = new THREE.MeshStandardMaterial({vertexColors:true, map: terrainGrassTex(), roughness:0.95, metalness:0, envMapIntensity:0.35});
+  // —— PBR splat 地形：真实 diffuse + roughness 按高度/坡度混合（顶点算权重），森林地法线提供表面起伏
+  const TL = new THREE.TextureLoader(), TP = 'assets/terrain/';
+  const texColor = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+  const texData  = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
+  const sandD = texColor(TP+'sand_diff.jpg'), forestD = texColor(TP+'forest_diff.jpg'), rockD = texColor(TP+'rock_diff.jpg'), dryD = texColor(TP+'dry_diff.jpg');
+  const sandR = texData(TP+'sand_rough.webp'), rockR = texData(TP+'rock_rough.webp'), dryR = texData(TP+'dry_rough.webp'), forestR = texData(TP+'forest_rough.webp');
+  const forestN = texData(TP+'forest_nrm.webp');
+  const mat = new THREE.MeshStandardMaterial({ vertexColors:true, map: forestD, normalMap: forestN, roughnessMap: forestR, roughness:1.0, metalness:0, envMapIntensity:0.5 });
+  mat.normalScale.set(0.7, 0.7);
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.tSand = { value: terrainSandTex() };
-    shader.uniforms.tRock = { value: terrainRockTex() };
-    shader.vertexShader = 'varying float vTerrY;\n' + shader.vertexShader.replace(
+    shader.uniforms.tSandD = { value: sandD }; shader.uniforms.tRockD = { value: rockD }; shader.uniforms.tDryD = { value: dryD };
+    shader.uniforms.tSandR = { value: sandR }; shader.uniforms.tRockR = { value: rockR }; shader.uniforms.tDryR = { value: dryR };
+    shader.uniforms.uTile = { value: 80.0 };
+    shader.vertexShader = 'varying vec4 vW;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
       '#include <begin_vertex>',
-      '#include <begin_vertex>\n  vTerrY = position.y;'
-    );
-    shader.fragmentShader = 'uniform sampler2D tSand;\nuniform sampler2D tRock;\nvarying float vTerrY;\n' + shader.fragmentShader.replace(
-      '#include <map_fragment>',
-      [
-        'vec2 sUv = vMapUv * 90.0;',
-        'vec3 cG = texture2D(map, sUv).rgb;',
-        'vec3 cS = texture2D(tSand, sUv).rgb;',
-        'vec3 cR = texture2D(tRock, sUv * 0.6).rgb;',
-        'float wS = 1.0 - smoothstep(1.2, 4.0, vTerrY);',
-        'float wR = smoothstep(13.0, 21.0, vTerrY);',
-        'float wG = max(0.0, 1.0 - wS - wR);',
-        'diffuseColor.rgb *= (cG*wG + cS*wS + cR*wR) * 1.18;'
-      ].join('\n')
-    );
+      'float H = position.y;',
+      'float sl = 1.0 - clamp(normal.y, 0.0, 1.0);',                 // 坡度
+      'float wSand = 1.0 - smoothstep(0.6, 3.0, H);',                // 低处海岸=沙
+      'float wRock = clamp(smoothstep(14.0, 22.0, H) + smoothstep(0.42, 0.72, sl), 0.0, 1.0);', // 高处/陡坡=岩
+      'float wDry  = smoothstep(3.5, 9.0, H) * (1.0 - smoothstep(15.0, 22.0, H));',             // 中段过渡=干裂地
+      'vec4 w = vec4(wSand, 1.0, wRock, wDry);',                     // forest 作底
+      'vW = w / (w.x + w.y + w.z + w.w);'
+    ].join('\n'));
+    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; varying vec4 vW;\n' + shader.fragmentShader
+      .replace('#include <map_fragment>', [
+        'vec2 uvT = vMapUv * uTile;',
+        'vec3 dF = texture2D(map, uvT).rgb;',
+        'vec3 dS = texture2D(tSandD, uvT).rgb;',
+        'vec3 dR = texture2D(tRockD, uvT*0.6).rgb;',
+        'vec3 dD = texture2D(tDryD, uvT).rgb;',
+        'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1;'
+      ].join('\n'))
+      .replace('#include <roughnessmap_fragment>', [
+        'float roughnessFactor = roughness;',
+        'vec2 uvR = vMapUv * uTile;',
+        'float rF = texture2D(roughnessMap, uvR).g;',
+        'float rS = texture2D(tSandR, uvR).g;',
+        'float rR = texture2D(tRockR, uvR*0.6).g;',
+        'float rD = texture2D(tDryR, uvR).g;',
+        'roughnessFactor *= (rS*vW.x + rF*vW.y + rR*vW.z + rD*vW.w);'
+      ].join('\n'));
   };
   const m = new THREE.Mesh(g, mat);
   m.receiveShadow = true;
   scene.add(m);
 }
 
-// ---------- 海洋 ----------
-const fallbackOcean = new THREE.Mesh(
-  new THREE.PlaneGeometry(5200, 5200),
-  new THREE.MeshStandardMaterial({color:0x0d3b52, roughness:0.15, metalness:0.1, envMapIntensity:1.3})
-);
-fallbackOcean.rotation.x = -Math.PI/2;
-fallbackOcean.visible = false;
-scene.add(fallbackOcean);
+// ---------- 海洋（环境反射 PBR 海面：反射循环天空(IBL)，几乎零额外开销） ----------
+// 弃用 Three.js Water 的实时平面反射——它每帧把整个场景重渲一遍做反射，而海面 98% 时间看不到，
+// 性价比极差。改用低粗糙度 PBR 平面 + 法线波纹，靠 scene.environment 反射天空，开销可忽略。
+const oceanMat = new THREE.MeshStandardMaterial({ color: 0x0d3b52, roughness: 0.12, metalness: 0.0, envMapIntensity: 1.5 });
+const ocean = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), oceanMat);
+ocean.rotation.x = -Math.PI / 2;
+scene.add(ocean);
+G.water = ocean;
+G.waterOK = true;
+const fallbackOcean = ocean; // 兼容旧引用（同一网格）
 new THREE.TextureLoader().load(
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',
   (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    G.water = new Water(new THREE.PlaneGeometry(5200, 5200), {
-      textureWidth: 512, textureHeight: 512,
-      waterNormals: tex,
-      sunDirection: curSunDir.clone(),
-      sunColor: 0xffaa66,
-      waterColor: 0x06283a,
-      distortionScale: 3.2,
-      fog: true
-    });
-    G.water.rotation.x = -Math.PI/2;
-    scene.add(G.water);
-    G.waterOK = true;
-    G.water.visible = G.hiQuality;
-    fallbackOcean.visible = !G.hiQuality;
-    applyTod(G.curTod); // 同步当前预设的水面颜色
-  },
-  undefined,
-  () => { fallbackOcean.visible = true; }
+    tex.repeat.set(48, 48);
+    oceanMat.normalMap = tex;          // 法线波纹（offset 在主循环滚动 → 动态水面）
+    oceanMat.normalScale.set(0.45, 0.45);
+    oceanMat.needsUpdate = true;
+  }
 );
 
 // ---------- 公路 ----------
@@ -611,9 +664,54 @@ function buildRoad() {
     m2.receiveShadow = true;
     return m2;
   }
-  scene.add(branchRibbon(-B_HALF, B_HALF, 0.07, roadMat));
-  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.09, lineMat));
-  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.09, lineMat));
+  // 支线路面铺在主路面之下（0.045 < 主路 0.05）：汇入口重叠处由更宽的主路覆盖，
+  // 消除"窄支线贴片盖在主路上"造成的衔接错位/闪烁；车道线仍高于两条路面以保持可见
+  scene.add(branchRibbon(-B_HALF, B_HALF, 0.045, roadMat));
+  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.065, lineMat));
+  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.065, lineMat));
+
+  // —— 路口铺面（junction apron）：支线汇入主路处，两条直纹路面以夹角相交会留下
+  // 一块没有沥青覆盖的楔形缺口（露出地形 + 边线交叉穿模）。这里用"主路边沿 + 支线边沿"
+  // 采样点的凸包生成一块贴合路面高度的沥青补片，盖住缺口并覆盖杂乱的交叉车道线。
+  const apronMat = new THREE.MeshStandardMaterial({map: asphaltTex, color: 0x2c2c31, roughness: 0.85, metalness: 0, side: THREE.DoubleSide});
+  function junctionApron(mainIdx, branchIdxs) {
+    const pts = [];
+    for (let d = -5; d <= 5; d++) {
+      const i = (mainIdx + d + NS) % NS, p = samples[i], n = normals[i];
+      pts.push([p.x + n.x*HALF_W, p.z + n.z*HALF_W]);
+      pts.push([p.x - n.x*HALF_W, p.z - n.z*HALF_W]);
+    }
+    for (const k of branchIdxs) {
+      if (k < 0 || k >= bSamples.length) continue;
+      const p = bSamples[k], n = bNormals[k];
+      pts.push([p.x + n.x*B_HALF, p.z + n.z*B_HALF]);
+      pts.push([p.x - n.x*B_HALF, p.z - n.z*B_HALF]);
+    }
+    // 凸包（Andrew monotone chain）
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+    const lo = [], hi = [];
+    for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
+    for (let i = pts.length-1; i >= 0; i--) { const p = pts[i]; while (hi.length >= 2 && cr(hi[hi.length-2], hi[hi.length-1], p) <= 0) hi.pop(); hi.push(p); }
+    const hull = lo.slice(0, -1).concat(hi.slice(0, -1));
+    if (hull.length < 3) return;
+    let cx = 0, cz = 0; for (const p of hull) { cx += p[0]; cz += p[1]; } cx /= hull.length; cz /= hull.length;
+    // 贴合路面高度（+0.03 确保盖住车道线 0.07 与路面 0.05，避免穿模），并给一点 UV 让沥青有纹理
+    const verts = [], uvs = [], idx = [];
+    verts.push(cx, surfaceHeight(cx, cz) + 0.03, cz); uvs.push(0.5, 0.5);
+    for (const p of hull) { verts.push(p[0], surfaceHeight(p[0], p[1]) + 0.03, p[1]); uvs.push((p[0]-cx)*0.04 + 0.5, (p[1]-cz)*0.04 + 0.5); }
+    for (let i = 0; i < hull.length; i++) idx.push(0, 1 + i, 1 + (i+1) % hull.length);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, apronMat); m.receiveShadow = true;
+    scene.add(m);
+  }
+  junctionApron(BRANCH_A, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  const lastB = bSamples.length - 1;
+  junctionApron(BRANCH_B, [lastB, lastB-1, lastB-2, lastB-3, lastB-4, lastB-5, lastB-6, lastB-7, lastB-8]);
+
   const pylonM = new THREE.MeshStandardMaterial({color:0x8d8d94, roughness:0.8});
   const bRailM = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
   const skirtM = new THREE.MeshStandardMaterial({color:0x55565e, roughness:0.85});
@@ -672,7 +770,7 @@ async function buildScenery() {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
     if (nearestRoad(x, z).dist < 16 || branchInfo(x, z).dist < 14) continue;
-    const h = groundHeight(x, z);
+    const h = meshGroundHeight(x, z); // 用渲染网格高度放置，杜绝低面数地形上的悬浮
     if (h < 0.6 || h > 20) continue;
     // 坡度过滤：低面数地形在陡坡上与解析高度有偏差，避免悬浮
     const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
@@ -728,7 +826,7 @@ async function buildScenery() {
       const a = Math.random()*Math.PI*2, r = 40 + Math.random()*600;
       const x = Math.cos(a)*r, z = Math.sin(a)*r;
       if (nearestRoad(x, z).dist < opt.minRoad || branchInfo(x, z).dist < opt.minRoad) continue;
-      const h = groundHeight(x, z);
+      const h = meshGroundHeight(x, z); // 贴渲染网格，消除地被悬浮
       if (h < opt.hMin || h > opt.hMax) continue;
       const slope = Math.abs(groundHeight(x+4, z) - groundHeight(x-4, z))
                   + Math.abs(groundHeight(x, z+4) - groundHeight(x, z-4));
@@ -988,7 +1086,7 @@ function buildEnv() {
   while (fi < FN && fguard++ < 2000) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*440;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
-    const h = groundHeight(x, z);
+    const h = meshGroundHeight(x, z);
     if (h < 1 || h > 16) continue;
     fpos[fi*3] = x; fpos[fi*3+1] = h + 0.5 + Math.random()*2.2; fpos[fi*3+2] = z;
     fi++;
@@ -1018,7 +1116,7 @@ function buildEnv() {
     const off = 9 + Math.random()*32;
     const x = p.x + n.x*side*off, z = p.z + n.z*side*off;
     if (branchInfo(x, z).dist < 9) continue;
-    const h = groundHeight(x, z);
+    const h = meshGroundHeight(x, z); // 贴渲染网格
     if (h < 1 || h > 16) continue;
     // 陡坡跳过 + 下沉锚地，避免低面数地形上的悬浮草块
     const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
@@ -1071,12 +1169,7 @@ function applyTod(name) {
   scene.fog.color.setHex(P.fog);
   bloomPass.strength = G.hiQuality ? P.bloom : 0;
   stars.visible = (name === 'night');
-  if (G.waterOK) {
-    G.water.material.uniforms.waterColor.value.setHex(P.water);
-    G.water.material.uniforms.sunDirection.value.copy(curSunDir);
-    G.water.material.uniforms.sunColor.value.setHex(name==='night' ? 0x334466 : 0xffaa66);
-  }
-  fallbackOcean.material.color.setHex(P.water);
+  if (G.waterOK) G.water.material.color.setHex(P.water);
   // 车灯
   for (const h of G.headlights) h.intensity = P.lights ? 150 : 0;
   // 环境元素昼夜联动（环境可能尚未构建完成，需判空）
@@ -1096,8 +1189,8 @@ function applyTod(name) {
     if (P.lights) { m.emissive.setHex(0xfff4e0); m.emissiveIntensity = 1.7; }
     else { m.emissive.copy(m.userData?.origEmissive || new THREE.Color(0)); m.emissiveIntensity = m.userData?.origEI ?? 1; }
   }
-  rebuildEnv();
+  applySkyForTod();
 }
 
 
-export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, BRANCH_A, BRANCH_B, bSamples, bNormals, bBridge, env, fallbackOcean, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };
+export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, BRANCH_A, BRANCH_B, bSamples, bNormals, bBridge, env, fallbackOcean, sky, stars, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };

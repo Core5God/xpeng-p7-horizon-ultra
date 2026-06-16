@@ -54,6 +54,29 @@ for (const sx of [-1, 1]) {
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
+
+// —— 金属闪片噪点法线（CarConcept 同款手法）：高密度噪点法线 + 最近邻过滤 → 漆面细闪/金属颗粒感
+const flakeNormalTex = (() => {
+  const s = 512, cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const cx = cv.getContext('2d'), img = cx.createImageData(s, s);
+  for (let i = 0; i < s * s; i++) {
+    const flake = Math.random() < 0.6;           // 更多"闪片"像素，强偏转
+    const amp = flake ? 150 : 28;
+    img.data[i*4]   = 128 + (Math.random() - 0.5) * amp; // 法线 X
+    img.data[i*4+1] = 128 + (Math.random() - 0.5) * amp; // 法线 Y
+    img.data[i*4+2] = 255;                                // 法线 Z（朝上）
+    img.data[i*4+3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(110, 110);                  // 平铺密度（闪片大小）
+  t.magFilter = THREE.NearestFilter;       // 近距锐利闪片
+  t.minFilter = THREE.NearestMipmapLinearFilter; // 远距用 mip 抑制闪烁
+  t.anisotropy = 4;
+  return t;
+})();
 const elLoadFill = document.getElementById('loadfill');
 const elLoadText = document.getElementById('loadtext');
 loader.load(GLB_URL, (gltf) => {
@@ -85,7 +108,18 @@ loader.load(GLB_URL, (gltf) => {
         if (m.name && m.name.startsWith('Mat_E29_Body')) {
           // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
           paintMats.push(m);
-          if ('clearcoat' in m) { m.clearcoat = 1.0; m.clearcoatRoughness = 0.07; }
+          // 渲染级金属车漆：高金属度的漆面 + 锐利清漆层 + 更强环境反射 → 去除"塑料感"
+          // （原始 metalness≈0.3 + 软清漆，反射糊、像塑料）
+          m.metalness = 0.92;
+          m.roughness = 0.2;            // 0.35→0.2：反射更锐利，去掉"油腻软糊"感，呈现金属反射
+          m.envMapIntensity = 1.7;
+          if ('clearcoat' in m) {
+            m.clearcoat = 1.0;
+            m.clearcoatRoughness = 0.04; // 锐利清漆层
+          }
+          m.normalMap = flakeNormalTex;  // 金属闪片
+          m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
+          m.needsUpdate = true;
           m.userData.origColor = m.color.clone();
         }
         if (m.name === 'Mat_E29_Lamps') {
@@ -338,7 +372,7 @@ function physics(dt) {
   // —— 防楔入：超过 55cm 的台阶一律视为实体墙（错位路沿/桥侧/并行路段步差）。
   // 只回退"朝墙"的位移分量、保留沿墙切向滑动（贴墙不定住）；
   // 速度强制衰减，杜绝"位置冻结但速度高企 → 原地持续喷尾气"的死锁
-  if (!state.airborne && gy - state.pos.y > 0.55) {
+  if (!state.airborne && gy - state.pos.y > 0.8) {
     const cy = state.pos.y;
     const gxp = surfaceHeight(state.pos.x + 0.6, state.pos.z, cy) - surfaceHeight(state.pos.x - 0.6, state.pos.z, cy);
     const gzp = surfaceHeight(state.pos.x, state.pos.z + 0.6, cy) - surfaceHeight(state.pos.x, state.pos.z - 0.6, cy);
@@ -360,7 +394,7 @@ function physics(dt) {
       state.vx *= 0.55; state.vz *= 0.55;
     }
     gy = surfaceHeight(state.pos.x, state.pos.z, state.pos.y);
-    if (gy - state.pos.y > 0.55) {
+    if (gy - state.pos.y > 0.8) {
       // 滑动后仍在高台内（极端凹角）：保底完全回退 + 强衰减
       state.pos.x = prevPX; state.pos.z = prevPZ;
       state.vx *= 0.55; state.vz *= 0.55;
@@ -391,7 +425,7 @@ function physics(dt) {
   } else {
     // 贴地：下坡快速贴附（杜绝下坡误入腾空态造成的颠簸），上坡平滑
     const prevY = state.pos.y;
-    const rate = gy < state.pos.y ? 30 : 12;
+    const rate = gy < state.pos.y ? 30 : 22; // 上坡贴附加快：高速上坡时车身能跟上路面，避免落差误判为墙而原地截停
     state.pos.y += (gy - state.pos.y) * Math.min(1, dt*rate);
     const instV = dt > 0 ? (state.pos.y - prevY)/dt : 0;
     state.vyAir = Math.max(-2, Math.min(14, state.vyAir*0.65 + instV*0.35)); // 平滑，滤掉起伏毛刺
@@ -550,6 +584,10 @@ function updateChaseCamera(dt, boost) {
   );
   const targetFov = 66 + Math.min(14, spd*0.21) + (boost ? 6 : 0); // 速度感：FOV 随速外扩
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt*3);
+  // 近裁面随视角切换：座舱视角相机贴在仪表台前，需要 0.1 避免切掉车内几何；
+  // 外部视角用 0.3 给 GTAO 留深度精度（updateProjectionMatrix 本就每帧调用，无额外开销）
+  const wantNear = G.camMode === 3 ? 0.1 : 0.3;
+  if (camera.near !== wantNear) camera.near = wantNear;
   camera.updateProjectionMatrix();
 }
 
@@ -593,6 +631,17 @@ export function createGhostClone() {
   ghost.visible = false;
   scene.add(ghost);
   return ghost;
+}
+
+// 无人驾驶滑行：下车后车按强阻力自然滚停（既不瞬间定死、也不无限飞出），步行模式每帧调用
+export function coastVehicle(dt) {
+  const sp = Math.hypot(state.vx, state.vz);
+  if (sp < 0.15 && Math.abs(state.speed) < 0.15) { state.vx = 0; state.vz = 0; state.speed = 0; return; }
+  const k = Math.exp(-3.0 * dt);
+  state.vx *= k; state.vz *= k; state.speed *= k;
+  state.pos.x += state.vx * dt;
+  state.pos.z += state.vz * dt;
+  settleCarPose();
 }
 
 export { car, state, PAINTS, applySkin, setGlassSeeThru, settleCarPose, physics, updateChaseCamera, camPos, camDamp, camAng };
