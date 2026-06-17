@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { G, camera, renderer, canvas, composer, bloomPass, photoPass } from './core.js';
+import { G, camera, renderer, canvas, composer, bloomPass, photoPass, sun } from './core.js';
 import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic } from './audio.js';
-import { spawnCharacter, setCharacterVisible } from './character.js';
+import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -28,7 +28,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
 // ---------- 设置持久化 ----------
 let hintsOn = true, keytipsTimer = null;
 function saveSettings() {
-  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, hintsOn, routeId: race.routeIdx})); } catch(e) {}
+  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, hintsOn, routeId: race.routeIdx, charId: G.charId})); } catch(e) {}
 }
 function loadSettings() {
   try {
@@ -40,6 +40,7 @@ function loadSettings() {
     if (typeof s.musicOn === 'boolean') G.musicOn = s.musicOn;
     if (typeof s.hintsOn === 'boolean') hintsOn = s.hintsOn;
     if (typeof s.routeId === 'number') selectRoute(s.routeId);
+    if (s.charId) G.charId = s.charId;
   } catch(e) {}
 }
 
@@ -95,6 +96,26 @@ function buildRouteRow() {
 function refreshRouteRow() {
   document.querySelectorAll('#routeRow .opt').forEach((b, i) => b.classList.toggle('sel', i === race.routeIdx));
 }
+function buildCharRow() {
+  for (const rowId of ['charRowG', 'charRowP']) {
+    const row = document.getElementById(rowId);
+    if (!row) continue;
+    row.innerHTML = '';
+    CHARACTERS.forEach((c) => {
+      const b = document.createElement('button');
+      b.className = 'charcard';
+      b.dataset.char = c.id;
+      b.innerHTML = '<b>' + c.name + '</b><i>' + c.sub + '</i>';
+      b.addEventListener('click', () => { setActiveCharacter(c.id); refreshCharRow(); saveSettings(); });
+      row.appendChild(b);
+    });
+  }
+  refreshCharRow();
+}
+function refreshCharRow() {
+  const id = getActiveId();
+  document.querySelectorAll('.charcard').forEach((b) => b.classList.toggle('sel', b.dataset.char === id));
+}
 export function refreshRecords() {
   const v = getRecordsView();
   const box = document.getElementById('recordsBox');
@@ -142,6 +163,12 @@ function setQuality(q) {
   const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.25 : 1); // 高画质像素比 1.5→1.25：填充率约降 30%，车身仍锐利
   renderer.setPixelRatio(pr);
   composer.setPixelRatio(pr);
+  // 阴影贴图随画质：低画质降到 1024²（开放世界阴影很贵，分辨率减半省一半阴影 pass 开销）
+  const wantShadow = G.hiQuality ? 2048 : 1024;
+  if (sun.shadow.mapSize.width !== wantShadow) {
+    sun.shadow.mapSize.set(wantShadow, wantShadow);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // 触发重建
+  }
   refreshSettingBtns(); saveSettings();
 }
 for (const id of ['gQuality','pQuality']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; } // 画质统一：隐藏手动切换
@@ -160,7 +187,7 @@ function setOrbitAroundCar(dist, height) {
 function enterGarage() {
   G.appState = 'garage';
   document.body.style.cursor = '';
-  setCharacterVisible(false);
+  showCharacterPreview(true);   // 车库内角色站立预览（选人）
   saveBestScore();
   if (race.phase !== 'free') endRace();
   state.speed = 0; state.vx = 0; state.vz = 0;
@@ -189,6 +216,7 @@ function startDrive(raceMode) {
   showKeytipsFresh();
   G.appState = 'drive';
   document.body.style.cursor = 'none';
+  setCharacterVisible(false);   // 关闭车库站立预览
   document.body.classList.remove('nohud');
   elGarage.classList.remove('show');
   elPause.classList.remove('show');
@@ -307,7 +335,11 @@ document.getElementById('posterClose').addEventListener('click', () => {
 });
 document.getElementById('btnShot').addEventListener('click', () => {
   composer.render();
-  canvas.toBlob((blob) => {
+  // 同帧同步拷贝到离屏 canvas：渲染缓冲在本次事件内仍有效，无需 preserveDrawingBuffer
+  const sc = document.createElement('canvas');
+  sc.width = canvas.width; sc.height = canvas.height;
+  sc.getContext('2d').drawImage(canvas, 0, 0);
+  sc.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'XPENG_P7_' + Date.now() + '.png';
@@ -455,6 +487,7 @@ export function initUI() {
   loadSettings();
   buildRows();
   buildRouteRow();
+  buildCharRow();
   refreshRecords();
   refreshSwatches();
   refreshTodButtons();

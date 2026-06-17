@@ -76,6 +76,13 @@
   .opt{font-family:inherit;font-size:16px;font-weight:600;color:#fff;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.2);padding:10px 24px;cursor:pointer;transform:skewX(-8deg);letter-spacing:1px;transition:background .15s}
   .opt.sel{background:rgba(0,150,230,.5);border-color:var(--cy)}
   .opt:hover{background:rgba(255,255,255,.22)}
+  /* —— 角色选择卡 —— */
+  .charrow{gap:14px}
+  .charcard{font-family:inherit;min-width:150px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:12px 20px 11px;cursor:pointer;transform:skewX(-8deg);text-align:left;transition:background .15s,box-shadow .15s,transform .15s}
+  .charcard>b{display:block;transform:skewX(8deg);font-size:21px;font-weight:700;font-style:italic;letter-spacing:2px}
+  .charcard>i{display:block;transform:skewX(8deg);font-style:normal;font-size:11px;letter-spacing:2px;opacity:.62;margin-top:2px}
+  .charcard:hover{background:rgba(255,255,255,.2)}
+  .charcard.sel{background:linear-gradient(90deg,rgba(0,150,230,.5),rgba(111,59,255,.35));border-color:var(--cy);box-shadow:0 0 16px rgba(25,211,255,.6)}
   #loadbar{height:5px;width:380px;background:rgba(255,255,255,.14);margin-top:26px;overflow:hidden;transform:skewX(-8deg)}
   #loadfill{height:100%;width:0%;background:linear-gradient(90deg,#00e5ff,#7c4dff);transition:width .3s}
   #loadtext{font-size:13.5px;opacity:.65;margin-top:9px;letter-spacing:1px}
@@ -196,6 +203,7 @@
     </div>
     <button class="cta" id="btnRoam" disabled><span>自由漫游</span><em>FREE ROAM</em></button>
     <button class="cta cta2" id="btnRace" disabled><span>竞速赛</span><em>CIRCUIT · 10 CHECKPOINTS</em></button>
+    <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowG"></div>
     <div class="sec">车漆 PAINT</div><div class="row" id="paintRowG"></div>
     <div class="sec">时间 TIME</div><div class="row" id="todRowG"></div>
     <div class="sec">路线 ROUTE</div><div class="row" id="routeRow"></div>
@@ -220,6 +228,7 @@
     <button class="cta" id="btnResume"><span>继续</span><em>RESUME · ESC</em></button>
     <button class="cta ghost" id="btnPhoto"><span>照片模式</span><em>PHOTO MODE · P</em></button>
     <button class="cta ghost" id="btnGarage"><span>回车库</span><em>GARAGE</em></button>
+    <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowP"></div>
     <div class="sec">车漆 PAINT</div><div class="row" id="paintRowP"></div>
     <div class="sec">时间 TIME</div><div class="row" id="todRowP"></div>
     <div class="sec">设置 SETTINGS</div>

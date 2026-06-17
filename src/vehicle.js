@@ -30,7 +30,11 @@ const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
 let _reflN = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  if ((_reflN++ % 8) !== 0) return; // 每 8 帧更新，降低帧时间尖峰（行车更平稳）
+  // 自适应更新频率：静止/低速时环境几乎不变 → 大幅降频省去整场景 6 面重渲（单帧最大尖峰源）。
+  // 高速行驶环境快速变化才用 8 帧；停车 32 帧、低速 16 帧。
+  const sp = Math.abs(state.speed);
+  const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
+  if ((_reflN++ % interval) !== 0) return;
   reflectCam.position.set(state.pos.x, state.pos.y + 1.0, state.pos.z);
   const vis = car.visible; car.visible = false;
   reflectCam.update(renderer, scene);

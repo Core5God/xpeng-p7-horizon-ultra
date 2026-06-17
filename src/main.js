@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, sun, rim } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
-import { buildCharacter, characterUpdate, characterCamera, charState } from './character.js';
+import { buildCharacter, characterUpdate, characterCamera, characterPreviewUpdate, charState } from './character.js';
 import { buildSkyCycle, skyCycleUpdate } from './skycycle.js';
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
@@ -89,6 +89,7 @@ function loopBody() {
       const gyC = Math.max(groundHeight(camera.position.x, camera.position.z), 0.1);
       if (camera.position.y < gyC + 0.45) camera.position.y = gyC + 0.45;
     }
+    if (G.appState === 'garage') characterPreviewUpdate(dt); // 车库选人：推进站立 idle
   }
   audioUpdate();
   skyCycleUpdate(dt); // 动态天空/天气循环（接管太阳/雾/曝光/反射）

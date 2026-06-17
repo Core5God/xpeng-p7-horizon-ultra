@@ -3,10 +3,10 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, camera, sun, hemi, rim, bloomPass } from './core.js';
 import { curSunDir, env, sky, stars, fallbackOcean } from './world.js';
 
-// ---------- 动态天空 / 天气循环 ----------
-// 6 个时段关键帧（按时间推进），双天空球交叉淡入做平滑过渡；
+// ---------- 动态天空 / 天气循环（HDR 贴图交叉淡入）----------
+// 5 个时段关键帧（按时间推进），双天空交叉淡入做平滑过渡；
 // 每帧插值 太阳方向/色/强度、半球光、雾色、曝光、水色、Bloom、夜间灯光；
-// 反射环境用「混合天空 + 环境色地面」周期重建（反射带环境色，而非纯天光）。
+// 反射环境用「钳制天空 + 环境色地面」周期重建（反射带环境色、太阳不溢出）。
 const KEYS = [
   { f:'day3',    dir:[0,0.33,0.95],     sunC:0xfff4e0, sunI:7.5, hemiI:1.3,  hemiC:0xcfe5ff, fog:0xaec6da, exp:0.82, envI:1.5,  water:0x0d4a66, bloom:0.06, night:0, grd:0x9a875c },
   { f:'day2',    dir:[0.79,0.12,0.60],  sunC:0xdfe6ee, sunI:3.0, hemiI:1.6,  hemiC:0xc8d2dc, fog:0xc2c8cf, exp:1.0,  envI:1.5,  water:0x294a5a, bloom:0.05, night:0, grd:0x6f6a5e },
@@ -21,15 +21,17 @@ KEYS.forEach(k => {
 });
 
 const N = KEYS.length;
-const CYCLE_SEC = 84;          // 整圈时长（越小越快），约每段 14s
+const CYCLE_SEC = 84;          // 整圈时长（越小越快），约每段 17s
 const SEG = CYCLE_SEC / N;
 const texs = new Array(N);
 let phase = 0, ready = false, loaded = 0, envTimer = 0, lastEnvTex = null;
 let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem, envSrcRT, clampScene, clampMat;
+let skyCubeRT, cubeCam, cubeScene;   // 等距混合结果→立方体（规避 equirect 背景的 cubemap 永久缓存）
+let _dbg = null; // 屏幕调试条（定位天空循环问题后会移除）
+function anyTex() { for (let t = 0; t < N; t++) if (texs[t]) return texs[t]; return null; }
 
 export function buildSkyCycle() {
   // 背景：把"当前/下一张"等距天空按淡入系数混合渲染到一张 HalfFloat RT，再交给原生 scene.background。
-  // 原生等距背景着色器无两极挤压/接缝、画质最佳，同时支持平滑交叉淡入。
   blendRT = new THREE.WebGLRenderTarget(1536, 768, { type: THREE.HalfFloatType, depthBuffer: false });
   blendRT.texture.mapping = THREE.EquirectangularReflectionMapping;
   blendRT.texture.minFilter = THREE.LinearFilter;
@@ -44,8 +46,19 @@ export function buildSkyCycle() {
     depthTest: false, depthWrite: false
   });
   blendScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blendMat));
+  skyCubeRT = new THREE.WebGLCubeRenderTarget(768, { type: THREE.HalfFloatType });
+  skyCubeRT.texture.minFilter = THREE.LinearFilter; skyCubeRT.texture.magFilter = THREE.LinearFilter; skyCubeRT.texture.generateMipmaps = false;
+  cubeCam = new THREE.CubeCamera(1, 10, skyCubeRT);
+  cubeScene = new THREE.Scene();
+  const cubeMat = new THREE.ShaderMaterial({
+    uniforms: { tEquirect: { value: blendRT.texture } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize((modelMatrix * vec4(position, 0.0)).xyz); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: '#include <common>\nuniform sampler2D tEquirect; varying vec3 vDir; void main(){ vec3 d = normalize(vDir); vec2 uv = equirectUv(d); gl_FragColor = texture2D(tEquirect, uv); }',
+    side: THREE.BackSide, depthTest: false, depthWrite: false, blending: THREE.NoBlending
+  });
+  cubeScene.add(new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), cubeMat));
 
-  // 反射钳制：天空 HDRI 太阳高达 3 万，会在镜面上溢出成"方块"。把反射环境的亮度上限钳到 ~12，
+  // 反射钳制：天空 HDRI 太阳高达数万，会在镜面上溢出成"方块"。把反射环境亮度上限钳到 ~12，
   // 太阳变成有界的圆亮点 → 玻璃可做镜面 + 锐利天空反射而不出方块。
   envSrcRT = new THREE.WebGLRenderTarget(1024, 512, { type: THREE.HalfFloatType, depthBuffer: false });
   envSrcRT.texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -60,11 +73,22 @@ export function buildSkyCycle() {
   clampScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), clampMat));
   // 反射环境：钳制后的等距天空做背景 + 暗地面 → 镜面反射锐利、太阳不溢出、带环境色
   envScene = new THREE.Scene();
-  envScene.background = envSrcRT.texture;
+  const envSkyMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(300, 48, 32),
+    new THREE.MeshBasicMaterial({ map: envSrcRT.texture, side: THREE.BackSide, toneMapped: false, depthTest: false, depthWrite: false, fog: false })
+  );
+  envSkyMesh.renderOrder = -1;
+  envScene.add(envSkyMesh);
   envGround = new THREE.Mesh(new THREE.CircleGeometry(160, 48), new THREE.MeshBasicMaterial({ color: 0x5a5348, toneMapped: false }));
   envGround.rotation.x = -Math.PI / 2; envGround.position.y = -6;
   envScene.add(envGround);
   pmrem = new THREE.PMREMGenerator(renderer);
+
+  // 屏幕调试条
+  _dbg = document.createElement('div');
+  _dbg.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.65);color:#5f5;font:12px monospace;padding:3px 10px;border-radius:4px;pointer-events:none;white-space:nowrap';
+  _dbg.textContent = 'SKY 加载中 0/' + N;
+  document.body.appendChild(_dbg);
 
   const loader = new RGBELoader();
   KEYS.forEach((k, i) => loader.load('assets/sky/' + k.f + '.hdr', (tex) => {
@@ -73,32 +97,52 @@ export function buildSkyCycle() {
     tex.minFilter = THREE.LinearFilter;
     tex.generateMipmaps = false;
     texs[i] = tex;
-    if (++loaded === N) start();
-  }, undefined, (e) => console.warn('天空 HDRI 加载失败', k.f, e)));
+    loaded++;
+    console.log('[SKY] 已加载', k.f, loaded + '/' + N);
+    if (!ready) start();                     // 第一张就绪即接管（兜底：不再苦等 5 张全到）
+  }, undefined, (e) => { console.warn('[SKY] HDRI 加载失败', k.f, e); if (_dbg) _dbg.textContent = 'SKY 加载失败: ' + k.f; }));
 }
 
 function start() {
   if (sky) sky.visible = false;        // 接管：隐藏程序化天空盒
-  scene.background = blendRT.texture;   // 原生等距背景（混合 RT 提供，无两极挤压）
+  scene.background = skyCubeRT.texture;   // cube background, refreshed from blendRT each frame
   ready = true;
 }
 
 const _z = new THREE.Color(0);
+const _lampLit = new THREE.Color(0xfff4e0);   // 灯体点亮时的暖白自发光色
+function clamp01(t) { return t < 0 ? 0 : t > 1 ? 1 : t; }
+// 平滑插值：段内系数 f 经 smoothstep，消除关键帧切换处的速度突变（硬切观感来源之一）
+function smooth(t) { return t * t * (3 - 2 * t); }
 export function skyCycleUpdate(dt) {
-  if (!ready || !G.weatherOn) return;
+  if (!ready || !G.weatherOn) {
+    if (_dbg) _dbg.textContent = `SKY 载入${loaded}/${N} ready=${ready} weather=${G.weatherOn}（未就绪）`;
+    return;
+  }
+  try {
   phase = (phase + dt / SEG) % N;
-  const i = Math.floor(phase), f = phase - i, j = (i + 1) % N;
+  const i = Math.floor(phase), fRaw = phase - i, j = (i + 1) % N;
+  const f = smooth(fRaw);          // 平滑段内插值系数，两端导数为 0 → 过渡无突变
   const A = KEYS[i], B = KEYS[j];
 
-  // 天空交叉淡入：把当前/下一张等距天空按 f 混合渲染到背景 RT
-  if (texs[i] && texs[j]) {
-    blendMat.uniforms.tA.value = texs[i];
-    blendMat.uniforms.tB.value = texs[j];
+  // 背景：当前/下一张 HDR 交叉淡入到 blendRT，再交给 scene.background → 天空贴图平滑过渡，不再硬切。
+  // 缺贴图兜底：任一张未就绪时退回可用贴图直接显示。
+  const texA = texs[i], texB = texs[j];
+  let curTex;
+  if (texA && texB) {
+    blendMat.uniforms.tA.value = texA;
+    blendMat.uniforms.tB.value = texB;
     blendMat.uniforms.uT.value = f;
-    const prev = renderer.getRenderTarget();
+    const prevRT = renderer.getRenderTarget();
     renderer.setRenderTarget(blendRT);
     renderer.render(blendScene, blendCam);
-    renderer.setRenderTarget(prev);
+    renderer.setRenderTarget(prevRT);
+    cubeCam.update(renderer, cubeScene);   // re-render equirect blend into cube RT (avoids equirect-background cubemap cache freeze)
+    if (scene.background !== skyCubeRT.texture) scene.background = skyCubeRT.texture;
+    curTex = blendRT.texture;
+  } else {
+    curTex = texA || texB || anyTex();
+    if (curTex && scene.background !== curTex) scene.background = curTex;
   }
 
   // 灯光 / 雾 / 曝光 / 水色 插值
@@ -113,36 +157,38 @@ export function skyCycleUpdate(dt) {
   bloomPass.strength = G.hiQuality ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
   const nightAmt = A.night + (B.night - A.night) * f;
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
-  rim.color.copy(sun.color); // 补光颜色跟随太阳，杜绝旧预设暖色残留（光影叠加）
+  rim.color.copy(sun.color); // 补光颜色跟随太阳
   if (G.waterOK && G.water) G.water.material.color.copy(A._water).lerp(B._water, f);
 
-  // 夜间元素
-  const isNight = nightAmt > 0.5;
-  for (const h of G.headlights) h.intensity = isNight ? 150 : 0;
+  // 夜间元素：用连续淡入系数 nf 替代布尔阈值开关，消除"天光突然开灯"的硬切。
+  // nf 在 nightAmt 0.3→0.7 间平滑爬升 → 车灯/路灯/灯笼亮度随天色渐变点亮。
+  const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
+  for (const h of G.headlights) h.intensity = 150 * nf;
   if (env.lampHeadM) {
-    env.lampHeadM.emissiveIntensity = isNight ? 2.2 : 0.1;
-    env.lampPools.visible = isNight;
-    env.moon.visible = false;        // 关掉旧月亮贴片（天顶大白光晕来源），夜空改用 HDRI 自带内容
-    env.fireflies.visible = nightAmt > 0.45;
-    env.beamGrp.visible = nightAmt > 0.62; // 灯塔光柱仅深夜出现，避免黄昏/黎明残留粗糙光柱
-    if (env.lanternM) env.lanternM.emissiveIntensity = isNight ? 2.4 : 0.15;
+    env.lampHeadM.emissiveIntensity = 0.1 + (2.2 - 0.1) * nf;
+    env.lampPools.material.opacity = 0.4 * nf;       // 地面光斑随灯亮渐显
+    env.lampPools.visible = nf > 0.01;
+    env.moon.visible = false;        // 关掉旧月亮贴片
+    env.fireflies.visible = nf > 0.01;
+    env.beamGrp.visible = nf > 0.01;
+    if (env.lanternM) env.lanternM.emissiveIntensity = 0.15 + (2.4 - 0.15) * nf;
   }
-  // 旧程序化云片(sprite)与 HDRI 自带云层重叠成"白色圆斑"，直接隐藏，改用 HDRI 云
   if (env.clouds) for (const c of env.clouds) c.visible = false;
-  // 星空只在深夜出现：nightAmt 0.55 起淡入、0.8 全亮；天一变亮(nightAmt 降到 0.55 以下)即消失，黎明/白天不残留
-  if (stars) stars.visible = false; // 直接移除程序化星点（白天残留+反射问题难根治），夜空用 HDRI 自带内容
+  if (stars) stars.visible = false; // 程序化星点已移除（白天残留+反射问题），夜空用 HDRI 自带内容
   for (const m of G.lampMats) {
-    if (isNight) { m.emissive.setHex(0xfff4e0); m.emissiveIntensity = 1.7; }
-    else { m.emissive.copy(m.userData?.origEmissive || _z); m.emissiveIntensity = m.userData?.origEI ?? 1; }
+    const origE = m.userData?.origEmissive || _z;
+    const origI = m.userData?.origEI ?? 1;
+    m.emissive.copy(origE).lerp(_lampLit, nf);       // 灯体自发光色/强度随 nf 渐变
+    m.emissiveIntensity = origI + (1.7 - origI) * nf;
   }
 
-  // 周期重建反射环境（含环境色地面），让车漆反射带环境色且随时段平滑变化
+  // 周期重建反射环境（含环境色地面），让车漆反射带环境色且随时段平滑变化。
+  // 环境随时段缓变，无需高频重建 → 降到 ~1Hz：PMREM.fromScene 是整场景重渲，是天气循环的主要持续开销。
   envTimer += dt;
-  if (envTimer >= (G.hiQuality ? 0.2 : 0.5)) {
+  if (envTimer >= (G.hiQuality ? 1.0 : 1.5)) {
     envTimer = 0;
     envGround.material.color.copy(A._grd).lerp(B._grd, f);
-    // 先把混合天空钳制亮度写入 envSrcRT（太阳有界、不溢出），再 PMREM
-    clampMat.uniforms.tBlend.value = blendRT.texture;
+    clampMat.uniforms.tBlend.value = curTex;     // 钳制源改用当前 HDR（不再依赖 blendRT）
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(envSrcRT);
     renderer.render(clampScene, blendCam);
@@ -151,5 +197,9 @@ export function skyCycleUpdate(dt) {
     if (lastEnvTex) lastEnvTex.dispose();
     lastEnvTex = rt.texture;
     scene.environment = lastEnvTex;
+  }
+  if (_dbg) _dbg.textContent = `SKY 段=${KEYS[i].f} f=${fRaw.toFixed(2)} texs=${texs.map(t => t ? 'Y' : 'N').join('')} bg=${scene.background === skyCubeRT.texture ? 'cube' : 'other'} exp=${renderer.toneMappingExposure.toFixed(2)} sunI=${sun.intensity.toFixed(1)}`;
+  } catch (e) {
+    if (_dbg) _dbg.textContent = 'SKY 异常: ' + (e && e.message ? e.message : e);
   }
 }

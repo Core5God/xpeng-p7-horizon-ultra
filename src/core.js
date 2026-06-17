@@ -37,7 +37,9 @@ export const G = {
 // ---------- 渲染器 ----------
 const canvas = document.getElementById('c');
 // antialias 关闭：使用 EffectComposer 时画面经离屏 RT 合成，画布 MSAA 无效且白白占显存；抗锯齿交给末端 SMAA
-const renderer = new THREE.WebGLRenderer({canvas, antialias:false, preserveDrawingBuffer:true});
+// preserveDrawingBuffer 移除：它强制浏览器每帧 copy 而非 swap 交换链，是持续填充率开销。
+// 截图改为渲染后同帧同步拷贝像素（见 ui.js 海报/截图），不再依赖保留缓冲。
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
