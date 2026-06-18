@@ -126,15 +126,14 @@ loader.load(GLB_URL, (gltf) => {
         if (m.name && m.name.startsWith('Mat_E29_Body')) {
           // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
           paintMats.push(m);
-          // 渲染级金属车漆：高金属度的漆面 + 锐利清漆层 + 更强环境反射 → 去除"塑料感"
-          // （原始 metalness≈0.3 + 软清漆，反射糊、像塑料）
-          m.metalness = 0.92;
-          m.roughness = 0.2;            // 0.35→0.2：反射更锐利，去掉"油腻软糊"感，呈现金属反射
-          m.envMapIntensity = 1.7;
-          m.envMap = reflectRT.texture; // 真实环境反射探针（反射路面/地形/天空）
+          // PBR 车漆：使用 scene.environment (PMREM IBL) 做反射，不再用实时 CubeCamera
+          // 实时 CubeCamera 会把 sunSprite/月亮/灯光等高亮物全吃进反射，导致脏反射
+          m.metalness = 0.82;
+          m.roughness = 0.30;
+          m.envMapIntensity = 1.2;
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
-            m.clearcoatRoughness = 0.05; // 锐利清漆（太阳已在反射环境钳制，可恢复锐利反射）
+            m.clearcoatRoughness = 0.10;
           }
           m.normalMap = flakeNormalTex;  // 金属闪片
           m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
@@ -148,9 +147,9 @@ loader.load(GLB_URL, (gltf) => {
         }
         if (m.name === 'Mat_E29_Glass') {
           // 默认保持原厂深色玻璃；仅座舱视角动态切换为半透明（见 setGlassSeeThru）
-          m.envMapIntensity = 1.8; // 镜面玻璃：高反射
-          m.roughness = 0.06;      // 近镜面、清晰反射真实环境
-          m.envMap = reflectRT.texture; // 真实环境反射探针 → 玻璃镜面反射周围世界
+          // 使用 scene.environment (PMREM IBL)，不用实时 CubeCamera
+          m.envMapIntensity = 1.25;
+          m.roughness = 0.05;
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;

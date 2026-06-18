@@ -97,7 +97,9 @@ gtaoPass.enabled = !!G.aoOn; // 关闭：GTAO 后期 pass 与透明烟雾/粒子
 composer.addPass(gtaoPass);
 
 // Bloom 在半分辨率下计算：本就是模糊辉光，半分辨率肉眼几乎无差，开销减半
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.42, 0.35, 0.92);
+// 收紧参数：threshold 提高到 1.3，只有 emissive 灯具/车灯等高亮物进入 Bloom，
+// 天空、车漆、地形等常规亮度不触发 Bloom，避免"页游感"泛光
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.18, 0.35, 1.3);
 composer.addPass(bloomPass);
 
 composer.addPass(new OutputPass());

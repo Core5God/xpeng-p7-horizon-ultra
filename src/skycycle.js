@@ -27,7 +27,6 @@ const texs = new Array(N);
 let phase = 0, ready = false, loaded = 0, envTimer = 0, lastEnvTex = null;
 let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem, envSrcRT, clampScene, clampMat;
 let skyCubeRT, cubeCam, cubeScene;   // 等距混合结果→立方体（规避 equirect 背景的 cubemap 永久缓存）
-let sunSprite = null;                // 太阳圆盘精灵（叠加在 HDRI 上，修复方块太阳）
 let _dbg = null; // 屏幕调试条（定位天空循环问题后会移除）
 function anyTex() { for (let t = 0; t < N; t++) if (texs[t]) return texs[t]; return null; }
 
@@ -84,27 +83,6 @@ export function buildSkyCycle() {
   envGround.rotation.x = -Math.PI / 2; envGround.position.y = -6;
   envScene.add(envGround);
   pmrem = new THREE.PMREMGenerator(renderer);
-
-  // 太阳圆盘精灵：叠加在 HDRI 天空上，提供清晰的圆形太阳高光
-  const sunCanvas = document.createElement('canvas');
-  sunCanvas.width = 128; sunCanvas.height = 128;
-  const sctx = sunCanvas.getContext('2d');
-  const sg = sctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  sg.addColorStop(0, 'rgba(255,255,240,1)');
-  sg.addColorStop(0.25, 'rgba(255,250,220,0.95)');
-  sg.addColorStop(0.5, 'rgba(255,220,160,0.5)');
-  sg.addColorStop(0.75, 'rgba(255,180,100,0.15)');
-  sg.addColorStop(1, 'rgba(255,150,80,0)');
-  sctx.fillStyle = sg;
-  sctx.fillRect(0, 0, 128, 128);
-  const sunTex = new THREE.CanvasTexture(sunCanvas);
-  sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: sunTex, transparent: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, depthTest: false, fog: false, toneMapped: false
-  }));
-  sunSprite.scale.set(180, 180, 1);
-  sunSprite.renderOrder = 1000; // 确保在最前
-  scene.add(sunSprite);
 
   // 屏幕调试条
   _dbg = document.createElement('div');
@@ -169,20 +147,6 @@ export function skyCycleUpdate(dt) {
 
   // 夜间量
   const nightAmt = A.night + (B.night - A.night) * f;
-
-  // 太阳精灵：定位在太阳方向远处，亮度随时段变化
-  if (sunSprite) {
-    const sunDist = 2200;
-    sunSprite.position.set(curSunDir.x * sunDist, curSunDir.y * sunDist, curSunDir.z * sunDist);
-    // 太阳在地平线以上时可见，黄昏/夜晚渐隐
-    const sunAbove = curSunDir.y; // >0 = 在地平线上
-    const sunVis = smooth(clamp01(sunAbove / 0.15)); // 太阳高度 0→0.15 间渐显
-    sunSprite.visible = sunVis > 0.01;
-    sunSprite.material.opacity = sunVis * (0.7 + 0.3 * (1 - nightAmt));
-    // 黄昏时太阳偏暖橙色
-    const warmth = clamp01(1 - sunAbove * 3); // 太阳低时偏暖
-    sunSprite.material.color.setRGB(1, 1 - warmth * 0.2, 1 - warmth * 0.4);
-  }
 
   // 灯光 / 雾 / 曝光 / 水色 插值
   sun.color.copy(A._sunC).lerp(B._sunC, f);
