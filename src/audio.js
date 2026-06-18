@@ -27,7 +27,9 @@ function initAudio() {
     scrGain = actx.createGain(); scrGain.gain.value = 0;
     scrSrc.connect(scrFilt); scrFilt.connect(scrGain); scrGain.connect(actx.destination);
     scrSrc.start();
-  } catch(e) {}
+  } catch(e) {
+    console.warn('[audio] WebAudio 初始化失败：', e);
+  }
 }
 // ---------- Lofi 电台（WebAudio 程序化生成，City Pop / Nujabes 氛围） ----------
 let mGain = null, mTimer = null, mBar = 0, noiseBuf = null;
@@ -176,17 +178,32 @@ function ensurePlAudio() {
   if (!plAudio) {
     plAudio = new Audio();
     plAudio.volume = 0.5;
+    plAudio.preload = 'auto';
     plAudio.addEventListener('ended', nextTrack);
+    plAudio.addEventListener('error', () => {
+      const t = PLAYLIST[plIdx];
+      console.error('[playlist] audio error:', t && t.src, plAudio && plAudio.error);
+      showMsg('音乐加载失败，可切回 Lofi 电台', 1800, 24);
+    });
   }
+}
+
+function playPlaylistAudio(reason) {
+  if (!plAudio || !plActive) return;
+  const t = PLAYLIST[plIdx];
+  if (!t) return;
+  plAudio.src = t.src;
+  plAudio.load();
+  plAudio.play().catch((err) => {
+    console.warn('[playlist] play blocked/failed:', reason, t.src, err);
+    showMsg('点击后可开启歌单音乐', 1600, 24);
+  });
 }
 
 function startPlaylist() {
   ensurePlAudio();
   plActive = true;
-  if (!plAudio.src || plAudio.paused) {
-    plAudio.src = PLAYLIST[plIdx].src;
-    plAudio.play().catch(() => {});
-  }
+  if (!plAudio.src || plAudio.paused) playPlaylistAudio('startPlaylist');
   refreshPlaylistUI();
 }
 
@@ -197,8 +214,7 @@ function stopPlaylist() {
 
 function playCurrentTrack() {
   if (!plAudio || !plActive) return;
-  plAudio.src = PLAYLIST[plIdx].src;
-  plAudio.play().catch(() => {});
+  playPlaylistAudio('playCurrentTrack');
   refreshPlaylistUI();
 }
 
