@@ -21,6 +21,7 @@ export const G = {
   camMode: 1, // 默认近追视角，更好展示车身材质
   muted: false,
   musicOn: true,
+  musicMode: 'lofi', // 'lofi' | 'playlist'
   hiQuality: true,
   weatherOn: true,      // 动态天空/天气循环
   skinIdx: 0,

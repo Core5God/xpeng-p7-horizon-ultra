@@ -48,6 +48,7 @@ function makeNoiseBurst() {
 }
 function startMusic() {
   if (!actx || mGain) return;
+  if (G.musicMode === 'playlist') return; // 歌单模式下不初始化 Lofi
   mGain = actx.createGain();
   mGain.gain.value = G.musicOn ? 0.16 : 0;
   mGain.connect(actx.destination);
@@ -133,10 +134,123 @@ function scheduleBar() {
 }
 function setMusic(on, announce) {
   G.musicOn = on;
-  if (mGain && actx) mGain.gain.setTargetAtTime(on ? 0.16 : 0, actx.currentTime, 0.3);
+  if (on && G.musicMode === 'playlist') {
+    stopLofi();
+    startPlaylist();
+  } else if (on) {
+    stopPlaylist();
+    if (mGain && actx) mGain.gain.setTargetAtTime(0.16, actx.currentTime, 0.3);
+  } else {
+    if (mGain && actx) mGain.gain.setTargetAtTime(0, actx.currentTime, 0.3);
+    stopPlaylist();
+  }
   refreshSettingBtns();
   saveSettings();
-  if (announce) showMsg(on ? '🎵 Lofi 电台 开' : 'Lofi 电台 关', 900, 26);
+  if (announce) {
+    if (on && G.musicMode === 'playlist') showMsg('🎵 歌单模式 开', 900, 26);
+    else if (on) showMsg('🎵 Lofi 电台 开', 900, 26);
+    else showMsg('音乐 关', 900, 26);
+  }
+}
+
+// ---------- 歌单播放（MP3 文件，HTML5 Audio） ----------
+const PLAYLIST = [
+  { name: 'Loves Me Not', artist: 't.A.T.u.', src: './assets/music/Loves Me Not - t.A.T.u..mp3' },
+  { name: 'Year 3000', artist: 'Busted', src: './assets/music/Year 3000 - Busted.mp3' },
+  { name: '爱你等于爱自己', artist: '王力宏', src: './assets/music/爱你等于爱自己 - 王力宏.mp3' },
+  { name: '爱上未来的你', artist: '潘玮柏', src: './assets/music/爱上未来的你 - 潘玮柏.mp3' },
+  { name: '大雨将至', artist: '阿修罗乐队', src: './assets/music/大雨将至 - 阿修罗乐队.mp3' },
+  { name: '亲爱的', artist: '潘玮柏', src: './assets/music/亲爱的 - 潘玮柏.mp3' },
+  { name: '想你', artist: '姜云升', src: './assets/music/想你 - 姜云升.mp3' },
+  { name: '학교에서 배운 것', artist: '김진표', src: './assets/music/학교에서 배운 것 - 김진표.mp3' }
+];
+
+let plAudio = null;   // HTMLAudioElement
+let plIdx = 0;        // 当前曲目索引
+let plShuffle = false; // 随机播放
+let plActive = false;  // 歌单是否正在播放
+
+try { plShuffle = localStorage.getItem('p7_plShuffle') === '1'; } catch(e) {}
+
+function ensurePlAudio() {
+  if (!plAudio) {
+    plAudio = new Audio();
+    plAudio.volume = 0.5;
+    plAudio.addEventListener('ended', nextTrack);
+  }
+}
+
+function startPlaylist() {
+  ensurePlAudio();
+  plActive = true;
+  if (!plAudio.src || plAudio.paused) {
+    plAudio.src = PLAYLIST[plIdx].src;
+    plAudio.play().catch(() => {});
+  }
+  refreshPlaylistUI();
+}
+
+function stopPlaylist() {
+  plActive = false;
+  if (plAudio) { plAudio.pause(); }
+}
+
+function playCurrentTrack() {
+  if (!plAudio || !plActive) return;
+  plAudio.src = PLAYLIST[plIdx].src;
+  plAudio.play().catch(() => {});
+  refreshPlaylistUI();
+}
+
+function nextTrack() {
+  if (plShuffle) {
+    let next;
+    do { next = Math.floor(Math.random() * PLAYLIST.length); }
+    while (next === plIdx && PLAYLIST.length > 1);
+    plIdx = next;
+  } else {
+    plIdx = (plIdx + 1) % PLAYLIST.length;
+  }
+  if (plActive) playCurrentTrack();
+}
+
+function prevTrack() {
+  if (plAudio && plAudio.currentTime > 3) {
+    plAudio.currentTime = 0;
+    return;
+  }
+  plIdx = (plIdx - 1 + PLAYLIST.length) % PLAYLIST.length;
+  if (plActive) playCurrentTrack();
+}
+
+function toggleShuffle() {
+  plShuffle = !plShuffle;
+  try { localStorage.setItem('p7_plShuffle', plShuffle ? '1' : '0'); } catch(e) {}
+  refreshPlaylistUI();
+  showMsg(plShuffle ? '随机播放 开' : '随机播放 关', 900, 24);
+}
+
+function getCurrentTrack() {
+  return PLAYLIST[plIdx] || null;
+}
+
+function refreshPlaylistUI() {
+  const el = document.getElementById('plTrackName');
+  if (el) {
+    const t = PLAYLIST[plIdx];
+    el.textContent = t ? (t.name + ' - ' + t.artist) : '';
+  }
+  const shBtn = document.getElementById('plShuffle');
+  if (shBtn) shBtn.textContent = plShuffle ? '🔀 随机' : '🔀 顺序';
+}
+
+function setLofiGain(val) {
+  if (mGain && actx) mGain.gain.setTargetAtTime(val, actx.currentTime, 0.3);
+}
+
+function stopLofi() {
+  if (mTimer) { clearTimeout(mTimer); mTimer = null; }
+  if (mGain) { mGain.disconnect(); mGain = null; }
 }
 
 function audioUpdate() {
@@ -163,4 +277,6 @@ function audioUpdate() {
 }
 
 
-export { initAudio, audioUpdate, startMusic, setMusic, actx, makeNoiseBurst };
+export { initAudio, audioUpdate, startMusic, setMusic, actx, makeNoiseBurst,
+  PLAYLIST, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle,
+  getCurrentTrack, refreshPlaylistUI, setLofiGain, stopLofi, plShuffle };

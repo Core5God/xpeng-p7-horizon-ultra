@@ -136,6 +136,16 @@
   #bootfill{height:100%;width:6%;background:linear-gradient(90deg,#00e5ff,#7c4dff);transition:width .35s}
   #boottext{font-size:13.5px;opacity:.65;margin-top:12px;letter-spacing:2px}
   @keyframes bpulse{0%,100%{opacity:1}50%{opacity:.45}}
+  /* —— 歌单控制栏 —— */
+  #playlistbar{position:fixed;bottom:22px;left:22px;z-index:10;display:flex;align-items:center;gap:6px;
+    background:linear-gradient(90deg,rgba(4,10,22,.88),rgba(4,10,22,.35));
+    border-left:3px solid var(--cy);padding:5px 12px;backdrop-filter:blur(6px)}
+  body.nohud #playlistbar{display:none!important}
+  #playlistbar button{font-family:inherit;font-size:13px;font-weight:600;color:#fff;background:transparent;
+    border:none;cursor:pointer;padding:3px 7px;opacity:.78;transition:opacity .15s}
+  #playlistbar button:hover{opacity:1}
+  #plTrackName{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);max-width:170px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.4px}
 </style>
 </head>
 <body class="nohud">
@@ -192,6 +202,12 @@
 <div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示<kbd>🎮</kbd>手柄已支持</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
+<div class="hud" id="playlistbar">
+  <button id="plPrev" title="上一首">⏮</button>
+  <span id="plTrackName">—</span>
+  <button id="plNext" title="下一首">⏭</button>
+  <button id="plShuffle" title="随机播放">🔀</button>
+</div>
 
 <!-- 车库 / 主菜单 -->
 <div class="menu show" id="garage">
@@ -210,7 +226,7 @@
     <div class="sec">战绩 RECORDS</div><div id="recordsBox"></div>
     <div class="sec">成就 ACHIEVEMENTS</div><div class="row" id="achRow"></div>
     <div class="sec">设置 SETTINGS</div>
-    <div class="row"><button class="opt" id="gQuality">画质：高</button><button class="opt" id="gSound">声音：开</button><button class="opt" id="gMusic">音乐：开</button></div>
+    <div class="row"><button class="opt" id="gQuality">画质：高</button><button class="opt" id="gSound">声音：开</button><button class="opt" id="gMusic">音乐：开</button><button class="opt" id="gMusicMode">电台</button></div>
     <div id="loadbar"><div id="loadfill"></div></div>
     <div id="loadtext">正在加载 E29 车辆模型…</div>
   </div>
@@ -232,7 +248,7 @@
     <div class="sec">车漆 PAINT</div><div class="row" id="paintRowP"></div>
     <div class="sec">时间 TIME</div><div class="row" id="todRowP"></div>
     <div class="sec">设置 SETTINGS</div>
-    <div class="row"><button class="opt" id="pQuality">画质：高</button><button class="opt" id="pSound">声音：开</button><button class="opt" id="pMusic">音乐：开</button></div>
+    <div class="row"><button class="opt" id="pQuality">画质：高</button><button class="opt" id="pSound">声音：开</button><button class="opt" id="pMusic">音乐：开</button><button class="opt" id="pMusicMode">电台</button></div>
   </div>
 </div>
 

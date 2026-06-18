@@ -5,7 +5,7 @@ import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallba
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
-import { initAudio, startMusic, setMusic } from './audio.js';
+import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi } from './audio.js';
 import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
@@ -28,7 +28,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
 // ---------- 设置持久化 ----------
 let hintsOn = true, keytipsTimer = null;
 function saveSettings() {
-  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, hintsOn, routeId: race.routeIdx, charId: G.charId})); } catch(e) {}
+  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, musicMode: G.musicMode, hintsOn, routeId: race.routeIdx, charId: G.charId})); } catch(e) {}
 }
 function loadSettings() {
   try {
@@ -38,6 +38,7 @@ function loadSettings() {
     // 画质统一：始终以最高画质启动（不再从存档恢复低画质），运行时由系统按帧率自适应
     if (typeof s.muted === 'boolean') G.muted = s.muted;
     if (typeof s.musicOn === 'boolean') G.musicOn = s.musicOn;
+    if (s.musicMode === 'lofi' || s.musicMode === 'playlist') G.musicMode = s.musicMode;
     if (typeof s.hintsOn === 'boolean') hintsOn = s.hintsOn;
     if (typeof s.routeId === 'number') selectRoute(s.routeId);
     if (s.charId) G.charId = s.charId;
@@ -154,6 +155,7 @@ function refreshSettingBtns() {
   for (const id of ['gQuality','pQuality']) document.getElementById(id).textContent = '画质：' + (G.hiQuality?'高':'低');
   for (const id of ['gSound','pSound']) document.getElementById(id).textContent = '声音：' + (G.muted?'关':'开');
   for (const id of ['gMusic','pMusic']) document.getElementById(id).textContent = '音乐：' + (G.musicOn?'开':'关');
+  for (const id of ['gMusicMode','pMusicMode']) document.getElementById(id).textContent = G.musicMode === 'playlist' ? '歌单' : '电台';
 }
 
 function setQuality(q) {
@@ -174,6 +176,39 @@ function setQuality(q) {
 for (const id of ['gQuality','pQuality']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; } // 画质统一：隐藏手动切换
 for (const id of ['gSound','pSound']) document.getElementById(id).addEventListener('click', () => { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); });
 for (const id of ['gMusic','pMusic']) document.getElementById(id).addEventListener('click', () => { initAudio(); startMusic(); setMusic(!G.musicOn, false); });
+// 音乐模式切换（电台 / 歌单）
+function setMusicMode(mode) {
+  G.musicMode = mode;
+  if (mode === 'playlist') {
+    stopLofi();
+    initAudio(); startMusic();
+    if (G.musicOn) startPlaylist();
+  } else {
+    stopPlaylist();
+    initAudio(); startMusic();
+    // 若 lofi 已初始化但 gain 为 0，手动恢复
+    if (G.musicOn) setLofiGain(0.16);
+  }
+  refreshSettingBtns();
+  refreshPlaylistUI();
+  saveSettings();
+  showMsg(mode === 'playlist' ? '🎵 歌单模式' : '🎵 Lofi 电台', 900, 26);
+}
+for (const id of ['gMusicMode','pMusicMode']) {
+  document.getElementById(id).addEventListener('click', () => {
+    setMusicMode(G.musicMode === 'lofi' ? 'playlist' : 'lofi');
+  });
+}
+// 歌单控制栏按钮
+document.getElementById('plPrev').addEventListener('click', () => {
+  if (G.musicMode !== 'playlist' || !G.musicOn) setMusicMode('playlist');
+  prevTrack();
+});
+document.getElementById('plNext').addEventListener('click', () => {
+  if (G.musicMode !== 'playlist' || !G.musicOn) setMusicMode('playlist');
+  nextTrack();
+});
+document.getElementById('plShuffle').addEventListener('click', () => { toggleShuffle(); });
 
 // ---------- 状态切换 ----------
 const elGarage = document.getElementById('garage');
@@ -213,6 +248,7 @@ function showKeytipsFresh() {
 function startDrive(raceMode) {
   initAudio();
   startMusic();
+  if (G.musicOn && G.musicMode === 'playlist') startPlaylist();
   showKeytipsFresh();
   G.appState = 'drive';
   document.body.style.cursor = 'none';
@@ -370,7 +406,20 @@ addEventListener('keydown', e => {
     showMsg(PRESETS[G.curTod].label, 900, 30);
   }
   if (e.code === 'KeyM') { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); showMsg(G.muted?'引擎声 关':'引擎声 开', 800, 24); }
-  if (e.code === 'KeyB') { initAudio(); startMusic(); setMusic(!G.musicOn, true); }
+  if (e.code === 'KeyB') { // 三态循环：Lofi → 歌单 → 关
+    initAudio(); startMusic();
+    if (!G.musicOn) {
+      G.musicOn = true;
+      setMusic(true, false);
+      if (G.musicMode === 'playlist') startPlaylist();
+      showMsg(G.musicMode === 'playlist' ? '🎵 歌单模式 开' : '🎵 Lofi 电台 开', 900, 26);
+    } else if (G.musicMode === 'lofi') {
+      setMusicMode('playlist');
+    } else {
+      setMusic(false, false);
+      showMsg('音乐 关', 900, 26);
+    }
+  }
   // 画质统一：取消手动切换，默认最高、系统自适应降级（Q 键不再切画质）
   if (e.code === 'KeyH') {
     hintsOn = !hintsOn;
