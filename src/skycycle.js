@@ -27,6 +27,7 @@ const texs = new Array(N);
 let phase = 0, ready = false, loaded = 0, envTimer = 0, lastEnvTex = null;
 let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem, envSrcRT, clampScene, clampMat;
 let skyCubeRT, cubeCam, cubeScene;   // 等距混合结果→立方体（规避 equirect 背景的 cubemap 永久缓存）
+let sunSprite = null;                // 太阳圆盘精灵（叠加在 HDRI 上，修复方块太阳）
 let _dbg = null; // 屏幕调试条（定位天空循环问题后会移除）
 function anyTex() { for (let t = 0; t < N; t++) if (texs[t]) return texs[t]; return null; }
 
@@ -84,6 +85,27 @@ export function buildSkyCycle() {
   envScene.add(envGround);
   pmrem = new THREE.PMREMGenerator(renderer);
 
+  // 太阳圆盘精灵：叠加在 HDRI 天空上，提供清晰的圆形太阳高光
+  const sunCanvas = document.createElement('canvas');
+  sunCanvas.width = 128; sunCanvas.height = 128;
+  const sctx = sunCanvas.getContext('2d');
+  const sg = sctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  sg.addColorStop(0, 'rgba(255,255,240,1)');
+  sg.addColorStop(0.25, 'rgba(255,250,220,0.95)');
+  sg.addColorStop(0.5, 'rgba(255,220,160,0.5)');
+  sg.addColorStop(0.75, 'rgba(255,180,100,0.15)');
+  sg.addColorStop(1, 'rgba(255,150,80,0)');
+  sctx.fillStyle = sg;
+  sctx.fillRect(0, 0, 128, 128);
+  const sunTex = new THREE.CanvasTexture(sunCanvas);
+  sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: sunTex, transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, depthTest: false, fog: false, toneMapped: false
+  }));
+  sunSprite.scale.set(180, 180, 1);
+  sunSprite.renderOrder = 1000; // 确保在最前
+  scene.add(sunSprite);
+
   // 屏幕调试条
   _dbg = document.createElement('div');
   _dbg.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.65);color:#5f5;font:12px monospace;padding:3px 10px;border-radius:4px;pointer-events:none;white-space:nowrap';
@@ -104,11 +126,8 @@ export function buildSkyCycle() {
 }
 
 function start() {
-  // 不再隐藏程序化天空：白天用它渲染清晰太阳，HDRI 仅用于夜间和 IBL 反射
-  if (sky) {
-    sky.visible = true;
-    sky.renderOrder = -1; // 确保天空在最远层渲染
-  }
+  if (sky) sky.visible = false;           // 隐藏程序化天空球（HDRI 做视觉背景 + 反射）
+  scene.background = skyCubeRT.texture;   // HDRI cube 背景 → 车漆反射真实天空
   ready = true;
 }
 
@@ -128,7 +147,7 @@ export function skyCycleUpdate(dt) {
   const f = smooth(fRaw);          // 平滑段内插值系数，两端导数为 0 → 过渡无突变
   const A = KEYS[i], B = KEYS[j];
 
-  // ---------- 天空视觉层：程序化 Sky（白天清晰太阳） + HDRI（夜间星空） ----------
+  // ---------- HDRI 天空背景（始终） + 太阳精灵叠加 ----------
   const texA = texs[i], texB = texs[j];
   let curTex;
   if (texA && texB) {
@@ -145,32 +164,24 @@ export function skyCycleUpdate(dt) {
     curTex = texA || texB || anyTex();
   }
 
-  // 夜间量 → 控制天空视觉层切换
+  // 始终用 HDRI 做 scene.background → 车漆反射保持真实天空质感
+  if (scene.background !== skyCubeRT.texture && curTex) scene.background = skyCubeRT.texture;
+
+  // 夜间量
   const nightAmt = A.night + (B.night - A.night) * f;
-  const nightFade = smooth(clamp01((nightAmt - 0.15) / 0.35)); // 0=白天程序化天空, 1=夜间HDRI
 
-  if (nightFade > 0.5 && curTex) {
-    // 夜间：HDRI 做背景（含星空），隐藏程序化天空
-    if (scene.background !== skyCubeRT.texture) scene.background = skyCubeRT.texture;
-    if (sky) sky.visible = false;
-  } else {
-    // 白天/黄昏：程序化天空渲染清晰太阳圆盘
-    if (scene.background !== null) scene.background = null;
-    if (sky) {
-      sky.visible = true;
-      sky.material.opacity = 1.0 - nightFade; // 渐隐过渡
-      sky.material.transparent = nightFade > 0.01;
-    }
-  }
-
-  // 更新程序化天空着色器参数（太阳位置 / 大气散射）
-  if (sky && sky.visible) {
-    const skyU = sky.material.uniforms;
-    skyU.turbidity.value = 2.0 + nightAmt * 8;
-    skyU.rayleigh.value = 1.0 + (1 - nightAmt) * 2.2;
-    skyU.mieCoefficient.value = 0.001 + nightAmt * 0.001;
-    skyU.mieDirectionalG.value = 0.95 + nightAmt * 0.04;
-    skyU.sunPosition.value.copy(curSunDir);
+  // 太阳精灵：定位在太阳方向远处，亮度随时段变化
+  if (sunSprite) {
+    const sunDist = 2200;
+    sunSprite.position.set(curSunDir.x * sunDist, curSunDir.y * sunDist, curSunDir.z * sunDist);
+    // 太阳在地平线以上时可见，黄昏/夜晚渐隐
+    const sunAbove = curSunDir.y; // >0 = 在地平线上
+    const sunVis = smooth(clamp01(sunAbove / 0.15)); // 太阳高度 0→0.15 间渐显
+    sunSprite.visible = sunVis > 0.01;
+    sunSprite.material.opacity = sunVis * (0.7 + 0.3 * (1 - nightAmt));
+    // 黄昏时太阳偏暖橙色
+    const warmth = clamp01(1 - sunAbove * 3); // 太阳低时偏暖
+    sunSprite.material.color.setRGB(1, 1 - warmth * 0.2, 1 - warmth * 0.4);
   }
 
   // 灯光 / 雾 / 曝光 / 水色 插值
@@ -194,9 +205,10 @@ export function skyCycleUpdate(dt) {
     env.lampHeadM.emissiveIntensity = 0.1 + (2.2 - 0.1) * nf;
     env.lampPools.material.opacity = 0.4 * nf;
     env.lampPools.visible = nf > 0.01;
-    // 月亮：动态模式下随 nightAmt 显示，位置取反太阳方向
+    // 月亮：动态模式下随 nightAmt 显示，缩小尺寸避免巨型光球
     if (env.moon) {
       env.moon.visible = nightAmt > 0.25;
+      env.moon.scale.set(55, 55, 1); // 原来是 230，太大像灯泡
       if (env.moon.visible) {
         env.moon.position.set(-curSunDir.x * 1700, Math.max(-curSunDir.y * 1700, 320), -curSunDir.z * 1700);
       }
@@ -246,7 +258,7 @@ export function skyCycleUpdate(dt) {
     lastEnvTex = rt.texture;
     scene.environment = lastEnvTex;
   }
-  if (_dbg) _dbg.textContent = `SKY 段=${KEYS[i].f} f=${fRaw.toFixed(2)} texs=${texs.map(t => t ? 'Y' : 'N').join('')} bg=${scene.background === skyCubeRT.texture ? 'cube' : 'other'} exp=${renderer.toneMappingExposure.toFixed(2)} sunI=${sun.intensity.toFixed(1)}`;
+  if (_dbg) _dbg.textContent = `SKY 段=${KEYS[i].f} f=${fRaw.toFixed(2)} night=${nightAmt.toFixed(2)} sunY=${curSunDir.y.toFixed(2)} exp=${renderer.toneMappingExposure.toFixed(2)} sunI=${sun.intensity.toFixed(1)}`;
   } catch (e) {
     if (_dbg) _dbg.textContent = 'SKY 异常: ' + (e && e.message ? e.message : e);
   }
