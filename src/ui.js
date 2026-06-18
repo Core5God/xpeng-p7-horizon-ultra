@@ -387,26 +387,31 @@ document.getElementById('btnShot').addEventListener('click', () => {
 
 // ---------- 电台浮窗（长按 B） ----------
 let bHoldTimer = null, wheelActive = false, bStartTime = 0;
-let lastMX = 0, lastMY = 0;
+let wdx = 0, wdy = 0;                       // 累积鼠标增量（虚拟摇杆）
+const DEAD = 28;                             // 死区像素
 const WHEEL_OPTS = ['off', 'next', 'mode', 'prev'];
 
 addEventListener('mousemove', e => {
-  lastMX = e.clientX; lastMY = e.clientY;
   if (!wheelActive) return;
-  const cx = innerWidth / 2, cy = innerHeight / 2;
-  const dx = lastMX - cx, dy = lastMY - cy;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 40) { document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel')); return; }
-  const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
-  const opt = angle >= 45 && angle < 135 ? 'next'
-            : angle >= 135 && angle < 225 ? 'mode'
-            : angle >= 225 && angle < 315 ? 'prev'
-            : 'off';
+  wdx += (e.movementX || 0);
+  wdy += (e.movementY || 0);
+  const dist = Math.sqrt(wdx * wdx + wdy * wdy);
+  if (dist < DEAD) {
+    document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel'));
+    return;
+  }
+  // 屏幕坐标系：右=0°  下=90°  左=180°  上=270°
+  const angle = (Math.atan2(wdy, wdx) * 180 / Math.PI + 360) % 360;
+  const opt = angle >= 315 || angle < 45  ? 'next'   // 右
+            : angle >= 45  && angle < 135 ? 'mode'   // 下
+            : angle >= 135 && angle < 225 ? 'prev'   // 左
+            :                                'off';  // 上
   highlightWheelOpt(opt);
 });
 
 function showRadioWheel() {
   wheelActive = true;
+  wdx = 0; wdy = 0; // 重置虚拟摇杆
   document.getElementById('radioWheel').classList.add('show');
   updateWheelLabel();
   // 清空高亮
@@ -535,19 +540,17 @@ addEventListener('keyup', e => {
   if (e.code === 'KeyB') {
     clearTimeout(bHoldTimer);
     if (wheelActive) {
-      // 浮窗已打开：根据鼠标位置选择选项
-      const cx = innerWidth / 2, cy = innerHeight / 2;
-      const dx = lastMX - cx, dy = lastMY - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 40) {
-        const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
-        const opt = angle >= 45 && angle < 135 ? 'next'
-                  : angle >= 135 && angle < 225 ? 'mode'
-                  : angle >= 225 && angle < 315 ? 'prev'
-                  : 'off';
+      // 浮窗已打开：根据累积鼠标增量选择选项
+      const dist = Math.sqrt(wdx * wdx + wdy * wdy);
+      if (dist > DEAD) {
+        const angle = (Math.atan2(wdy, wdx) * 180 / Math.PI + 360) % 360;
+        const opt = angle >= 315 || angle < 45  ? 'next'
+                  : angle >= 45  && angle < 135 ? 'mode'
+                  : angle >= 135 && angle < 225 ? 'prev'
+                  :                                'off';
         selectWheelOption(opt);
       } else {
-        // 鼠标在中心区域，不执行选择，关闭浮窗
+        // 未推出死区，取消选择
         wheelActive = false;
         document.getElementById('radioWheel').classList.remove('show');
       }
