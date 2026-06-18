@@ -4,6 +4,9 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass } from './core.js';
+import { generateForestSpots } from './vegetation/forestPatches.js';
+import { buildGrassLayer } from './vegetation/grassLayer.js';
+import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -795,33 +798,25 @@ async function buildScenery() {
   const leafM = new THREE.MeshStandardMaterial({color:0x3f7a3a, roughness:0.9});
   const rockG = new THREE.DodecahedronGeometry(1.6, 0);
   const rockM = new THREE.MeshStandardMaterial({color:0x7d7468, flatShading:true, roughness:0.9});
-  const treeSpots = [];
-  // 棕榈/岩石全部烘焙合并（原来每棵棕榈 7 个网格 → 全岛共 3 个网格）
+  // ---------- 森林斑块系统：替代旧的随机撒树 ----------
+  const treeSpots = generateForestSpots({
+    meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase,
+    targetTrees: 1200, targetBushes: 800
+  });
+
+  // ---------- 棕榈（低地 < 3.5m）+ 散岩 ----------
   const trunkGeos = [], palmLeafGeos = [], rockGeos = [];
   const tmpO = new THREE.Object3D();
-  let placed = 0, guard = 0;
-  while (placed < 520 && guard++ < 6000) {
+  let palmRockPlaced = 0, guard2 = 0;
+  while (palmRockPlaced < 400 && guard2++ < 5000) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
     if (nearestRoad(x, z).dist < 16 || branchInfo(x, z).dist < 14) continue;
-    const h = meshGroundHeight(x, z); // 用渲染网格高度放置，杜绝低面数地形上的悬浮
+    const h = meshGroundHeight(x, z);
     if (h < 0.6 || h > 20) continue;
-    // 坡度过滤：低面数地形在陡坡上与解析高度有偏差，避免悬浮
     const slope = Math.abs(groundHeight(x+5, z) - groundHeight(x-5, z))
                 + Math.abs(groundHeight(x, z+5) - groundHeight(x, z-5));
     if (slope > 4) continue;
-    if (h >= 3.5 && Math.random() < 0.85) {
-      // 收集 EZ-Tree 种植点：高处松树、低处阔叶、部分灌木
-      let vi;
-      const rv = Math.random();
-      if (rv < 0.16) vi = 7 + (Math.random() < 0.5 ? 0 : 1);          // 灌木
-      else if (h > 12) vi = Math.random() < 0.6 ? 6 : 5;              // 高地大松/松
-      else if (h > 8) vi = [1, 5, 0][Math.floor(Math.random()*3)];    // 大橡/松/橡
-      else vi = [0, 2, 3, 4][Math.floor(Math.random()*4)];            // 阔叶混交
-      treeSpots.push({x, z, h, vi, rot: Math.random()*Math.PI*2, s: 0.75 + Math.random()*0.55});
-      placed++;
-      continue;
-    }
     if (h < 3.5) {
       tmpO.position.set(x, h, z);
       tmpO.rotation.set(0, Math.random()*Math.PI*2, (Math.random()-0.5)*0.22);
@@ -835,7 +830,7 @@ async function buildScenery() {
         lg2.applyMatrix4(tmpO.matrix);
         palmLeafGeos.push(lg2);
       }
-    } else {
+    } else if (Math.random() < 0.18) {
       tmpO.position.set(x, h, z);
       tmpO.rotation.set(Math.random(), Math.random()*3, Math.random());
       tmpO.scale.setScalar(0.6 + Math.random()*1.6);
@@ -843,7 +838,7 @@ async function buildScenery() {
       rockGeos.push(rockG.clone().applyMatrix4(tmpO.matrix));
       tmpO.scale.setScalar(1);
     }
-    placed++;
+    palmRockPlaced++;
   }
   if (trunkGeos.length) {
     scene.add(new THREE.Mesh(mergeGeometries(trunkGeos), trunkM));
@@ -992,6 +987,19 @@ async function buildScenery() {
       scene.add(g);
     }
   }
+
+  // ---------- 草地层 + 道路生态带 ----------
+  try {
+    buildGrassLayer({
+      scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU
+    });
+  } catch (e) { console.warn('[GRASS] 草地层生成失败：', e); }
+
+  try {
+    buildRoadsideEcology({
+      scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W
+    });
+  } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
 }
 
 // ---------- 环境造景：路灯 / 云 / 月 / 灯塔 / 萤火虫 / 草丛 / 远岛 ----------

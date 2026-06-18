@@ -62,11 +62,11 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -90; sun.shadow.camera.right = 90; // ±90：覆盖近景且阴影分辨率/性能更平衡（提帧）
-sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 900;
-sun.shadow.bias = -0.0004;
-sun.shadow.normalBias = 0.04;
+sun.shadow.camera.left = -130; sun.shadow.camera.right = 130; // ±130：覆盖道路两侧植被阴影
+sun.shadow.camera.top = 130; sun.shadow.camera.bottom = -130;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 0.06;
 scene.add(sun); scene.add(sun.target);
 // 冷色轮廓补光（不投影）
 const rim = new THREE.DirectionalLight(0x88aaff, 0.7);
