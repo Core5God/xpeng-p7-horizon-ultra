@@ -8,6 +8,7 @@ import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arr
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
+import { preloadCriticalAssets } from './assetPreload.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
@@ -166,36 +167,54 @@ addEventListener('resize', () => {
   composer.setSize(innerWidth, innerHeight);
 });
 
-// ---------- 分阶段异步启动：让出主线程刷新进度，消除黑屏 ----------
+// ---------- 分阶段异步启动：让出主线程刷新进度，消除首访资源竞态 ----------
 (async () => {
   const elBT = document.getElementById('boottext');
   const elBF = document.getElementById('bootfill');
+  const elTip = document.getElementById('boottip');
   const stage = async (label, pct, fn) => {
     elBT.textContent = label;
     elBF.style.width = pct + '%';
     await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
-    await fn();
+    return await fn();
   };
-  await stage('构建岛屿地形…', 22, buildTerrain);
-  await stage('铺设海岸公路…', 45, buildRoad);
-  await stage('生成程序化森林…', 68, () => { buildScenery(); }); // 树木后台加载，就绪后自动出现
-  await stage('布置灯塔与环境…', 76, buildEnv);
-  await stage('搭建海滩建筑与道具…', 88, buildProps);
-  await stage('唤醒步行角色…', 92, () => { buildCharacter(); }); // 角色后台加载，就绪后 F 键可切换
-  await stage('载入动态天空…', 95, () => { buildSkyCycle(); });   // 6 时段天空后台加载，就绪后自动循环
-  elBT.textContent = '点火启动…';
-  elBF.style.width = '100%';
-  await new Promise(r => requestAnimationFrame(r));
-  initUI();
-  initFX();
-  settleCarPose();
-  applyTod(G.curTod);
-  setQuality(G.hiQuality);
-  enterGarage();
-  loop();
-  requestAnimationFrame(() => {
-    const b = document.getElementById('boot');
-    if (b) b.remove();
-  });
-})();
 
+  try {
+    await stage('预热首访核心资源…', 12, () => preloadCriticalAssets((done, total, url) => {
+      elBT.textContent = `预热首访核心资源… ${done}/${total}`;
+      elBF.style.width = (4 + done / total * 8).toFixed(1) + '%';
+      if (elTip) elTip.textContent = '正在准备：' + url;
+    }));
+    await stage('构建岛屿地形…', 24, buildTerrain);
+    await stage('铺设海岸公路…', 45, buildRoad);
+    await stage('生成程序化森林…', 68, buildScenery);
+    await stage('布置灯塔与环境…', 76, buildEnv);
+    await stage('搭建海滩建筑与道具…', 88, buildProps);
+    await stage('唤醒步行角色…', 92, buildCharacter);
+    await stage('载入动态天空…', 95, buildSkyCycle);
+    elBT.textContent = '点火启动…';
+    elBF.style.width = '100%';
+    if (elTip) elTip.textContent = '资源就绪，正在进入车库…';
+    await new Promise(r => requestAnimationFrame(r));
+    initUI();
+    initFX();
+    settleCarPose();
+    applyTod(G.curTod);
+    setQuality(G.hiQuality);
+    enterGarage();
+    loop();
+    requestAnimationFrame(() => {
+      const b = document.getElementById('boot');
+      if (b) b.remove();
+    });
+  } catch (err) {
+    console.error('[boot fatal]', err);
+    elBT.textContent = '关键资源加载失败，请刷新重试';
+    elBF.style.width = '100%';
+    if (elTip) {
+      elTip.textContent = err && err.message ? err.message : String(err);
+      elTip.style.color = '#ffb3b3';
+      elTip.style.opacity = '0.9';
+    }
+  }
+})();
