@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { G, scene, camera, renderer, wrapPi } from './core.js';
-import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod } from './world.js';
+import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod, env, stars, sky } from './world.js';
 import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
 
@@ -30,15 +30,28 @@ const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
 let _reflN = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  // 自适应更新频率：静止/低速时环境几乎不变 → 大幅降频省去整场景 6 面重渲（单帧最大尖峰源）。
-  // 高速行驶环境快速变化才用 8 帧；停车 32 帧、低速 16 帧。
   const sp = Math.abs(state.speed);
   const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
   if ((_reflN++ % interval) !== 0) return;
+
+  // 隐藏高亮 sprite / 光球 / 发光体，防止进入车身 CubeCamera 反射造成脏反射
+  const hidden = [];
+  function hide(obj) { if (obj && obj.visible) { obj.visible = false; hidden.push(obj); } }
+  hide(env?.moon);
+  hide(env?.lampPools);
+  hide(env?.beamGrp);
+  hide(env?.fireflies);
+  hide(sky);
+  if (stars) hide(stars);
+  if (env?.clouds) for (const c of env.clouds) hide(c);
+
   reflectCam.position.set(state.pos.x, state.pos.y + 1.0, state.pos.z);
   const vis = car.visible; car.visible = false;
   reflectCam.update(renderer, scene);
   car.visible = vis;
+
+  // 恢复所有被隐藏的对象
+  for (const obj of hidden) obj.visible = true;
 }
 const paintMats = [];
 const glassMats = [];
@@ -126,14 +139,15 @@ loader.load(GLB_URL, (gltf) => {
         if (m.name && m.name.startsWith('Mat_E29_Body')) {
           // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
           paintMats.push(m);
-          // PBR 车漆：使用 scene.environment (PMREM IBL) 做反射，不再用实时 CubeCamera
-          // 实时 CubeCamera 会把 sunSprite/月亮/灯光等高亮物全吃进反射，导致脏反射
-          m.metalness = 0.82;
-          m.roughness = 0.30;
-          m.envMapIntensity = 1.2;
+          // 渲染级金属车漆：高金属度 + 锐利清漆 + 实时 CubeCamera 反射
+          // reflectRT 渲染时已隐藏 moon/stars/clouds/beams，不会吃进光球污染
+          m.metalness = 0.92;
+          m.roughness = 0.20;
+          m.envMapIntensity = 1.7;
+          m.envMap = reflectRT.texture;
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
-            m.clearcoatRoughness = 0.10;
+            m.clearcoatRoughness = 0.05;
           }
           m.normalMap = flakeNormalTex;  // 金属闪片
           m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
@@ -147,9 +161,9 @@ loader.load(GLB_URL, (gltf) => {
         }
         if (m.name === 'Mat_E29_Glass') {
           // 默认保持原厂深色玻璃；仅座舱视角动态切换为半透明（见 setGlassSeeThru）
-          // 使用 scene.environment (PMREM IBL)，不用实时 CubeCamera
-          m.envMapIntensity = 1.25;
-          m.roughness = 0.05;
+          m.envMapIntensity = 1.8;
+          m.roughness = 0.06;
+          m.envMap = reflectRT.texture;
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;
