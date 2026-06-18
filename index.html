@@ -156,18 +156,23 @@
   .rw-hub{position:absolute;text-align:center;pointer-events:none}
   .rw-hub .rw-icon{font-size:28px}
   .rw-hub .rw-label{font-size:10px;letter-spacing:2px;opacity:.5;margin-top:2px}
-  .rw-item{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    width:76px;height:76px;border-radius:50%;
+  .rw-item{position:absolute;top:50%;left:50%;width:76px;height:76px;
+    margin-left:-38px;margin-top:-38px;border-radius:50%;
     background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);
     color:rgba(255,255,255,.75);font-size:12.5px;font-weight:600;letter-spacing:.5px;
-    transition:all .12s;cursor:default;gap:2px;text-align:center}
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;text-align:center;transition:all .12s;cursor:default}
   .rw-item .rw-i{font-size:20px;line-height:1}
   .rw-item.sel{background:rgba(25,211,255,.22);border-color:var(--cy);color:#fff;
-    box-shadow:0 0 24px rgba(25,211,255,.35);transform:scale(1.12)}
-  .rw-top{top:6px;left:50%;transform:translateX(-50%)}
-  .rw-right{right:6px;top:50%;transform:translateY(-50%)}
-  .rw-bottom{bottom:6px;left:50%;transform:translateX(-50%)}
-  .rw-left{left:6px;top:50%;transform:translateY(-50%)}
+    box-shadow:0 0 24px rgba(25,211,255,.35)}
+  .rw-top{transform:translateY(-100px)}
+  .rw-top.sel{transform:translateY(-100px) scale(1.12)}
+  .rw-right{transform:translateX(100px)}
+  .rw-right.sel{transform:translateX(100px) scale(1.12)}
+  .rw-bottom{transform:translateY(100px)}
+  .rw-bottom.sel{transform:translateY(100px) scale(1.12)}
+  .rw-left{transform:translateX(-100px)}
+  .rw-left.sel{transform:translateX(-100px) scale(1.12)}
 </style>
 </head>
 <body class="nohud">

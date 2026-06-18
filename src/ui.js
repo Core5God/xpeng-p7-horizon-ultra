@@ -409,6 +409,15 @@ addEventListener('mousemove', e => {
   highlightWheelOpt(opt);
 });
 
+// 右键关闭浮窗（取消选择）
+addEventListener('contextmenu', e => {
+  if (wheelActive) {
+    e.preventDefault();
+    wheelActive = false;
+    document.getElementById('radioWheel').classList.remove('show');
+  }
+});
+
 function showRadioWheel() {
   wheelActive = true;
   wdx = 0; wdy = 0; // 重置虚拟摇杆
