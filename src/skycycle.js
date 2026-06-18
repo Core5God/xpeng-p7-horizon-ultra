@@ -104,8 +104,11 @@ export function buildSkyCycle() {
 }
 
 function start() {
-  if (sky) sky.visible = false;        // 接管：隐藏程序化天空盒
-  scene.background = skyCubeRT.texture;   // cube background, refreshed from blendRT each frame
+  // 不再隐藏程序化天空：白天用它渲染清晰太阳，HDRI 仅用于夜间和 IBL 反射
+  if (sky) {
+    sky.visible = true;
+    sky.renderOrder = -1; // 确保天空在最远层渲染
+  }
   ready = true;
 }
 
@@ -125,8 +128,7 @@ export function skyCycleUpdate(dt) {
   const f = smooth(fRaw);          // 平滑段内插值系数，两端导数为 0 → 过渡无突变
   const A = KEYS[i], B = KEYS[j];
 
-  // 背景：当前/下一张 HDR 交叉淡入到 blendRT，再交给 scene.background → 天空贴图平滑过渡，不再硬切。
-  // 缺贴图兜底：任一张未就绪时退回可用贴图直接显示。
+  // ---------- 天空视觉层：程序化 Sky（白天清晰太阳） + HDRI（夜间星空） ----------
   const texA = texs[i], texB = texs[j];
   let curTex;
   if (texA && texB) {
@@ -137,12 +139,38 @@ export function skyCycleUpdate(dt) {
     renderer.setRenderTarget(blendRT);
     renderer.render(blendScene, blendCam);
     renderer.setRenderTarget(prevRT);
-    cubeCam.update(renderer, cubeScene);   // re-render equirect blend into cube RT (avoids equirect-background cubemap cache freeze)
-    if (scene.background !== skyCubeRT.texture) scene.background = skyCubeRT.texture;
+    cubeCam.update(renderer, cubeScene);
     curTex = blendRT.texture;
   } else {
     curTex = texA || texB || anyTex();
-    if (curTex && scene.background !== curTex) scene.background = curTex;
+  }
+
+  // 夜间量 → 控制天空视觉层切换
+  const nightAmt = A.night + (B.night - A.night) * f;
+  const nightFade = smooth(clamp01((nightAmt - 0.15) / 0.35)); // 0=白天程序化天空, 1=夜间HDRI
+
+  if (nightFade > 0.5 && curTex) {
+    // 夜间：HDRI 做背景（含星空），隐藏程序化天空
+    if (scene.background !== skyCubeRT.texture) scene.background = skyCubeRT.texture;
+    if (sky) sky.visible = false;
+  } else {
+    // 白天/黄昏：程序化天空渲染清晰太阳圆盘
+    if (scene.background !== null) scene.background = null;
+    if (sky) {
+      sky.visible = true;
+      sky.material.opacity = 1.0 - nightFade; // 渐隐过渡
+      sky.material.transparent = nightFade > 0.01;
+    }
+  }
+
+  // 更新程序化天空着色器参数（太阳位置 / 大气散射）
+  if (sky && sky.visible) {
+    const skyU = sky.material.uniforms;
+    skyU.turbidity.value = 2.0 + nightAmt * 8;
+    skyU.rayleigh.value = 1.0 + (1 - nightAmt) * 2.2;
+    skyU.mieCoefficient.value = 0.001 + nightAmt * 0.001;
+    skyU.mieDirectionalG.value = 0.95 + nightAmt * 0.04;
+    skyU.sunPosition.value.copy(curSunDir);
   }
 
   // 灯光 / 雾 / 曝光 / 水色 插值
@@ -153,28 +181,48 @@ export function skyCycleUpdate(dt) {
   hemi.intensity = A.hemiI + (B.hemiI - A.hemiI) * f;
   scene.fog.color.copy(A._fog).lerp(B._fog, f);
   renderer.toneMappingExposure = A.exp + (B.exp - A.exp) * f;
-  scene.environmentIntensity = A.envI + (B.envI - A.envI) * f; // 提亮 IBL 环境光，避免整体偏暗
+  scene.environmentIntensity = A.envI + (B.envI - A.envI) * f;
   bloomPass.strength = G.hiQuality ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
-  const nightAmt = A.night + (B.night - A.night) * f;
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
-  rim.color.copy(sun.color); // 补光颜色跟随太阳
+  rim.color.copy(sun.color);
   if (G.waterOK && G.water) G.water.material.color.copy(A._water).lerp(B._water, f);
 
-  // 夜间元素：用连续淡入系数 nf 替代布尔阈值开关，消除"天光突然开灯"的硬切。
-  // nf 在 nightAmt 0.3→0.7 间平滑爬升 → 车灯/路灯/灯笼亮度随天色渐变点亮。
+  // 夜间元素：连续淡入系数 nf 控制灯光渐变，消除硬切
   const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
   for (const h of G.headlights) h.intensity = 150 * nf;
   if (env.lampHeadM) {
     env.lampHeadM.emissiveIntensity = 0.1 + (2.2 - 0.1) * nf;
-    env.lampPools.material.opacity = 0.4 * nf;       // 地面光斑随灯亮渐显
+    env.lampPools.material.opacity = 0.4 * nf;
     env.lampPools.visible = nf > 0.01;
-    env.moon.visible = false;        // 关掉旧月亮贴片
+    // 月亮：动态模式下随 nightAmt 显示，位置取反太阳方向
+    if (env.moon) {
+      env.moon.visible = nightAmt > 0.25;
+      if (env.moon.visible) {
+        env.moon.position.set(-curSunDir.x * 1700, Math.max(-curSunDir.y * 1700, 320), -curSunDir.z * 1700);
+      }
+    }
     env.fireflies.visible = nf > 0.01;
     env.beamGrp.visible = nf > 0.01;
     if (env.lanternM) env.lanternM.emissiveIntensity = 0.15 + (2.4 - 0.15) * nf;
   }
-  if (env.clouds) for (const c of env.clouds) c.visible = false;
-  if (stars) stars.visible = false; // 程序化星点已移除（白天残留+反射问题），夜空用 HDRI 自带内容
+  // 云层：动态模式下显示，颜色随时段渐变
+  if (env.clouds) {
+    for (const c of env.clouds) c.visible = nightAmt < 0.8;
+    if (env.cloudMat) {
+      const cc = new THREE.Color().lerpColors(
+        new THREE.Color(0xffffff), new THREE.Color(0x38445f), nightAmt
+      );
+      // 黄昏暖色
+      if (nightAmt < 0.3) cc.lerpColors(new THREE.Color(0xffbe92), new THREE.Color(0xffffff), nightAmt / 0.3);
+      env.cloudMat.color.copy(cc);
+      env.cloudMat.opacity = 0.45 + (1 - nightAmt) * 0.43;
+    }
+  }
+  // 星空：动态模式下夜间显示
+  if (stars) {
+    stars.visible = nightAmt > 0.35;
+    if (stars.material) stars.material.opacity = smooth(clamp01((nightAmt - 0.35) / 0.3));
+  }
   for (const m of G.lampMats) {
     const origE = m.userData?.origEmissive || _z;
     const origI = m.userData?.origEI ?? 1;

@@ -75,7 +75,7 @@ new RGBELoader().load('assets/sky_day.hdr', (tex) => {
 
 // 按当前时段选择天空/环境：白天用 HDRI（背景+IBL，隐藏程序化天空盒），落日/夜晚用程序化
 function applySkyForTod() {
-  if (G.weatherOn) return; // 动态天气接管时，静态天空逻辑让位
+  if (G.weatherOn) return; // 动态天气由 skycycle.js 全权管理
   if (G.curTod === 'day' && hdrReady) {
     sky.visible = false;
     scene.background = dayBg;
