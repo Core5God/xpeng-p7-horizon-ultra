@@ -5,7 +5,7 @@ import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallba
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
-import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi } from './audio.js';
+import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack } from './audio.js';
 import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
@@ -385,11 +385,83 @@ document.getElementById('btnShot').addEventListener('click', () => {
   showMsg('已保存截图 📸', 1200, 30);
 });
 
+// ---------- 电台浮窗（长按 B） ----------
+let bHoldTimer = null, wheelActive = false, bStartTime = 0;
+let lastMX = 0, lastMY = 0;
+const WHEEL_OPTS = ['off', 'next', 'mode', 'prev'];
+
+addEventListener('mousemove', e => {
+  lastMX = e.clientX; lastMY = e.clientY;
+  if (!wheelActive) return;
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  const dx = lastMX - cx, dy = lastMY - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 40) { document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel')); return; }
+  const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
+  const opt = angle >= 45 && angle < 135 ? 'next'
+            : angle >= 135 && angle < 225 ? 'mode'
+            : angle >= 225 && angle < 315 ? 'prev'
+            : 'off';
+  highlightWheelOpt(opt);
+});
+
+function showRadioWheel() {
+  wheelActive = true;
+  document.getElementById('radioWheel').classList.add('show');
+  updateWheelLabel();
+  // 清空高亮
+  document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel'));
+}
+
+function updateWheelLabel() {
+  const hub = document.querySelector('.rw-hub .rw-label');
+  if (!hub) return;
+  if (G.musicMode === 'playlist') {
+    const t = getCurrentTrack();
+    hub.textContent = t ? t.name : '歌单';
+  } else {
+    hub.textContent = G.musicOn ? 'LOFI' : 'RADIO';
+  }
+}
+
+function highlightWheelOpt(opt) {
+  document.querySelectorAll('.rw-item').forEach(el =>
+    el.classList.toggle('sel', el.dataset.rw === opt));
+}
+
+function selectWheelOption(opt) {
+  wheelActive = false;
+  document.getElementById('radioWheel').classList.remove('show');
+  initAudio(); startMusic();
+  switch (opt) {
+    case 'off':
+      setMusic(false, false);
+      showMsg('电台 关', 900, 26);
+      break;
+    case 'prev':
+      if (G.musicMode !== 'playlist' || !G.musicOn) setMusicMode('playlist');
+      prevTrack();
+      break;
+    case 'next':
+      if (G.musicMode !== 'playlist' || !G.musicOn) setMusicMode('playlist');
+      nextTrack();
+      break;
+    case 'mode':
+      setMusicMode(G.musicMode === 'lofi' ? 'playlist' : 'lofi');
+      break;
+  }
+}
+
 // ---------- 键盘 ----------
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') {
+    if (wheelActive) {
+      wheelActive = false;
+      document.getElementById('radioWheel').classList.remove('show');
+      return;
+    }
     if (G.appState === 'drive' || G.appState === 'walk') pauseGame();
     else if (G.appState === 'pause') { if (performance.now() - (G._pauseT || 0) > 350) resumeGame(); }
     else if (G.appState === 'photo') exitPhoto();
@@ -406,18 +478,12 @@ addEventListener('keydown', e => {
     showMsg(PRESETS[G.curTod].label, 900, 30);
   }
   if (e.code === 'KeyM') { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); showMsg(G.muted?'引擎声 关':'引擎声 开', 800, 24); }
-  if (e.code === 'KeyB') { // 三态循环：Lofi → 歌单 → 关
-    initAudio(); startMusic();
-    if (!G.musicOn) {
-      G.musicOn = true;
-      setMusic(true, false);
-      if (G.musicMode === 'playlist') startPlaylist();
-      showMsg(G.musicMode === 'playlist' ? '🎵 歌单模式 开' : '🎵 Lofi 电台 开', 900, 26);
-    } else if (G.musicMode === 'lofi') {
-      setMusicMode('playlist');
-    } else {
-      setMusic(false, false);
-      showMsg('音乐 关', 900, 26);
+  if (e.code === 'KeyB') {
+    if (!e.repeat) {
+      bStartTime = performance.now();
+      bHoldTimer = setTimeout(() => {
+        if (keys['KeyB']) showRadioWheel();
+      }, 350);
     }
   }
   // 画质统一：取消手动切换，默认最高、系统自适应降级（Q 键不再切画质）
@@ -464,7 +530,44 @@ addEventListener('keydown', e => {
     showMsg('已复位到道路', 1000, 28);
   }
 });
-addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('keyup', e => {
+  keys[e.code] = false;
+  if (e.code === 'KeyB') {
+    clearTimeout(bHoldTimer);
+    if (wheelActive) {
+      // 浮窗已打开：根据鼠标位置选择选项
+      const cx = innerWidth / 2, cy = innerHeight / 2;
+      const dx = lastMX - cx, dy = lastMY - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 40) {
+        const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
+        const opt = angle >= 45 && angle < 135 ? 'next'
+                  : angle >= 135 && angle < 225 ? 'mode'
+                  : angle >= 225 && angle < 315 ? 'prev'
+                  : 'off';
+        selectWheelOption(opt);
+      } else {
+        // 鼠标在中心区域，不执行选择，关闭浮窗
+        wheelActive = false;
+        document.getElementById('radioWheel').classList.remove('show');
+      }
+    } else if (performance.now() - bStartTime < 350) {
+      // 短按：快速切换模式（保留原行为）
+      initAudio(); startMusic();
+      if (!G.musicOn) {
+        G.musicOn = true;
+        setMusic(true, false);
+        if (G.musicMode === 'playlist') startPlaylist();
+        showMsg(G.musicMode === 'playlist' ? '🎵 歌单模式 开' : '🎵 Lofi 电台 开', 900, 26);
+      } else if (G.musicMode === 'lofi') {
+        setMusicMode('playlist');
+      } else {
+        setMusic(false, false);
+        showMsg('音乐 关', 900, 26);
+      }
+    }
+  }
+});
 // 步行时按 ESC 会先被浏览器用于退出指针锁定 → 监听解锁事件来打开菜单（单次 ESC 即可进菜单）
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && G.appState === 'walk') pauseGame();

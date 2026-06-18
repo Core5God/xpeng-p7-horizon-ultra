@@ -146,6 +146,28 @@
   #playlistbar button:hover{opacity:1}
   #plTrackName{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);max-width:170px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.4px}
+  /* —— 电台浮窗 (长按 B) —— */
+  #radioWheel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:35;
+    width:280px;height:280px;border-radius:50%;
+    background:radial-gradient(circle,rgba(4,10,22,.92) 28%,rgba(4,10,22,.65) 62%,transparent 100%);
+    backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center}
+  #radioWheel.show{display:flex;animation:rwIn .18s ease-out}
+  @keyframes rwIn{from{opacity:0;transform:translate(-50%,-50%) scale(.82)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  .rw-hub{position:absolute;text-align:center;pointer-events:none}
+  .rw-hub .rw-icon{font-size:28px}
+  .rw-hub .rw-label{font-size:10px;letter-spacing:2px;opacity:.5;margin-top:2px}
+  .rw-item{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    width:76px;height:76px;border-radius:50%;
+    background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);
+    color:rgba(255,255,255,.75);font-size:12.5px;font-weight:600;letter-spacing:.5px;
+    transition:all .12s;cursor:default;gap:2px;text-align:center}
+  .rw-item .rw-i{font-size:20px;line-height:1}
+  .rw-item.sel{background:rgba(25,211,255,.22);border-color:var(--cy);color:#fff;
+    box-shadow:0 0 24px rgba(25,211,255,.35);transform:scale(1.12)}
+  .rw-top{top:6px;left:50%;transform:translateX(-50%)}
+  .rw-right{right:6px;top:50%;transform:translateY(-50%)}
+  .rw-bottom{bottom:6px;left:50%;transform:translateX(-50%)}
+  .rw-left{left:6px;top:50%;transform:translateY(-50%)}
 </style>
 </head>
 <body class="nohud">
@@ -199,7 +221,7 @@
 <div class="hud" id="driftlive"></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
-<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>音乐<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示<kbd>🎮</kbd>手柄已支持</div>
+<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>电台<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示<kbd>🎮</kbd>手柄已支持</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
 <div class="hud" id="playlistbar">
@@ -207,6 +229,13 @@
   <span id="plTrackName">—</span>
   <button id="plNext" title="下一首">⏭</button>
   <button id="plShuffle" title="随机播放">🔀</button>
+</div>
+<div id="radioWheel">
+  <div class="rw-hub"><div class="rw-icon">📻</div><div class="rw-label">RADIO</div></div>
+  <div class="rw-item rw-top" data-rw="off"><span class="rw-i">⏻</span>关闭电台</div>
+  <div class="rw-item rw-right" data-rw="next"><span class="rw-i">⏭</span>下一首</div>
+  <div class="rw-item rw-bottom" data-rw="mode"><span class="rw-i">🔄</span>切换模式</div>
+  <div class="rw-item rw-left" data-rw="prev"><span class="rw-i">⏮</span>上一首</div>
 </div>
 
 <!-- 车库 / 主菜单 -->
