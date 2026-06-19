@@ -1415,40 +1415,6 @@ function buildEnv() {
     scene.add(cluster);
   }
 
-  // —— 路肩碎石带（道路边缘过渡，消除硬切边）
-  const shoulderGravelM = new THREE.MeshStandardMaterial({color:0x8a8070, roughness:0.85});
-  const shoulderGeo = new THREE.DodecahedronGeometry(0.18, 0);
-  const shoulderCount = 2000;
-  const shoulderInst = new THREE.InstancedMesh(shoulderGeo, shoulderGravelM, shoulderCount);
-  const sDummy = new THREE.Object3D();
-  const sColor = new THREE.Color();
-  let si = 0;
-  for (let i = 0; i < NS && si < shoulderCount; i += 2) {
-    const s = samples[i];
-    const n = normals[i];
-    for (const side of [-1, 1]) {
-      if (si >= shoulderCount) break;
-      if (Math.random() > 0.6) continue; // 概率控制密度
-      const off = HALF_W + 1.1 + Math.random() * 2.5; // 路肩外侧 1.1-3.6m
-      const x = s.x + n.x * side * off;
-      const z = s.z + n.z * side * off;
-      const h = meshGroundHeight(x, z);
-      if (h < 0.3) continue;
-      sDummy.position.set(x, h - 0.05, z);
-      sDummy.rotation.set(Math.random() * 0.3, Math.random() * Math.PI, Math.random() * 0.3);
-      sDummy.scale.setScalar(0.4 + Math.random() * 0.8);
-      sDummy.updateMatrix();
-      shoulderInst.setMatrixAt(si, sDummy.matrix);
-      sColor.setHSL(0.08 + Math.random() * 0.04, 0.15, 0.35 + Math.random() * 0.15);
-      shoulderInst.setColorAt(si, sColor);
-      si++;
-    }
-  }
-  shoulderInst.count = si;
-  shoulderInst.instanceMatrix.needsUpdate = true;
-  if (shoulderInst.instanceColor) shoulderInst.instanceColor.needsUpdate = true;
-  scene.add(shoulderInst);
-
   // —— 远景地平线雾化带：环形半透明幕，融合远山/海面与天空
   const hazeGeo = new THREE.CylinderGeometry(2400, 2400, 80, 48, 1, true);
   const hazeMat = new THREE.MeshBasicMaterial({

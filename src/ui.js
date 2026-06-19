@@ -70,6 +70,7 @@ function buildRows() {
   }
   for (const rowId of ['todRowG', 'todRowP']) {
     const row = document.getElementById(rowId);
+    if (!row) continue; // 时间选择已从 UI 移除
     row.innerHTML = '';
     for (const key of Object.keys(PRESETS)) {
       const b = document.createElement('button');
@@ -489,11 +490,7 @@ addEventListener('keydown', e => {
   }
   // 全局设置键（车库内同样可用）
   if (e.code === 'KeyV') { G.skinIdx = (G.skinIdx+1) % PAINTS.length; applySkin(true); }
-  if (e.code === 'KeyN') {
-    const ks = Object.keys(PRESETS);
-    applyTod(ks[(ks.indexOf(G.curTod)+1) % ks.length]); refreshTodButtons(); saveSettings();
-    showMsg(PRESETS[G.curTod].label, 900, 30);
-  }
+  // N 键时间切换已移除：天气系统自动管理昼夜循环
   if (e.code === 'KeyM') { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); showMsg(G.muted?'引擎声 关':'引擎声 开', 800, 24); }
   if (e.code === 'KeyB') {
     if (!e.repeat) {
