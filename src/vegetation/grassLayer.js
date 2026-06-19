@@ -122,25 +122,25 @@ export function buildGrassLayer(opts) {
   let gi = 0, guard = 0;
 
   while (gi < GRASS_COUNT && guard++ < GRASS_COUNT * 8) {
-    // 道路走廊优先放置（60% 沿路，30% 草甸热点，10% 全岛散）
+    // P0：驾驶道路走廊优先放置，减少全岛散点造成的“看不到的地方很满”
     let x, z;
     const roll = Math.random();
-    if (roll < 0.6 && samples && normals) {
-      // 沿路走廊：随机选一个路段样本点，在旁边 8-50m 范围放置
+    if (roll < 0.76 && samples && normals) {
+      // 沿路走廊：随机选一个路段样本点，在旁边 6-42m 范围放置
       const si = (Math.random() * samples.length) | 0;
       const s = samples[si], n = normals[si];
       const side = Math.random() > 0.5 ? 1 : -1;
-      const off = 8 + Math.random() * 42;
-      x = s.x + n.x * side * off + (Math.random() - 0.5) * 6;
-      z = s.z + n.z * side * off + (Math.random() - 0.5) * 6;
-    } else if (roll < 0.9) {
+      const off = 6 + Math.random() * 36;
+      x = s.x + n.x * side * off + (Math.random() - 0.5) * 5;
+      z = s.z + n.z * side * off + (Math.random() - 0.5) * 5;
+    } else if (roll < 0.94) {
       // 草甸热点：在中等高度区域集中
       const angle = Math.random() * Math.PI * 2;
       const radius = 50 + Math.random() * 350;
       x = Math.cos(angle) * radius;
       z = Math.sin(angle) * radius;
     } else {
-      // 全岛随机散
+      // 全岛随机散：仅保留少量远区填充
       const angle = Math.random() * Math.PI * 2;
       const radius = 30 + Math.random() * 540;
       x = Math.cos(angle) * radius;
@@ -151,15 +151,16 @@ export function buildGrassLayer(opts) {
     const m = getTerrainMasks(x, z, ctx);
 
     // 放置规则
-    if (m.roadDist < 6) continue;          // 路面 6m 内禁放
+    if (m.roadDist < 5.5) continue;        // 路面安全区禁放
     if (m.height < 0.8 || m.height > 18) continue;
     if (m.slope > 0.45) continue;
     if (m.rock > 0.5) continue;
     if (m.beach > 0.7) continue;
 
-    // 密度由 fertility + meadow + roadside 决定
-    const density = clamp(m.fertility * 0.6 + m.meadow * 0.8 + (m.roadDist < 24 ? 0.3 : 0), 0, 1);
-    if (Math.random() > density * 0.7 + 0.15) continue;
+    // 密度由 fertility + meadow + road corridor 决定
+    const roadBonus = m.roadDist < 32 ? 0.42 * (1 - smoothstep(6, 32, m.roadDist)) : 0;
+    const density = clamp(m.fertility * 0.55 + m.meadow * 0.7 + roadBonus, 0, 1);
+    if (Math.random() > density * 0.72 + 0.18) continue;
 
     const y = m.height - 0.08;
     dummy.position.set(x, y, z);
@@ -209,10 +210,20 @@ export function buildGrassLayer(opts) {
   let ti = 0; guard = 0;
 
   while (ti < TUFT_COUNT && guard++ < TUFT_COUNT * 6) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 50 + Math.random() * 480;
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
+    let x, z;
+    if (Math.random() < 0.62 && samples && normals) {
+      const si = (Math.random() * samples.length) | 0;
+      const s = samples[si], n = normals[si];
+      const side = Math.random() > 0.5 ? 1 : -1;
+      const off = 18 + Math.random() * 72;
+      x = s.x + n.x * side * off + randomRange(-10, 10);
+      z = s.z + n.z * side * off + randomRange(-10, 10);
+    } else {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 50 + Math.random() * 480;
+      x = Math.cos(angle) * radius;
+      z = Math.sin(angle) * radius;
+    }
 
     const m = getTerrainMasks(x, z, ctx);
     if (m.roadDist < 8) continue;
@@ -221,8 +232,9 @@ export function buildGrassLayer(opts) {
     if (m.rock > 0.4) continue;
     if (m.beach > 0.6) continue;
 
-    const density = m.fertility * 0.5 + m.meadow * 0.6;
-    if (Math.random() > density * 0.5 + 0.08) continue;
+    const roadBonus = m.roadDist < 95 ? 0.18 * (1 - smoothstep(18, 95, m.roadDist)) : 0;
+    const density = m.fertility * 0.48 + m.meadow * 0.55 + roadBonus;
+    if (Math.random() > density * 0.55 + 0.10) continue;
 
     const y = m.height - 0.1;
     dummy.position.set(x, y, z);
