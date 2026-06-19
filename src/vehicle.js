@@ -75,10 +75,10 @@ let wheelRadius = 0.36;
 // 夜间车灯
 for (const sx of [-1, 1]) {
   // 光源点放在保险杠之外（z=2.72），光锥只朝前，不会打亮自身车身
-  const sp = new THREE.SpotLight(0xcfe0ff, 0, 85, 0.36, 0.65, 1.8);
-  sp.position.set(sx*0.70, 0.66, 2.72);
+  const sp = new THREE.SpotLight(0xcfe0ff, 0, 120, 0.42, 0.55, 1.5);
+  sp.position.set(sx*0.70, 0.72, 2.72);
   const tgt = new THREE.Object3D();
-  tgt.position.set(sx*0.85, -0.75, 22);
+  tgt.position.set(sx*0.85, -0.15, 28);
   car.add(sp); car.add(tgt);
   sp.target = tgt;
   G.headlights.push(sp);

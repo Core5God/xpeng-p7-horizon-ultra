@@ -1452,7 +1452,7 @@ function applyTod(name) {
     oceanUniforms.horizonColor.value.setHex(P.water).offsetHSL(-0.02, -0.05, 0.10);
   }
   // 车灯
-  for (const h of G.headlights) h.intensity = P.lights ? 150 : 0;
+  for (const h of G.headlights) h.intensity = P.lights ? 600 : 0;
   // 环境元素昼夜联动（环境可能尚未构建完成，需判空）
   if (env.lampHeadM) {
     const night = name === 'night';

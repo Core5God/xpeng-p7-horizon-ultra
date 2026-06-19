@@ -181,10 +181,11 @@ export function skyCycleUpdate(dt) {
   const wetB = B.wet || 0;
   const roadWetness = wetA + (wetB - wetA) * f;
   setRoadWetness(roadWetness);
+  updateRain(dt, roadWetness);
 
   // 夜间灯光：连续淡入系数 nf
   const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
-  for (const h of G.headlights) h.intensity = 150 * nf;
+  for (const h of G.headlights) h.intensity = 600 * nf;
   if (env.lampHeadM) {
     env.lampHeadM.emissiveIntensity = 0.1 + (2.2 - 0.1) * nf;
     env.lampPools.material.opacity = 0.4 * nf;
@@ -234,4 +235,66 @@ export function setTimeScale(scale) {
 }
 export function getTimeScale() {
   return weatherCtrl ? weatherCtrl.timeScale : 1;
+}
+
+// ---------- 雨滴粒子系统 ----------
+const RAIN_COUNT = 3000;
+const RAIN_RANGE = 80;   // 雨区半径（跟随相机）
+const RAIN_HEIGHT = 60;  // 雨区高度
+let rainPoints = null;
+let rainPositions = null;
+let rainVelocities = null;
+let rainMat = null;
+
+function initRain() {
+  if (rainPoints) return;
+  const geo = new THREE.BufferGeometry();
+  rainPositions = new Float32Array(RAIN_COUNT * 3);
+  rainVelocities = new Float32Array(RAIN_COUNT);
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    rainPositions[i * 3]     = (Math.random() - 0.5) * RAIN_RANGE * 2;
+    rainPositions[i * 3 + 1] = Math.random() * RAIN_HEIGHT;
+    rainPositions[i * 3 + 2] = (Math.random() - 0.5) * RAIN_RANGE * 2;
+    rainVelocities[i] = 18 + Math.random() * 14; // 下落速度 18-32 m/s
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  rainMat = new THREE.PointsMaterial({
+    color: 0xaaccee,
+    size: 0.25,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+  });
+  rainPoints = new THREE.Points(geo, rainMat);
+  rainPoints.frustumCulled = false;
+  scene.add(rainPoints);
+}
+
+export function updateRain(dt, wetness) {
+  initRain();
+  // 湿度控制雨的可见度和密度
+  const targetOpacity = Math.max(0, (wetness - 0.3) / 0.7) * 0.55; // wetness 0.3 以上开始出现雨，最大 opacity 0.55
+  rainMat.opacity += (targetOpacity - rainMat.opacity) * Math.min(1, dt * 3);
+  rainPoints.visible = rainMat.opacity > 0.01;
+
+  if (!rainPoints.visible) return;
+
+  // 雨跟随相机位置
+  rainPoints.position.x = camera.position.x;
+  rainPoints.position.z = camera.position.z;
+  rainPoints.position.y = camera.position.y - 5;
+
+  // 更新每滴雨的位置
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    rainPositions[i * 3 + 1] -= rainVelocities[i] * dt;
+    // 落到下方后重置到顶部
+    if (rainPositions[i * 3 + 1] < -RAIN_HEIGHT * 0.3) {
+      rainPositions[i * 3]     = (Math.random() - 0.5) * RAIN_RANGE * 2;
+      rainPositions[i * 3 + 1] = RAIN_HEIGHT * 0.7 + Math.random() * RAIN_HEIGHT * 0.3;
+      rainPositions[i * 3 + 2] = (Math.random() - 0.5) * RAIN_RANGE * 2;
+    }
+  }
+  rainPoints.geometry.attributes.position.needsUpdate = true;
 }

@@ -94,8 +94,10 @@ export class WeatherController {
   getState() {
     const A = this.currentWeather;
     const B = this.inTransition ? this.nextWeather : this.currentWeather;
+    // blend 在真实时间里始终走 transitionSec 秒（不受 timeScale 影响）
+    const effectiveDuration = this.transitionSec * this.timeScale;
     const blend = this.inTransition
-      ? Math.min(this.transitionTimer / this.transitionSec, 1)
+      ? Math.min(this.transitionTimer / effectiveDuration, 1)
       : 0;
 
     // nightAmount：0=白天, 1=深夜
