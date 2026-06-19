@@ -12,16 +12,49 @@ import {
   groundHeight
 } from './world.js';
 
-// ---------- P0 Road Junction Overlay Pass ----------
-// 目的：低风险修复支路汇入主路处的黑色断面、贴图断裂、车道线穿插和路肩硬切。
-// 策略：不重写 world.js 道路网格；在 buildRoad() 后叠加 feathered decals：
-// 1) junction asphalt cover：遮住断裂、车道线冲突和主/支路拼缝
-// 2) dirt/gravel halo：做路肩到地形的软过渡
-// 3) subtle tire-wear patch：让路口像被车辆压实的汇入区，而不是硬补丁
+// ---------- P1 Junction Geometry Pass ----------
+// 目的：替代上一版圆形 decal 补丁，生成真正顺着主路/支路边界展开的喇叭口 junction mesh。
+// 解决：两套 road mesh 直接相交导致的黑色断面、贴图朝向硬碰、边线/中线穿插、圆形补丁感。
+// 范围：仅处理当前支线两个端点 BRANCH_A / BRANCH_B，不重写整套道路系统。
 
 let built = false;
 
-function radialTexture({ inner = 0.35, outer = 1.0, hard = 0.0, color = [255, 255, 255] } = {}) {
+function roadNoiseTexture() {
+  const size = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#282a2c';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 3200; i++) {
+    const v = 18 + Math.random() * 58;
+    const a = 0.045 + Math.random() * 0.14;
+    ctx.fillStyle = `rgba(${v},${v},${v},${a})`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 2.5, 1 + Math.random() * 2.5);
+  }
+
+  // 低方向性的压实纹理，不使用长条 road UV，避免和主/支路方向冲突。
+  for (let i = 0; i < 18; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    ctx.strokeStyle = `rgba(255,255,255,${0.012 + Math.random() * 0.022})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - 40, y + (Math.random() - 0.5) * 18);
+    ctx.bezierCurveTo(x, y - 12, x + 38, y + 16, x + 84, y + (Math.random() - 0.5) * 20);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.8, 1.8);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function featherTexture() {
   const size = 256;
   const cv = document.createElement('canvas');
   cv.width = cv.height = size;
@@ -29,118 +62,179 @@ function radialTexture({ inner = 0.35, outer = 1.0, hard = 0.0, color = [255, 25
   const cx = size / 2;
   const cy = size / 2;
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
-  const [r, g2, b] = color;
-  g.addColorStop(0, `rgba(${r},${g2},${b},1)`);
-  g.addColorStop(Math.max(0.001, inner - hard), `rgba(${r},${g2},${b},1)`);
-  g.addColorStop(inner, `rgba(${r},${g2},${b},0.92)`);
-  g.addColorStop(outer, `rgba(${r},${g2},${b},0)`);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.42, 'rgba(255,255,255,0.82)');
+  g.addColorStop(0.74, 'rgba(255,255,255,0.28)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
-
-  // 轻噪声：避免补片像完美圆形 UI 贴纸
-  const img = ctx.getImageData(0, 0, size, size);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = 0.86 + Math.random() * 0.18;
-    img.data[i + 3] = Math.min(255, Math.max(0, img.data[i + 3] * n));
-  }
-  ctx.putImageData(img, 0, 0);
-
   const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
   return tex;
 }
 
-function roadNoiseTexture() {
-  const size = 256;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = size;
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#202226';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 2600; i++) {
-    const v = 22 + Math.random() * 38;
-    const a = 0.06 + Math.random() * 0.16;
-    ctx.fillStyle = `rgba(${v},${v},${v},${a})`;
-    ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 2, 1 + Math.random() * 2);
-  }
-  for (let i = 0; i < 22; i++) {
-    const y = Math.random() * size;
-    ctx.strokeStyle = `rgba(255,255,255,${0.015 + Math.random() * 0.025})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(size * 0.35, y + (Math.random() - 0.5) * 20, size * 0.65, y + (Math.random() - 0.5) * 20, size, y + (Math.random() - 0.5) * 18);
-    ctx.stroke();
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2.5, 2.5);
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function makeDecalMaterial({ color, opacity, map, alphaMap, roughness = 0.95 }) {
+function makeJunctionMaterial() {
   const mat = new THREE.MeshStandardMaterial({
-    color,
-    map,
-    alphaMap,
-    transparent: true,
-    opacity,
-    roughness,
+    color: 0x242628,
+    map: roadNoiseTexture(),
+    roughness: 0.88,
     metalness: 0.0,
-    depthWrite: false,
+    transparent: false,
     polygonOffset: true,
-    polygonOffsetFactor: -3,
-    polygonOffsetUnits: -3,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
     side: THREE.DoubleSide
   });
-  mat.envMapIntensity = 0.12;
+  mat.envMapIntensity = 0.18;
   return mat;
 }
 
-function makePlane(radius, segments = 72) {
-  const geo = new THREE.CircleGeometry(radius, segments);
-  geo.rotateX(-Math.PI / 2);
+function makeBlendMaterial({ color = 0x3a3128, opacity = 0.28 } = {}) {
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    alphaMap: featherTexture(),
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+    side: THREE.DoubleSide
+  });
+  return mat;
+}
+
+function tangentFromNormal(n, forward = 1) {
+  return new THREE.Vector3(n.z, 0, -n.x).multiplyScalar(forward).normalize();
+}
+
+function getMainFrame(idx) {
+  const i = ((idx % samples.length) + samples.length) % samples.length;
+  const p = samples[i];
+  const n = normals[i].clone().setY(0).normalize();
+  const t = tangentFromNormal(n, 1);
+  return { p, n, t, y: p.y };
+}
+
+function getBranchFrame(idx, forward = 1) {
+  const i = Math.max(0, Math.min(bSamples.length - 1, idx));
+  const p = bSamples[i];
+  const n = bNormals[i].clone().setY(0).normalize();
+  const t = tangentFromNormal(n, forward);
+  return { p, n, t, y: p.y };
+}
+
+function pointOn(frame, along = 0, side = 0, width = 1, lift = 0.18) {
+  const x = frame.p.x + frame.t.x * along + frame.n.x * side * width;
+  const z = frame.p.z + frame.t.z * along + frame.n.z * side * width;
+  const y = Math.max(frame.y, groundHeight(x, z)) + lift;
+  return new THREE.Vector3(x, y, z);
+}
+
+function makeGeometryFromPolygon(points, center) {
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  // 顶点 0 为中心，后面是轮廓点，fan triangulation。Junction 第一版足够稳定。
+  positions.push(center.x, center.y, center.z);
+  uvs.push(0.5, 0.5);
+
+  let maxR = 1;
+  for (const p of points) maxR = Math.max(maxR, Math.hypot(p.x - center.x, p.z - center.z));
+
+  for (const p of points) {
+    positions.push(p.x, p.y, p.z);
+    uvs.push(0.5 + (p.x - center.x) / (maxR * 2.2), 0.5 + (p.z - center.z) / (maxR * 2.2));
+  }
+
+  for (let i = 1; i <= points.length; i++) {
+    const a = i;
+    const b = i === points.length ? 1 : i + 1;
+    indices.push(0, a, b);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
   return geo;
 }
 
-function placePatch({ group, p, tangent, normal, radius, scaleX, scaleZ, yLift, material, rotExtra = 0 }) {
-  const mesh = new THREE.Mesh(makePlane(radius), material);
-  const yaw = Math.atan2(tangent.x, tangent.z) + rotExtra;
-  mesh.position.set(p.x, p.y + yLift, p.z);
-  mesh.rotation.y = yaw;
-  mesh.scale.set(scaleX, 1, scaleZ);
-  mesh.renderOrder = 3;
-  mesh.receiveShadow = true;
-  group.add(mesh);
+function makeEllipseDecal(center, tangent, material, rx, rz, lift = 0.22) {
+  const geo = new THREE.CircleGeometry(1, 72);
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(center.x, center.y + lift, center.z);
+  mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
+  mesh.scale.set(rx, 1, rz);
+  mesh.renderOrder = 5;
   return mesh;
 }
 
-function buildJunctionPoint(mainIdx, branchIdx, branchForward = 1) {
-  const main = samples[mainIdx];
-  const mainN = normals[mainIdx];
-  const branch = bSamples[branchIdx];
-  const branchN = bNormals[branchIdx];
+function buildFlaredJunction({ mainIdx, branchIdx, branchForward }) {
+  const main = getMainFrame(mainIdx);
+  const branch = getBranchFrame(branchIdx, branchForward);
 
-  const tangentMain = new THREE.Vector3(mainN.z, 0, -mainN.x).normalize();
-  const tangentBranch = new THREE.Vector3(branchN.z, 0, -branchN.x).multiplyScalar(branchForward).normalize();
+  // 支线离开路口方向。branchForward=1 表示从 A 端向支线内部走，-1 表示从 B 端反向向支线内部走。
+  const branchAway = branch.t.clone();
+  const mainT = main.t.clone();
 
-  const p = new THREE.Vector3(
-    (main.x + branch.x) * 0.5,
-    Math.max(main.y, branch.y, groundHeight((main.x + branch.x) * 0.5, (main.z + branch.z) * 0.5)) + 0.06,
-    (main.z + branch.z) * 0.5
+  // 路口中心略取主/支路中心平均，减少两条路面高差导致的切口。
+  const c = new THREE.Vector3(
+    (main.p.x + branch.p.x) * 0.5,
+    Math.max(main.p.y, branch.p.y) + 0.22,
+    (main.p.z + branch.p.z) * 0.5
   );
 
-  // 用主路和支路方向平均，得到路口覆盖补片长轴
-  const tangent = tangentMain.clone().add(tangentBranch).normalize();
-  if (tangent.lengthSq() < 0.1) tangent.copy(tangentMain);
+  // 主路沿线前后截面，宽度比主路略大，覆盖车道线端点。
+  const mainBack = getMainFrame(mainIdx - 18);
+  const mainFwd = getMainFrame(mainIdx + 18);
 
-  return { p, tangent, mainN, branchN };
+  // 支路喇叭口远端，宽度比支路略大，形成真实汇入面积。
+  const bStep = branchForward > 0 ? 34 : bSamples.length - 1 - 34;
+  const branchFar = getBranchFrame(bStep, branchForward);
+
+  const mainW = HALF_W + 1.6;
+  const branchMouthW = B_HALF + 5.2;
+  const branchFarW = B_HALF + 1.6;
+
+  // 构建一个非圆形的道路汇入口多边形：主路长边 + 支路宽口。
+  // 点序顺时针/逆时针不依赖方向，因为 side=DoubleSide；fan 三角化即可。
+  const outline = [
+    pointOn(mainBack, 0, -1, mainW),
+    pointOn(mainFwd, 0, -1, mainW),
+    pointOn(mainFwd, 0,  1, mainW),
+
+    // 主路右侧向支路右侧过渡
+    pointOn(branch, 10,  1, branchMouthW),
+    pointOn(branchFar, 0,  1, branchFarW),
+    pointOn(branchFar, 0, -1, branchFarW),
+    pointOn(branch, 10, -1, branchMouthW),
+
+    // 回到主路左侧
+    pointOn(mainBack, 0,  1, mainW),
+  ];
+
+  const center = new THREE.Vector3(c.x, c.y, c.z);
+  for (const p of outline) center.y = Math.max(center.y, p.y + 0.02);
+
+  const mesh = new THREE.Mesh(makeGeometryFromPolygon(outline, center), makeJunctionMaterial());
+  mesh.name = 'flared-junction-mesh';
+  mesh.renderOrder = 4;
+  mesh.receiveShadow = true;
+
+  // 柔边污渍不是主补丁，只负责弱化边缘和材质突变。
+  const dirt = makeEllipseDecal(center, branchAway.clone().add(mainT).normalize(), makeBlendMaterial({ color: 0x46382d, opacity: 0.18 }), 28, 16, 0.04);
+  dirt.name = 'junction-soft-dirt-edge';
+
+  const wear = makeEllipseDecal(center, branchAway.clone().add(mainT).normalize(), makeBlendMaterial({ color: 0x0b0c0e, opacity: 0.10 }), 18, 8, 0.06);
+  wear.name = 'junction-tire-wear-softener';
+
+  return { mesh, dirt, wear };
 }
 
 export function buildRoadJunctionPass() {
@@ -148,80 +242,19 @@ export function buildRoadJunctionPass() {
   built = true;
 
   const group = new THREE.Group();
-  group.name = 'P0_RoadJunctionOverlayPass';
+  group.name = 'P1_FlaredJunctionGeometryPass';
 
-  const asphaltAlpha = radialTexture({ inner: 0.48, outer: 1.0, hard: 0.12 });
-  const dirtAlpha = radialTexture({ inner: 0.38, outer: 1.0, hard: 0.02 });
-  const wearAlpha = radialTexture({ inner: 0.24, outer: 0.92, hard: 0.02 });
-  const asphaltNoise = roadNoiseTexture();
+  const junctions = [
+    buildFlaredJunction({ mainIdx: BRANCH_A, branchIdx: 0, branchForward: 1 }),
+    buildFlaredJunction({ mainIdx: BRANCH_B, branchIdx: bSamples.length - 1, branchForward: -1 })
+  ];
 
-  const asphaltMat = makeDecalMaterial({
-    color: 0x1d1f23,
-    opacity: 0.88,
-    map: asphaltNoise,
-    alphaMap: asphaltAlpha,
-    roughness: 0.92
-  });
-  const dirtMat = makeDecalMaterial({
-    color: 0x4a3d2f,
-    opacity: 0.34,
-    alphaMap: dirtAlpha,
-    roughness: 1.0
-  });
-  const wearMat = makeDecalMaterial({
-    color: 0x0f1012,
-    opacity: 0.20,
-    alphaMap: wearAlpha,
-    roughness: 0.98
-  });
-
-  const endA = buildJunctionPoint(BRANCH_A, 0, 1);
-  const endB = buildJunctionPoint(BRANCH_B, bSamples.length - 1, -1);
-  const points = [endA, endB];
-
-  for (const j of points) {
-    // 外圈泥土/碎石过渡：覆盖路肩硬切和地形裸边
-    placePatch({
-      group,
-      p: j.p,
-      tangent: j.tangent,
-      normal: j.mainN,
-      radius: HALF_W + B_HALF + 15,
-      scaleX: 1.18,
-      scaleZ: 0.72,
-      yLift: 0.105,
-      material: dirtMat,
-      rotExtra: Math.PI * 0.02
-    });
-
-    // 沥青汇入区：盖住主/支路拼缝、分叉贴图断裂、车道线穿插
-    placePatch({
-      group,
-      p: j.p,
-      tangent: j.tangent,
-      normal: j.mainN,
-      radius: HALF_W + B_HALF + 8,
-      scaleX: 1.05,
-      scaleZ: 0.56,
-      yLift: 0.135,
-      material: asphaltMat
-    });
-
-    // 轮胎压实暗斑：让路口更像自然汇入，而不是纯几何补丁
-    placePatch({
-      group,
-      p: j.p,
-      tangent: j.tangent,
-      normal: j.mainN,
-      radius: HALF_W + B_HALF + 3,
-      scaleX: 1.06,
-      scaleZ: 0.36,
-      yLift: 0.155,
-      material: wearMat,
-      rotExtra: -Math.PI * 0.015
-    });
+  for (const j of junctions) {
+    group.add(j.dirt);
+    group.add(j.mesh);
+    group.add(j.wear);
   }
 
   scene.add(group);
-  console.log('[ROAD] junction overlay pass built:', points.length, 'junctions');
+  console.log('[ROAD] flared junction geometry pass built:', junctions.length, 'junctions');
 }
