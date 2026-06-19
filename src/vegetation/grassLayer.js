@@ -75,7 +75,7 @@ export function buildGrassLayer(opts) {
     );
   };
 
-  const GRASS_COUNT = 12000;
+  const GRASS_COUNT = 20000;
   const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_COUNT);
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
@@ -141,7 +141,7 @@ export function buildGrassLayer(opts) {
   });
   tuftMat.onBeforeCompile = grassMat.onBeforeCompile; // 共享风摆
 
-  const TUFT_COUNT = 3000;
+  const TUFT_COUNT = 5000;
   const tuftInst = new THREE.InstancedMesh(tuftGeo, tuftMat, TUFT_COUNT);
   let ti = 0; guard = 0;
 

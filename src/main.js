@@ -130,9 +130,9 @@ function loopBody() {
   if (G.appState === 'drive' && frame++ % 3 === 0) {
     const kmh = Math.abs(state.speed)*3.6;
     elSpeed.textContent = Math.round(kmh);
-    gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
+    if (gArc) gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
-    elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
+    if (elNitro) elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
     const ff = document.getElementById('flowfill');
     if (ff) ff.style.width = (state.flow*100).toFixed(0) + '%';
     elMode.innerHTML = race.phase === 'free'

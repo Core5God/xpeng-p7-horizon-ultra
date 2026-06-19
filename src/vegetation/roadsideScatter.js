@@ -87,7 +87,7 @@ export function buildRoadsideEcology(opts) {
     vertexColors: true
   });
 
-  const FLOWER_COUNT = 1200;
+  const FLOWER_COUNT = 2000;
   const flowerInst = new THREE.InstancedMesh(crossFlower, flowerMat, FLOWER_COUNT);
   let fi = 0, guard = 0;
 
@@ -139,7 +139,7 @@ export function buildRoadsideEcology(opts) {
     color: 0x8a8278, roughness: 0.95, flatShading: true
   });
 
-  const GRAVEL_COUNT = 600;
+  const GRAVEL_COUNT = 1000;
   const gravelInst = new THREE.InstancedMesh(gravelGeo, gravelMat, GRAVEL_COUNT);
   let gvi = 0; guard = 0;
 
@@ -175,7 +175,7 @@ export function buildRoadsideEcology(opts) {
     color: 0x4a7a3a, roughness: 0.85, flatShading: true, vertexColors: true
   });
 
-  const BUSH_ROAD_COUNT = 400;
+  const BUSH_ROAD_COUNT = 800;
   const bushInst = new THREE.InstancedMesh(bGeo, bMat, BUSH_ROAD_COUNT);
   let bi = 0; guard = 0;
 

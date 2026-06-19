@@ -38,8 +38,8 @@ export function generateForestSpots(opts) {
 
     const m = getTerrainMasks(x, z, ctx);
 
-    // 道路避让
-    if (m.roadDist < 14) continue;
+    // 道路避让（缩近到 10m，让路边植被更密）
+    if (m.roadDist < 10) continue;
 
     // 高度范围
     if (m.height < 0.6 || m.height > 22) continue;

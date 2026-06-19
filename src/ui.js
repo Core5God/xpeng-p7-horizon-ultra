@@ -592,10 +592,12 @@ const elMode = document.getElementById('mode');
 const elNitro = document.getElementById('nitrofill');
 const elGear = document.getElementById('gear');
 const gArc = document.getElementById('gArc');
-let gLen = 360.3; // 半径95、大弧的解析长度（隐藏时 getTotalLength 可能失效）
-try { const L = gArc.getTotalLength(); if (L > 1) gLen = L; } catch(e) {}
-gArc.style.strokeDasharray = gLen;
-gArc.style.strokeDashoffset = gLen;
+let gLen = 360.3;
+if (gArc) {
+  try { const L = gArc.getTotalLength(); if (L > 1) gLen = L; } catch(e) {}
+  gArc.style.strokeDasharray = gLen;
+  gArc.style.strokeDashoffset = gLen;
+}
 const elLap = document.getElementById('laptime');
 const elCp = document.getElementById('cpinfo');
 const elBest = document.getElementById('besttime');

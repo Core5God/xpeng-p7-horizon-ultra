@@ -45,23 +45,12 @@
     border-radius:var(--btn-radius-sm);padding:8px 16px;letter-spacing:.5px;border:1px solid var(--glass-border)}
   #mode b{color:var(--cy)}
   /* —— 仪表盘 —— */
-  #cluster{bottom:22px;right:24px;width:220px;height:164px;background:rgba(15,18,28,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border-radius:var(--panel-radius-sm);border:1px solid var(--glass-border);padding:8px 0 0;
-    box-shadow:0 4px 30px rgba(0,0,0,.35)}
-  #gauge{position:absolute;left:0;top:0;width:240px;height:170px;filter:drop-shadow(0 0 16px rgba(0,229,255,.2))}
-  .gbg{fill:none;stroke:rgba(255,255,255,.13);stroke-width:7;stroke-linecap:round}
-  .gfg{fill:none;stroke:url(#ggrad);stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .1s linear}
-  #gear{position:absolute;top:36px;width:100%;text-align:center;font-size:17px;font-weight:700;color:var(--cy);letter-spacing:2px}
-  #speed{position:absolute;top:48px;width:100%;text-align:center;font-size:52px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-  #speedunit{position:absolute;top:102px;width:100%;text-align:center;font-size:11px;letter-spacing:4px;opacity:.6}
-  #flowwrap{position:absolute;bottom:30px;left:16px;right:16px}
-  #flowlabel{font-size:9px;letter-spacing:1.5px;opacity:.5;margin-bottom:2px}
-  #flowbar{height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
-  #flowfill{height:100%;width:0%;background:linear-gradient(90deg,#19d3ff,#ff5fd0);border-radius:2px}
-  #nitrowrap{position:absolute;bottom:6px;left:16px;right:16px}
-  #nitrolabel{font-size:9px;letter-spacing:2px;opacity:.55;margin-bottom:2px}
-  #nitrobar{height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden}
-  #nitrofill{height:100%;width:100%;background:linear-gradient(90deg,#00e5ff,#7c4dff);border-radius:3px}
+  #cluster{bottom:28px;right:32px;text-align:right;padding:0}
+  #speed{font-size:72px;font-weight:300;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-2px;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.4)}
+  #speedunit{font-size:10px;font-weight:400;letter-spacing:4px;opacity:.45;margin-top:2px}
+  #gear{font-size:13px;font-weight:500;letter-spacing:3px;opacity:.5;margin-top:4px}
+  #gauge{display:none}
+  #flowwrap,#nitrowrap{display:none}
   /* —— 比赛信息 —— */
   #racebox{top:14px;left:50%;transform:translateX(-50%);text-align:center;display:none;
     background:rgba(15,18,28,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
@@ -71,8 +60,9 @@
   #besttime{font-size:12px;opacity:.75}
   #msg{top:32%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:600;text-align:center;opacity:0;transition:opacity .22s;pointer-events:none;letter-spacing:1px;white-space:nowrap;text-shadow:0 2px 20px rgba(0,0,0,.7)}
   /* —— 小地图（左下圆形） —— */
-  #minimap{position:fixed;bottom:22px;left:22px;z-index:10;border-radius:50%;background:rgba(15,18,28,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-    border:1px solid var(--glass-border);box-shadow:0 4px 24px rgba(0,0,0,.35)}
+  #minimap{position:fixed;bottom:28px;left:28px;z-index:10;border-radius:50%;background:rgba(15,18,28,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,.12);box-shadow:0 2px 16px rgba(0,0,0,.25);width:110px!important;height:110px!important;opacity:.7;transition:opacity .3s}
+  #minimap:hover{opacity:1}
   /* ====== 菜单（左侧导轨，主机游戏风） ====== */
   .menu{position:fixed;inset:0;z-index:20;display:none;color:#fff}
   .menu.show{display:block}
@@ -129,11 +119,11 @@
   #delta{font-size:20px;font-weight:700;font-style:italic;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .4s;min-height:24px}
   #driftlive{bottom:64px;left:50%;transform:translateX(-50%);font-size:24px;font-weight:600;color:#ffb054;text-shadow:0 2px 10px rgba(0,0,0,.7);opacity:0;transition:opacity .25s}
   /* —— 计分牌与技能弹字 —— */
-  #scorechip{top:16px;right:16px;text-align:right;background:rgba(15,18,28,.45);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    border-radius:var(--btn-radius-sm);padding:8px 16px;border:1px solid var(--glass-border)}
-  #scorechip .slabel{font-size:10px;letter-spacing:3px;opacity:.65}
-  #scoreval{font-size:26px;font-weight:700;font-style:italic;line-height:1;font-variant-numeric:tabular-nums;display:inline-block}
-  #combox{font-size:14px;font-weight:700;color:#cfd8e4;margin-left:7px}
+  #scorechip{top:18px;right:24px;text-align:right;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+    border-radius:0;padding:0;border:none}
+  #scorechip .slabel{font-size:9px;letter-spacing:3px;opacity:.4}
+  #scoreval{font-size:22px;font-weight:400;line-height:1;font-variant-numeric:tabular-nums;display:inline-block;opacity:.8}
+  #combox{font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-left:4px}
   #skillstack{position:fixed;top:96px;right:18px;z-index:10;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
   body.nohud #skillstack{display:none}
   .skill{font-family:'Rajdhani','Noto Sans SC',sans-serif;font-size:14px;font-weight:600;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.7);
@@ -251,18 +241,9 @@
 <div class="hud" id="title"><div class="brand">XPENG</div><div class="model">THE NEXT P7<span>地平线海岸 ULTRA</span></div></div>
 <div class="hud" id="mode"></div>
 <div class="hud" id="cluster">
-  <svg id="gauge" viewBox="0 0 240 170">
-    <defs><linearGradient id="ggrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#19d3ff"/><stop offset="1" stop-color="#a14dff"/>
-    </linearGradient></defs>
-    <path class="gbg" d="M30 150 A 95 95 0 1 1 210 150"/>
-    <path class="gfg" id="gArc" d="M30 150 A 95 95 0 1 1 210 150"/>
-  </svg>
-  <div id="gear">N</div>
   <div id="speed">0</div>
   <div id="speedunit">KM/H</div>
-  <div id="flowwrap"><div id="flowlabel">FLOW · 干净驾驶提升极速</div><div id="flowbar"><div id="flowfill"></div></div></div>
-  <div id="nitrowrap"><div id="nitrolabel">BOOST 性能模式 · SHIFT</div><div id="nitrobar"><div id="nitrofill"></div></div></div>
+  <div id="gear">N</div>
 </div>
 <div class="hud" id="racebox"><div id="lights"><i></i><i></i><i></i></div><div id="laptime">0:00.00</div><div id="delta"></div><div id="cpinfo"></div><div id="besttime"></div></div>
 <div class="hud" id="driftlive"></div>
@@ -270,7 +251,7 @@
 <div id="skillstack"></div>
 <div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>B</kbd>电台<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示<kbd>🎮</kbd>手柄已支持</div>
 <div class="hud" id="msg"></div>
-<canvas id="minimap" width="170" height="170"></canvas>
+<canvas id="minimap" width="110" height="110"></canvas>
 <div class="hud" id="playlistbar">
   <button id="plPrev" title="上一首">⏮</button>
   <span id="plTrackName">—</span>

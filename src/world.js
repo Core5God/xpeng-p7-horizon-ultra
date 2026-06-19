@@ -906,7 +906,7 @@ async function buildScenery() {
   // ---------- 森林斑块系统：替代旧的随机撒树 ----------
   const treeSpots = generateForestSpots({
     meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase,
-    targetTrees: 1200, targetBushes: 800
+    targetTrees: 2200, targetBushes: 1600
   });
 
   // ---------- 棕榈（低地 < 3.5m）+ 散岩 ----------
