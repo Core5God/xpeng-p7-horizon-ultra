@@ -929,8 +929,22 @@ function buildRoad() {
   // —— 程序化路口缝合面（每个 Y 路口一块）：三条臂（主路A/主路B/支路）各取 3 排
   // 横截面形成有纵深的「臂带」，中心生成 8~12 点 hub 环；先 hub fan 三角化，再每条臂
   // 独立缝到 hub（分臂 strip 防自交蝴蝶结）。最内排沿切线 overlap 进原路消浮点缝。
-  // 材质 = roadMat.clone()（共享同一 texture，零新采样器，不变蓝）；独立 mesh，绝不碰 terrain material。
-  const patchMat = roadMat.clone();
+  // 材质 = 独立沥青 PBR（asphalt026c）：深黑沥青带细裂纹。这是 patch 独立 mesh 的独立
+  // 材质（自己的 shader 程序、自己的采样器预算），绝不碰 terrain material、绝不给 terrain
+  // 加采样器 → 不会触发 terrain 变蓝。贴图 wrap=Repeat，配合下方按世界 xz 生成的 UV 正常平铺。
+  const _rkP = 'assets/terrain/roadkit/asphalt026c/';
+  const _rkL = new THREE.TextureLoader();
+  const _rkColor = (u) => { const t = _rkL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+  const _rkData  = (u) => { const t = _rkL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
+  const patchMat = new THREE.MeshStandardMaterial({
+    map: _rkColor(_rkP + 'diff.jpg'),
+    normalMap: _rkData(_rkP + 'nrm.jpg'),
+    roughnessMap: _rkData(_rkP + 'rough.jpg'),
+    roughness: 1.0,
+    metalness: 0.0,
+    envMapIntensity: 0.4, // 与主路 ribbon(0.4) 一致，避免一块反光一块不反光
+  });
+  patchMat.normalScale.set(0.6, 0.6);
   // mainEnd1Idx/mainEnd2Idx：该路口主路两个断头的 samples 索引（已退 GAP）
   // branchEndIdx：该路口支线断头的 bSamples 索引（已退 GAP_B）
   // OVERLAP：缝合面顶点沿各断头的路方向往路里多伸 PATCH_OVERLAP m，
@@ -940,7 +954,8 @@ function buildRoad() {
   const SEC_STEP = 2;        // 每排相隔 SEC_STEP 个采样点（规格1，约 2~3）
   const SEC_ROWS = 3;        // 每条臂取 3 排横截面（规格1/2）
   const HUB_PTS = 10;        // 中心 hub 环点数 8~12（规格4）
-  const HUB_MARGIN = 2.5;    // 修复2：hubR 在主路缺口半跨上加的余量（m，可调 2~3）
+  const HUB_INSET = 2.5;     // 修复C：hubR 从最近臂距离往内缩 HUB_INSET（m），让圆盘不捣出路外形成舌头
+  const PATCH_TILE = 7.0;    // 修复B(UV)：沥青贴图世界平铺周期（m/一遍，~6~8m），UV = worldXZ / PATCH_TILE
   function buildJunctionPatch(mainEnd1Idx, mainEnd2Idx, branchEndIdx) {
     // ---- 规格1+2：每路口三条臂，每臂取 SEC_ROWS 排横截面（断头 + 往路里退）----
     // 路口中心 = 三断头中心线点均值（先算，供 overlap 朝向用）
@@ -995,10 +1010,12 @@ function buildRoad() {
     //   这样两条 main 臂对 hub 对称，远侧 main 臂不再落在环外悬空。
     const cx = (innerMid[0].x + innerMid[1].x) / 2;
     const cz = (innerMid[0].z + innerMid[1].z) / 2;
-    // 修复2：hubR = 主路缺口半跨 + 余量 = 0.5*dist(main1,main2) + HUB_MARGIN，
-    //   确保两 main 臂内排横截面都落在环内/环上，strip 不退化；支路臂由 nearestHub 缝到最近弧段。
-    const mainGapHalf = 0.5 * Math.hypot(innerMid[0].x - innerMid[1].x, innerMid[0].z - innerMid[1].z);
-    const hubR = mainGapHalf + HUB_MARGIN;
+    // 修复C（舌头）：hubR 不再 = mainGapHalf + 余量（会让圆盘往路外捣出舌头），
+    //   改为 hubR = min(三臂到中心距离) - HUB_INSET。这样三臂内排都落在圈外，
+    //   每臂 strip 向内桥接到 hub（向内 overlap，无洞），hub 圆盘完全落在三路路面内，
+    //   不再往路外（主路截断点外侧 / 背离支路一侧）捣出尖角。
+    const armDist = innerMid.map(m => Math.hypot(m.x - cx, m.z - cz));
+    const hubR = Math.max(2.0, Math.min(...armDist) - HUB_INSET);
     // 修复3：hub 各环点 y 不用单一平均，按角度在三断头 y 之间做角度加权（反距离）插值。
     //   每个环点用最接近的断头（main1/main2/branch）y 加权，消除高度落差架空。
     const endAng = innerMid.map(m => Math.atan2(m.z - cz, m.x - cx));
@@ -1023,8 +1040,9 @@ function buildRoad() {
       hub.push({ x: cx + Math.cos(a) * hubR, z: cz + Math.sin(a) * hubR, y: yAtAng(a), ang: a });
     }
     const verts = [], uvs = [], idx = [];
-    const U = 0.04; // UV 缩放（沿用原补片密度）
-    const push = (x, y, z) => { const i = verts.length / 3; verts.push(x, y, z); uvs.push((x - cx) * U + 0.5, (z - cz) * U + 0.5); return i; };
+    // 修复B(UV)：按世界 xz 生成 UV（uv = worldXZ / PATCH_TILE），让沥青纹理正常平铺、有真实细节，
+    // 不再是单色糊面/马赛克（原来 (x-cx)*0.04 缩放 + roadMat 的 ClampToEdge 贴图是马赛克根因）。
+    const push = (x, y, z) => { const i = verts.length / 3; verts.push(x, y, z); uvs.push(x / PATCH_TILE, z / PATCH_TILE); return i; };
     // ---- 三角化① 中心 hub fan（中心点 → hub 环，稳定凸多边形不自交，规格4）----
     const cIdx = push(cx, cy, cz);
     const hubIdx = hub.map(h => push(h.x, h.y, h.z));
