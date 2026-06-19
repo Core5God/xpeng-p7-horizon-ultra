@@ -821,10 +821,27 @@ function buildRoad() {
   const shoulderMat = new THREE.MeshStandardMaterial({color:0x615a50, roughness:1});
   const lineMat = new THREE.MeshStandardMaterial({color:0xdadada, roughness:0.85, emissive:0x0a0a0a});
   const dashMat = new THREE.MeshStandardMaterial({color:0xe8c44a, roughness:0.85, emissive:0x141000});
-  function ribbon(off1, off2, yLift, mat) {
-    const pts = [], uvs = [];
-    for (let i = 0; i <= NS; i++) {
-      const k = i % NS, p = samples[k], n = normals[k];
+  // GAP（采样点数）：主路在每个 Y 路口前后各退 GAP 点，留出缝合面广场空间（可调）。
+  const GAP = 6;
+  // 主路是闭环（NS=800），被两个路口 BRANCH_A=120 / BRANCH_B=480 切成 2 段弧：
+  //   弧1：[BRANCH_A+GAP, BRANCH_B-GAP]
+  //   弧2：[BRANCH_B+GAP, BRANCH_A-GAP]（沿环绕过 index 0 回到起点）
+  // ribbon(start,end) 沿环从 start 走到 end（含端点），自动处理 wrap。
+  // 不传 start/end 时保持原全环行为（向后兼容）。
+  function ribbon(off1, off2, yLift, mat, startIdx, endIdx) {
+    const pts = [], uvs = [], idx = [];
+    let count;            // 区间内段数
+    let getK;             // i → samples 索引
+    if (startIdx === undefined || endIdx === undefined) {
+      count = NS;
+      getK = (i) => i % NS;          // 全环：0..NS（首尾相接）
+    } else {
+      // 沿环从 startIdx 行进到 endIdx（含两端）。span = 段数。
+      count = (endIdx - startIdx + NS) % NS;
+      getK = (i) => (startIdx + i) % NS;
+    }
+    for (let i = 0; i <= count; i++) {
+      const k = getK(i), p = samples[k], n = normals[k];
       pts.push(p.x + n.x*off1, p.y + yLift, p.z + n.z*off1,
                p.x + n.x*off2, p.y + yLift, p.z + n.z*off2);
       uvs.push(0, i*0.5, 1, i*0.5);
@@ -832,22 +849,37 @@ function buildRoad() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-    const idx = [];
-    for (let i = 0; i < NS; i++) { const a = i*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
+    for (let i = 0; i < count; i++) { const a = i*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
     g.setIndex(idx); g.computeVertexNormals();
     const m = new THREE.Mesh(g, mat);
     m.receiveShadow = true;
     return m;
   }
-  scene.add(ribbon(-HALF_W, HALF_W, 0.05, roadMat));
-  scene.add(ribbon(-HALF_W-1.1, -HALF_W, 0.03, shoulderMat));
-  scene.add(ribbon(HALF_W, HALF_W+1.1, 0.03, shoulderMat));
-  scene.add(ribbon(-HALF_W+0.45, -HALF_W+0.62, 0.07, lineMat));
-  scene.add(ribbon(HALF_W-0.62, HALF_W-0.45, 0.07, lineMat));
+  // 主路两段弧的端点（在路口前后各退 GAP 截断，留出缝合面缺口）
+  const ARC1_S = (BRANCH_A + GAP) % NS, ARC1_E = (BRANCH_B - GAP + NS) % NS;
+  const ARC2_S = (BRANCH_B + GAP) % NS, ARC2_E = (BRANCH_A - GAP + NS) % NS;
+  // 每条带（路面/路肩/线）都按两段弧生成，跳过两个路口缺口
+  for (const [o1, o2, yl, mt] of [
+    [-HALF_W, HALF_W, 0.05, roadMat],
+    [-HALF_W-1.1, -HALF_W, 0.03, shoulderMat],
+    [HALF_W, HALF_W+1.1, 0.03, shoulderMat],
+    [-HALF_W+0.45, -HALF_W+0.62, 0.07, lineMat],
+    [HALF_W-0.62, HALF_W-0.45, 0.07, lineMat],
+  ]) {
+    scene.add(ribbon(o1, o2, yl, mt, ARC1_S, ARC1_E));
+    scene.add(ribbon(o1, o2, yl, mt, ARC2_S, ARC2_E));
+  }
+  // 路口缺口判定：i 是否落在某个 Y 路口的 ±GAP 范围内（用于虚线跳过）
+  const inJunctionGap = (i) => {
+    const da = Math.min((i - BRANCH_A + NS) % NS, (BRANCH_A - i + NS) % NS);
+    const db = Math.min((i - BRANCH_B + NS) % NS, (BRANCH_B - i + NS) % NS);
+    return da <= GAP || db <= GAP;
+  };
   const dashPts = [], dashIdx = [];
   let vi = 0;
   for (let i = 0; i < NS; i++) {
     if (i % 10 >= 5) continue;
+    if (inJunctionGap(i)) continue; // 路口区不画中线虚线
     const p = samples[i], n = normals[i], p2 = samples[(i+1)%NS], n2 = normals[(i+1)%NS];
     dashPts.push(p.x-n.x*0.12, p.y+0.07, p.z-n.z*0.12,  p.x+n.x*0.12, p.y+0.07, p.z+n.z*0.12,
                  p2.x-n2.x*0.12, p2.y+0.07, p2.z-n2.z*0.12,  p2.x+n2.x*0.12, p2.y+0.07, p2.z+n2.z*0.12);
@@ -859,14 +891,21 @@ function buildRoad() {
   scene.add(new THREE.Mesh(dg, dashMat));
 
   // —— 支线公路 + 跨谷桥（桥墩 / 桥护栏 / 桥面侧裙）
-  function branchRibbon(off1, off2, yLift, mat) {
+  // GAP_B：支线在两端接主路处各退 GAP_B 点截断，留出干净断头给缝合面（可调）。
+  const GAP_B = 6;
+  const NBL = bSamples.length;            // 支线采样点数
+  const B_S = GAP_B, B_E = NBL - 1 - GAP_B; // 支线保留区间 [B_S, B_E]
+  function branchRibbon(off1, off2, yLift, mat, sIdx, eIdx) {
+    const s = (sIdx === undefined) ? 0 : sIdx;
+    const e = (eIdx === undefined) ? NBL - 1 : eIdx;
     const pts = [], uvs = [], idx = [];
-    for (let i = 0; i < bSamples.length; i++) {
+    let row = 0;
+    for (let i = s; i <= e; i++, row++) {
       const p = bSamples[i], n = bNormals[i];
       pts.push(p.x + n.x*off1, p.y + yLift, p.z + n.z*off1,
                p.x + n.x*off2, p.y + yLift, p.z + n.z*off2);
       uvs.push(0, i*0.5, 1, i*0.5);
-      if (i < bSamples.length - 1) { const a = i*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
+      if (i < e) { const a = row*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
     }
     const g2 = new THREE.BufferGeometry();
     g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
@@ -878,52 +917,61 @@ function buildRoad() {
     return m2;
   }
   // 支线路面铺在主路面之下（0.045 < 主路 0.05）：汇入口重叠处由更宽的主路覆盖，
-  // 消除"窄支线贴片盖在主路上"造成的衔接错位/闪烁；车道线仍高于两条路面以保持可见
-  scene.add(branchRibbon(-B_HALF, B_HALF, 0.045, roadMat));
-  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.065, lineMat));
-  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.065, lineMat));
+  // 消除"窄支线贴片盖在主路上"造成的衔接错位/闪烁；车道线仍高于两条路面以保持可见。
+  // 两端各退 GAP_B 截断，断头由程序化缝合面接住。
+  scene.add(branchRibbon(-B_HALF, B_HALF, 0.045, roadMat, B_S, B_E));
+  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.065, lineMat, B_S, B_E));
+  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.065, lineMat, B_S, B_E));
 
   // —— 路口铺面（junction apron）：支线汇入主路处，两条直纹路面以夹角相交会留下
   // 一块没有沥青覆盖的楔形缺口（露出地形 + 边线交叉穿模）。这里用"主路边沿 + 支线边沿"
   // 采样点的凸包生成一块贴合路面高度的沥青补片，盖住缺口并覆盖杂乱的交叉车道线。
-  const apronMat = new THREE.MeshStandardMaterial({map: asphaltTex, color: 0x2c2c31, roughness: 0.85, metalness: 0, side: THREE.DoubleSide});
-  function junctionApron(mainIdx, branchIdxs) {
-    const pts = [];
-    for (let d = -5; d <= 5; d++) {
-      const i = (mainIdx + d + NS) % NS, p = samples[i], n = normals[i];
-      pts.push([p.x + n.x*HALF_W, p.z + n.z*HALF_W]);
-      pts.push([p.x - n.x*HALF_W, p.z - n.z*HALF_W]);
-    }
-    for (const k of branchIdxs) {
-      if (k < 0 || k >= bSamples.length) continue;
-      const p = bSamples[k], n = bNormals[k];
-      pts.push([p.x + n.x*B_HALF, p.z + n.z*B_HALF]);
-      pts.push([p.x - n.x*B_HALF, p.z - n.z*B_HALF]);
-    }
-    // 凸包（Andrew monotone chain）
-    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
-    const lo = [], hi = [];
-    for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
-    for (let i = pts.length-1; i >= 0; i--) { const p = pts[i]; while (hi.length >= 2 && cr(hi[hi.length-2], hi[hi.length-1], p) <= 0) hi.pop(); hi.push(p); }
-    const hull = lo.slice(0, -1).concat(hi.slice(0, -1));
-    if (hull.length < 3) return;
-    let cx = 0, cz = 0; for (const p of hull) { cx += p[0]; cz += p[1]; } cx /= hull.length; cz /= hull.length;
-    // 贴合路面高度（+0.03 确保盖住车道线 0.07 与路面 0.05，避免穿模），并给一点 UV 让沥青有纹理
+  // —— 程序化路口缝合面（每个 Y 路口一块）：取三个断头的精确左右边缘点，
+  // 按绕路口中心的角度排序连成闭合多边形，从中心扇形三角化。
+  // 顶点精确落在三条路断头边缘 → 无缝、不外溢草地、不用凸包（凸包填太大变黑）。
+  // 独立 material + 独立 mesh，绝不碰 terrain material。
+  const patchMat = new THREE.MeshStandardMaterial({ map: asphaltTex, color: 0x33343a, roughness: 0.9, metalness: 0 });
+  // mainEnd1Idx/mainEnd2Idx：该路口主路两个断头的 samples 索引（已退 GAP）
+  // branchEndIdx：该路口支线断头的 bSamples 索引（已退 GAP_B）
+  function buildJunctionPatch(mainEnd1Idx, mainEnd2Idx, branchEndIdx) {
+    // 三个断头的左右边缘点（世界坐标 + 高度）
+    const edge = []; // {x,y,z}
+    const pushMain = (k) => {
+      const p = samples[k], n = normals[k], y = p.y + 0.05; // 与主路面 yLift=0.05 同高
+      edge.push({ x: p.x + n.x*HALF_W, y, z: p.z + n.z*HALF_W });
+      edge.push({ x: p.x - n.x*HALF_W, y, z: p.z - n.z*HALF_W });
+    };
+    const pushBranch = (k) => {
+      const p = bSamples[k], n = bNormals[k], y = p.y + 0.05;
+      edge.push({ x: p.x + n.x*B_HALF, y, z: p.z + n.z*B_HALF });
+      edge.push({ x: p.x - n.x*B_HALF, y, z: p.z - n.z*B_HALF });
+    };
+    pushMain(mainEnd1Idx);
+    pushMain(mainEnd2Idx);
+    pushBranch(branchEndIdx);
+    if (edge.length < 3) return;
+    // 路口中心 = 所有边缘点平均（近似三个断头中点均值）
+    let cx = 0, cy = 0, cz = 0;
+    for (const e of edge) { cx += e.x; cy += e.y; cz += e.z; }
+    cx /= edge.length; cy /= edge.length; cz /= edge.length;
+    // 按绕中心角度排序（xz 平面）
+    edge.sort((a, b) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(b.z - cz, b.x - cx));
+    // 从中心扇形三角化
     const verts = [], uvs = [], idx = [];
-    verts.push(cx, surfaceHeight(cx, cz) + 0.03, cz); uvs.push(0.5, 0.5);
-    for (const p of hull) { verts.push(p[0], surfaceHeight(p[0], p[1]) + 0.03, p[1]); uvs.push((p[0]-cx)*0.04 + 0.5, (p[1]-cz)*0.04 + 0.5); }
-    for (let i = 0; i < hull.length; i++) idx.push(0, 1 + i, 1 + (i+1) % hull.length);
+    verts.push(cx, cy, cz); uvs.push(0.5, 0.5);
+    for (const e of edge) { verts.push(e.x, e.y, e.z); uvs.push((e.x - cx)*0.04 + 0.5, (e.z - cz)*0.04 + 0.5); }
+    for (let i = 0; i < edge.length; i++) idx.push(0, 1 + i, 1 + (i + 1) % edge.length);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
     g.setIndex(idx); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, apronMat); m.receiveShadow = true;
+    const m = new THREE.Mesh(g, patchMat); m.receiveShadow = true;
     scene.add(m);
   }
-  // junctionApron(BRANCH_A, [0, 1, 2, 3, 4, 5, 6, 7, 8]); // disabled: convex-hull apron produced black junction patch, switching to road surface mask system
-  // const lastB = bSamples.length - 1; // disabled with junctionApron call below
-  // junctionApron(BRANCH_B, [lastB, lastB-1, lastB-2, lastB-3, lastB-4, lastB-5, lastB-6, lastB-7, lastB-8]); // disabled: convex-hull apron produced black junction patch, switching to road surface mask system
+  // 路口 A：主路断头 = BRANCH_A±GAP；支线断头 = bSamples[B_S]（起点端）
+  buildJunctionPatch((BRANCH_A - GAP + NS) % NS, (BRANCH_A + GAP) % NS, B_S);
+  // 路口 B：主路断头 = BRANCH_B±GAP；支线断头 = bSamples[B_E]（末端）
+  buildJunctionPatch((BRANCH_B - GAP + NS) % NS, (BRANCH_B + GAP) % NS, B_E);
 
   const pylonM = new THREE.MeshStandardMaterial({color:0x8d8d94, roughness:0.8});
   const bRailM = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
