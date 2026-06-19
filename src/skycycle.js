@@ -172,8 +172,8 @@ export function skyCycleUpdate(dt) {
     // 三段式着色随时段插值（零分配：复用 _baseWater）
     _baseWater.copy(A._water).lerp(B._water, f);
     oceanUniforms.deepColor.value.copy(_baseWater);
-    oceanUniforms.shallowColor.value.copy(baseWater).offsetHSL(0.05, 0.15, 0.20); // 浅滩偏亮偏青
-    oceanUniforms.horizonColor.value.copy(baseWater).offsetHSL(-0.02, -0.05, 0.10); // 远海偏灰偏亮
+    oceanUniforms.shallowColor.value.copy(_baseWater).offsetHSL(0.05, 0.15, 0.20); // 浅滩偏亮偏青
+    oceanUniforms.horizonColor.value.copy(_baseWater).offsetHSL(-0.02, -0.05, 0.10); // 远海偏灰偏亮
     oceanUniforms.fogColor.value.copy(scene.fog.color);
   }
 

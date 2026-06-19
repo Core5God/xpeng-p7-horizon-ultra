@@ -6,7 +6,7 @@ import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack } from './audio.js';
-import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS } from './character.js';
+import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS, charState } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -298,7 +298,19 @@ function enterPhoto() {
   elPause.classList.remove('show');
   elPhotobar.classList.add('show');
   controls.enabled = true; controls.autoRotate = false;
-  setOrbitAroundCar(6.5, 1.5);
+  // 放宽拍照镜头限制，允许更远的距离和更高/低的视角
+  controls.minDistance = 1.5;
+  controls.maxDistance = 30;
+  controls.maxPolarAngle = Math.PI * 0.88; // 接近俯拍
+  controls.minPolarAngle = 0.1;            // 接近仰拍
+  if (G._prePhotoState === 'walk' && charState) {
+    // 步行模式：镜头围绕角色，允许自由移动
+    const cp = charState.pos;
+    controls.target.set(cp.x, cp.y + 1.0, cp.z);
+    camera.position.set(cp.x + 5, cp.y + 3, cp.z + 6);
+  } else {
+    setOrbitAroundCar(6.5, 1.5);
+  }
   // 从暂停菜单进入时保留原 pauseT，暂停+拍照时间在退出时一并补偿
   if (race.phase === 'racing' && G._prePhotoState === 'drive') race.pauseT = performance.now();
 }
@@ -309,6 +321,11 @@ function exitPhoto() {
   photoPass.enabled = false;
   elPhotobar.classList.remove('show');
   controls.enabled = false;
+  // 恢复车库/驾驶默认镜头限制
+  controls.minDistance = 3.2;
+  controls.maxDistance = 14;
+  controls.maxPolarAngle = 1.42;
+  controls.minPolarAngle = 0;
   if (race.phase === 'racing') race.t0 += performance.now() - race.pauseT;
 }
 document.getElementById('btnRoam').addEventListener('click', () => startDrive(false));
