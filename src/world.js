@@ -722,6 +722,28 @@ function buildRoad() {
   const rd2R = _rl2.load('assets/terrain/road2_rough.webp'); rd2R.wrapS = THREE.ClampToEdgeWrapping; rd2R.wrapT = THREE.RepeatWrapping; rd2R.repeat.set(1, 0.55); rd2R.anisotropy = 8;
   const roadMat = new THREE.MeshStandardMaterial({ map: rd2D, normalMap: rd2N, roughnessMap: rd2R, roughness:1.0, metalness:0, envMapIntensity:0.4 });
   roadMat.normalScale.set(0.5, 0.5);
+  // 湿路面系统：wetness 0=干燥 1=全湿，降低 roughness + 增加 envMapIntensity → 路面出现环境反射
+  roadMat.userData.wetness = 0;
+  roadMat.onBeforeCompile = (shader) => {
+    shader.uniforms.wetness = { value: 0 };
+    roadMat.userData.shader = shader;
+    // 注入 wetness 控制：湿路面降低 roughness、提高 envMapIntensity、轻微加深颜色
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'void main() {',
+      `uniform float wetness;
+       void main() {`
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <roughnessmap_fragment>',
+      `#include <roughnessmap_fragment>
+       roughnessFactor = mix(roughnessFactor, 0.18, wetness);`
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+       diffuseColor.rgb *= mix(1.0, 0.72, wetness);` // 湿沥青稍暗
+    );
+  };
   const shoulderMat = new THREE.MeshStandardMaterial({color:0x615a50, roughness:1});
   const lineMat = new THREE.MeshStandardMaterial({color:0xdadada, roughness:0.85, emissive:0x0a0a0a});
   const dashMat = new THREE.MeshStandardMaterial({color:0xe8c44a, roughness:0.85, emissive:0x141000});
@@ -1080,7 +1102,26 @@ async function buildScenery() {
       scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W
     });
   } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
+
+  // 绑定路面材质供 setRoadWetness 使用
+  _bindRoadMat(roadMat);
 }
+
+// ---------- 湿路面控制 ----------
+// 外部调用 setRoadWetness(0~1) 控制路面湿润程度。0=干燥，1=全湿（雨后积水反光）
+let _roadMat = null;
+export function setRoadWetness(wetness) {
+  if (!_roadMat) return;
+  _roadMat.userData.wetness = wetness;
+  if (_roadMat.userData.shader) {
+    _roadMat.userData.shader.uniforms.wetness.value = wetness;
+  }
+  // 同时调整 envMapIntensity：湿路面更强环境反射
+  _roadMat.envMapIntensity = 0.4 + wetness * 0.8; // 0.4(干) → 1.2(湿)
+  _roadMat.needsUpdate = true;
+}
+// 内部引用：buildRoad 完成后设置 _roadMat
+function _bindRoadMat(mat) { _roadMat = mat; }
 
 // ---------- 环境造景：路灯 / 云 / 月 / 灯塔 / 萤火虫 / 草丛 / 远岛 ----------
 function makeGlowTex(stops, size) {
