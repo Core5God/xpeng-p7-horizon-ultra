@@ -611,6 +611,22 @@ function buildTerrain() {
         'vec3 rsAsph = vec3(0.040, 0.043, 0.046);',
         'rsBase = mix(rsBase, rsDirt, shoulderM * 0.55);',
         'rsBase = mix(rsBase, rsAsph, asphaltM);',
+        // —— 路口渐隐过渡：沥青 → 破损沥青 → 碎石（纯程序化，零新采样器，避免贴图采样器超限导致地面整体异常）
+        'float decay = junctionM;',
+        // 程序化破损/碎石纹理：复用 vWorldPos 多频噪声，无需新贴图
+        'float gN1 = sin(vWorldPos.x*1.7 + 0.4) * cos(vWorldPos.z*1.9 + 1.1) * 0.5 + 0.5;',
+        'float gN2 = sin(vWorldPos.x*4.3 + 2.7) * sin(vWorldPos.z*3.7 + 0.3) * 0.5 + 0.5;',
+        'float gN = clamp(gN1*0.6 + gN2*0.4, 0.0, 1.0);',
+        // 破损沥青：略亮、带颗粒；碎石：偏灰土黄、更高对比
+        'vec3 crackCol  = rsAsph + vec3(0.030, 0.028, 0.024) * gN + vec3(0.012);',
+        'vec3 gravelCol = mix(vec3(0.090, 0.084, 0.072), vec3(0.165, 0.150, 0.120), gN);',
+        'float t1 = smoothstep(0.15, 0.55, decay);',
+        'float t2 = smoothstep(0.55, 0.95, decay);',
+        'vec3 roadSurf = rsAsph;',
+        'roadSurf = mix(roadSurf, crackCol,  t1);',
+        'roadSurf = mix(roadSurf, gravelCol, t2);',
+        // 只在路面区域(asphaltM)按 decay 强度生效，绝不污染草地/沙地/岩石
+        'rsBase = mix(rsBase, roadSurf, asphaltM * decay);',
         'rsBase = mix(rsBase, vec3(1.0, 0.85, 0.10), yellowLine * 0.95);',
         'rsBase = mix(rsBase, vec3(0.95, 0.95, 0.95), whiteLine * 0.95);',
         'diffuseColor.rgb = rsBase;'
@@ -622,7 +638,9 @@ function buildTerrain() {
         'float rS = texture2D(tSandR, uvR).g;',
         'float rR = texture2D(tRockR, uvR*0.6).g;',
         'float rD = texture2D(tDryR, uvR).g;',
-        'roughnessFactor *= (rS*vW.x + rF*vW.y + rR*vW.z + rD*vW.w);'
+        'roughnessFactor *= (rS*vW.x + rF*vW.y + rR*vW.z + rD*vW.w);',
+        // 破损/碎石区更粗糙不反光（仅路面 asphaltM*junctionM 生效）
+        'roughnessFactor = mix(roughnessFactor, 0.95, asphaltM * junctionM);'
       ].join('\n'));
   };
   const m = new THREE.Mesh(g, mat);
