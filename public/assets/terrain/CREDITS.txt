@@ -1,0 +1,23 @@
+Junction-transition ground textures
+====================================
+
+Source : ambientCG (https://ambientcg.com/)
+License: CC0 1.0 Universal (Public Domain) — free for commercial use, no attribution required.
+Added  : 2026-06-19
+
+These textures were downloaded as 1K JPG packs, then re-encoded for web:
+  - Color/diffuse -> JPG (quality 85)
+  - Normal (OpenGL/NormalGL) -> WebP
+  - Roughness -> WebP
+
+Files / original ambientCG material:
+  dirt_diff.jpg / dirt_nrm.webp / dirt_rough.webp
+      <- Ground037   https://ambientcg.com/view?id=Ground037   (dirt / dry ground)
+  gravel_diff.jpg / gravel_nrm.webp / gravel_rough.webp
+      <- Gravel022   https://ambientcg.com/view?id=Gravel022   (gravel / crushed stone)
+  asphalt_crack_diff.jpg / asphalt_crack_nrm.webp / asphalt_crack_rough.webp
+      <- Asphalt012  https://ambientcg.com/view?id=Asphalt012  (cracked / damaged asphalt)
+
+Intended use: blend/fade the paved asphalt road into dirt / gravel / cracked
+asphalt at junction merges for the Horizon driving game. Fade-transition
+rendering logic lands in a separate PR.
