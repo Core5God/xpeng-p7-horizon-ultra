@@ -97,12 +97,75 @@ gtaoPass.enabled = !!G.aoOn; // 关闭：GTAO 后期 pass 与透明烟雾/粒子
 composer.addPass(gtaoPass);
 
 // Bloom 在半分辨率下计算：本就是模糊辉光，半分辨率肉眼几乎无差，开销减半
-// 收紧参数：threshold 提高到 1.3，只有 emissive 灯具/车灯等高亮物进入 Bloom，
+// 收紧参数：threshold 提高到 1.2，只有 emissive 灯具/车灯等高亮物进入 Bloom，
 // 天空、车漆、地形等常规亮度不触发 Bloom，避免"页游感"泛光
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.18, 0.35, 1.3);
-composer.addPass(bloomPass);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.16, 0.40, 1.2);
 
-composer.addPass(new OutputPass());
+// ---------- Selective Bloom ----------
+// Layer 31 标记为"进入 Bloom"的对象；其余对象在 bloom 渲染时被临时替换为纯黑，
+// 确保天空、车漆、地形等永远不会触发 Bloom。参考 three.js 官方 selective bloom 示例。
+const BLOOM_LAYER = 31;
+const bloomLayer = new THREE.Layers();
+bloomLayer.set(BLOOM_LAYER);
+const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const darkSpriteMat = new THREE.SpriteMaterial({ color: 0x000000 });
+const darkPointsMat = new THREE.PointsMaterial({ color: 0x000000, size: 0 });
+const _darkCache = [];
+
+// bloomComposer：独立渲染器，先渲染场景（非 bloom 对象涂黑），再做 Bloom
+const bloomRT = new THREE.WebGLRenderTarget(
+  Math.round(innerWidth / 2), Math.round(innerHeight / 2),
+  { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }
+);
+const bloomComposer = new EffectComposer(renderer, bloomRT);
+bloomComposer.renderToScreen = false;
+bloomComposer.addPass(new RenderPass(scene, camera));
+bloomComposer.addPass(bloomPass);
+
+// finalComposer：正常渲染场景 → 叠加 bloom 层 → tone mapping → 抗锯齿
+// 使用自定义 additive composite：将 bloomComposer 输出的 bloom 纹理加回主画面
+const finalComposer = new EffectComposer(renderer);
+finalComposer.renderToScreen = true;
+finalComposer.addPass(new RenderPass(scene, camera));
+// Additive composite: scene + bloomTexture，在 OutputPass 之前叠加确保一起进 tone mapping
+const compositePass = new ShaderPass({
+  uniforms: {
+    baseTexture: { value: null },
+    bloomTexture: { value: bloomRT.texture }
+  },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D baseTexture;
+    uniform sampler2D bloomTexture;
+    varying vec2 vUv;
+    void main() {
+      gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+    }`
+});
+compositePass.uniforms.bloomTexture.value = bloomRT.texture;
+finalComposer.addPass(compositePass);
+finalComposer.addPass(new OutputPass());
+
+function selectiveBloomRender() {
+  _darkCache.length = 0;
+  scene.traverse((obj) => {
+    if (!bloomLayer.test(obj.layers)) {
+      if (obj.isMesh) {
+        _darkCache.push({ obj, material: obj.material });
+        obj.material = darkMaterial;
+      } else if (obj.isSprite) {
+        _darkCache.push({ obj, material: obj.material });
+        obj.material = darkSpriteMat;
+      } else if (obj.isPoints) {
+        _darkCache.push({ obj, material: obj.material });
+        obj.material = darkPointsMat;
+      }
+    }
+  });
+  bloomComposer.render();
+  for (const d of _darkCache) d.obj.material = d.material;
+  finalComposer.render();
+}
 
 // 照片模式电影感：径向色差 + 暗角（仅 G.appState==='photo' 时启用，平时跳过）
 const PhotoGradeShader = {
@@ -132,10 +195,10 @@ const PhotoGradeShader = {
 };
 const photoPass = new ShaderPass(PhotoGradeShader);
 photoPass.enabled = false;
-composer.addPass(photoPass);
+finalComposer.addPass(photoPass);
 
 const smaaPass = new SMAAPass(innerWidth, innerHeight);
-composer.addPass(smaaPass);
+finalComposer.addPass(smaaPass);
 
 
-export { canvas, renderer, scene, camera, sunDir, hemi, sun, rim, composer, bloomPass, gtaoPass, photoPass, smaaPass };
+export { canvas, renderer, scene, camera, sunDir, hemi, sun, rim, composer, finalComposer, bloomComposer, bloomPass, bloomLayer, BLOOM_LAYER, selectiveBloomRender, gtaoPass, photoPass, smaaPass };

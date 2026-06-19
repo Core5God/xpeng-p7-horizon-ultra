@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { G, camera, renderer, canvas, composer, bloomPass, photoPass, sun } from './core.js';
+import { G, camera, renderer, canvas, finalComposer, bloomComposer, selectiveBloomRender, bloomPass, photoPass, sun } from './core.js';
 import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
@@ -164,7 +164,8 @@ function setQuality(q) {
   if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，高低画质都常开
   const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.25 : 1); // 高画质像素比 1.5→1.25：填充率约降 30%，车身仍锐利
   renderer.setPixelRatio(pr);
-  composer.setPixelRatio(pr);
+  finalComposer.setPixelRatio(pr);
+  bloomComposer.setPixelRatio(pr);
   // 阴影贴图随画质：低画质降到 1024²（开放世界阴影很贵，分辨率减半省一半阴影 pass 开销）
   const wantShadow = G.hiQuality ? 2048 : 1024;
   if (sun.shadow.mapSize.width !== wantShadow) {
@@ -314,7 +315,7 @@ document.getElementById('btnPhoto').addEventListener('click', enterPhoto);
 document.getElementById('btnGarage').addEventListener('click', enterGarage);
 document.getElementById('btnPhotoExit').addEventListener('click', exitPhoto);
 document.getElementById('btnPoster').addEventListener('click', () => {
-  composer.render();
+  selectiveBloomRender();
   const pc = document.createElement('canvas');
   pc.width = 1080; pc.height = 1440;
   const x = pc.getContext('2d');
@@ -370,7 +371,7 @@ document.getElementById('posterClose').addEventListener('click', () => {
   document.getElementById('posterView').classList.remove('show');
 });
 document.getElementById('btnShot').addEventListener('click', () => {
-  composer.render();
+  selectiveBloomRender();
   // 同帧同步拷贝到离屏 canvas：渲染缓冲在本次事件内仍有效，无需 preserveDrawingBuffer
   const sc = document.createElement('canvas');
   sc.width = canvas.width; sc.height = canvas.height;

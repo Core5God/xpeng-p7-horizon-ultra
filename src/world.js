@@ -3,7 +3,7 @@ import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass } from './core.js';
+import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER } from './core.js';
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
@@ -1050,8 +1050,11 @@ function buildEnv() {
     poolGeos.push(poolG.clone().applyMatrix4(tmpL.matrix));
   }
   scene.add(new THREE.Mesh(mergeGeometries(poleGeos), poleM));
-  scene.add(new THREE.Mesh(mergeGeometries(headGeos), env.lampHeadM));
+  const lampHeadMesh = new THREE.Mesh(mergeGeometries(headGeos), env.lampHeadM);
+  lampHeadMesh.layers.enable(BLOOM_LAYER); // 路灯灯头进 selective bloom
+  scene.add(lampHeadMesh);
   env.lampPools = new THREE.Mesh(mergeGeometries(poolGeos), poolM);
+  env.lampPools.layers.enable(BLOOM_LAYER); // 灯光池进 selective bloom
   scene.add(env.lampPools);
   env.lampPools.visible = false;
 
@@ -1103,7 +1106,7 @@ function buildEnv() {
   const t2 = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 3, 12), redM);
   t2.position.y = 10.5; lhouse.add(t2);
   const lant = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 1.6, 10), env.lanternM);
-  lant.position.y = 12.8; lhouse.add(lant);
+  lant.position.y = 12.8; lant.layers.enable(BLOOM_LAYER); lhouse.add(lant); // 灯笼进 bloom
   const roof = new THREE.Mesh(new THREE.ConeGeometry(1.3, 1.5, 10), redM);
   roof.position.y = 14.3; lhouse.add(roof);
   env.beamGrp = new THREE.Group();
@@ -1112,8 +1115,8 @@ function buildEnv() {
   beamG.translate(0, -27.5, 0);
   beamG.rotateX(Math.PI/2);
   const beamM = new THREE.MeshBasicMaterial({color:0xfff0b0, transparent:true, opacity:0.16, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide, fog:false});
-  const b1 = new THREE.Mesh(beamG, beamM);
-  const b2 = new THREE.Mesh(beamG, beamM);
+  const b1 = new THREE.Mesh(beamG, beamM); b1.layers.enable(BLOOM_LAYER);
+  const b2 = new THREE.Mesh(beamG, beamM); b2.layers.enable(BLOOM_LAYER);
   b2.rotation.y = Math.PI;
   env.beamGrp.add(b1); env.beamGrp.add(b2);
   env.beamGrp.visible = false;
@@ -1136,6 +1139,7 @@ function buildEnv() {
   const fg = new THREE.BufferGeometry();
   fg.setAttribute('position', new THREE.BufferAttribute(fpos, 3));
   env.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({color:0xa6ff5e, size:0.32, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false}));
+  env.fireflies.layers.enable(BLOOM_LAYER); // 萤火虫进 selective bloom
   env.fireflies.visible = false;
   scene.add(env.fireflies);
 

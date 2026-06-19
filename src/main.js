@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { G, scene, camera, renderer, composer, sun, rim } from './core.js';
+import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
 import { buildCharacter, characterUpdate, characterCamera, characterPreviewUpdate, charState } from './character.js';
@@ -104,7 +104,7 @@ function loopBody() {
     if (want !== G._prTier) {
       G._prTier = want;
       const pr = Math.min(window.devicePixelRatio, want);
-      renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+      renderer.setPixelRatio(pr); finalComposer.setPixelRatio(pr); bloomComposer.setPixelRatio(pr);
     }
   }
 
@@ -145,8 +145,8 @@ function loopBody() {
     }
     drawMinimap();
   }
-  if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（自限每5帧）
-  composer.render();
+  if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（仅车库/照片模式）
+  selectiveBloomRender();
   // 帧率自适应：持续偏低时自动降画质（一次性，Q 可切回）
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 4) {
@@ -164,7 +164,8 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  composer.setSize(innerWidth, innerHeight);
+  finalComposer.setSize(innerWidth, innerHeight);
+  bloomComposer.setSize(Math.round(innerWidth/2), Math.round(innerHeight/2));
 });
 
 // ---------- 分阶段异步启动：让出主线程刷新进度，消除首访资源竞态 ----------

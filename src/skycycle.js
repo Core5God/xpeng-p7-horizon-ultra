@@ -20,7 +20,8 @@ UNIQUE_FILES.forEach((f, i) => { fileToIdx[f] = i; });
 const N = UNIQUE_FILES.length;
 
 const texs = new Array(N);
-let ready = false, loaded = 0, envTimer = 0, lastEnvTex = null;
+let ready = false, loaded = 0, lastEnvTex = null;
+let _lastBlend = -1, _lastPreset = '';
 let blendRT, blendScene, blendCam, blendMat, envScene, envGround, pmrem, envSrcRT, clampScene, clampMat;
 let weatherCtrl = null;
 let _dbg = null;
@@ -100,6 +101,18 @@ function start() {
   if (env.clouds) for (const c of env.clouds) c.visible = false;
   if (stars) stars.visible = false;
   ready = true;
+  // 启动时立即生成首张 PMREM（给 scene.environment 一个初始值，避免首帧反射缺失）
+  const initTex = anyTex();
+  if (initTex) {
+    clampMat.uniforms.tBlend.value = initTex;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(envSrcRT);
+    renderer.render(clampScene, blendCam);
+    renderer.setRenderTarget(prev);
+    const rt = pmrem.fromScene(envScene, 0.06);
+    lastEnvTex = rt.texture;
+    scene.environment = lastEnvTex;
+  }
 }
 
 const _z = new THREE.Color(0);
@@ -178,10 +191,13 @@ export function skyCycleUpdate(dt) {
     m.emissiveIntensity = origI + (1.7 - origI) * nf;
   }
 
-  // PMREM 反射环境 ~1Hz 重建
-  envTimer += dt;
-  if (envTimer >= (G.hiQuality ? 1.0 : 1.5)) {
-    envTimer = 0;
+  // PMREM 反射环境：仅在 blend 变化超 5% 或 preset 切换时重建
+  // 避免每秒 fromScene 的性能尖峰；过渡期间 PMREM 缓动更新，视觉无感
+  const blendDelta = Math.abs(f - _lastBlend);
+  const presetChanged = ws.currentPreset !== _lastPreset;
+  if (blendDelta > 0.05 || presetChanged) {
+    _lastBlend = f;
+    _lastPreset = ws.currentPreset;
     envGround.material.color.copy(A._grd).lerp(B._grd, f);
     clampMat.uniforms.tBlend.value = curTex;
     const prev = renderer.getRenderTarget();

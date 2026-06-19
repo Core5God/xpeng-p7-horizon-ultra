@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { G, scene, camera, renderer, wrapPi } from './core.js';
+import { G, scene, camera, renderer, wrapPi, BLOOM_LAYER } from './core.js';
 import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod, env, stars, sky } from './world.js';
 import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
@@ -23,16 +23,16 @@ const PAINTS = [
 const car = new THREE.Group();
 scene.add(car);
 
-// —— 车辆反射探针：CubeCamera 把真实周围环境（路面/地形/天空/道具）渲染进 cubemap 作为车的环境贴图，
-// 让玻璃/车漆反射真实世界而非仅天空 IBL（主机赛车游戏的反射探针思路）。每 5 帧更新一次、隐藏自身避免自反射。
+// —— 车辆反射探针：仅在车库/照片模式运行（驾驶模式车漆默认走 scene.environment HDR PMREM IBL，
+// 不需要实时 CubeCamera 开销）。拍照截图时启用，隐藏高亮对象防脏反射。
 const reflectRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
 const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
 let _reflN = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  const sp = Math.abs(state.speed);
-  const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
-  if ((_reflN++ % interval) !== 0) return;
+  // 驾驶模式车漆默认吃 HDR PMREM IBL（scene.environment），无需实时 CubeCamera
+  if (G.appState !== 'garage' && G.appState !== 'photo') return;
+  if ((_reflN++ % 16) !== 0) return;
 
   // 隐藏高亮 sprite / 光球 / 发光体，防止进入车身 CubeCamera 反射造成脏反射
   const hidden = [];
@@ -139,15 +139,14 @@ loader.load(GLB_URL, (gltf) => {
         if (m.name && m.name.startsWith('Mat_E29_Body')) {
           // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
           paintMats.push(m);
-          // 渲染级金属车漆：高金属度 + 锐利清漆 + 实时 CubeCamera 反射
-          // reflectRT 渲染时已隐藏 moon/stars/clouds/beams，不会吃进光球污染
-          m.metalness = 0.92;
-          m.roughness = 0.20;
-          m.envMapIntensity = 1.7;
-          m.envMap = reflectRT.texture;
+          // 4A 级车漆：HDR PMREM IBL 主导，默认走 scene.environment
+          // 反射输入干净 → 不会出现光球/白点污染
+          m.metalness = 0.82;
+          m.roughness = 0.32;
+          m.envMapIntensity = 1.15;
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
-            m.clearcoatRoughness = 0.05;
+            m.clearcoatRoughness = 0.10;
           }
           m.normalMap = flakeNormalTex;  // 金属闪片
           m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
@@ -158,12 +157,13 @@ loader.load(GLB_URL, (gltf) => {
           G.lampMats.push(m);
           m.userData.origEmissive = (m.emissive ? m.emissive.clone() : new THREE.Color(0));
           m.userData.origEI = m.emissiveIntensity !== undefined ? m.emissiveIntensity : 1;
+          o.layers.enable(BLOOM_LAYER); // 车灯进 selective bloom
         }
         if (m.name === 'Mat_E29_Glass') {
-          // 默认保持原厂深色玻璃；仅座舱视角动态切换为半透明（见 setGlassSeeThru）
-          m.envMapIntensity = 1.8;
-          m.roughness = 0.06;
-          m.envMap = reflectRT.texture;
+          // 玻璃默认走 scene.environment（HDR PMREM IBL）
+          // 反射输入干净 → 不会出现光球/白点污染
+          m.envMapIntensity = 1.20;
+          m.roughness = 0.05;
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;
@@ -213,6 +213,7 @@ loader.load(GLB_URL, (gltf) => {
           G.lampMats.push(c); // 夜间点亮逻辑继续生效
         }
         o.material = cloneMap.get(o.material);
+        o.layers.enable(BLOOM_LAYER); // 尾灯进 selective bloom
       }
     });
   }
