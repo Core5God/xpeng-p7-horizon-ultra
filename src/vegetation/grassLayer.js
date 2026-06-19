@@ -53,7 +53,7 @@ export function buildGrassLayer(opts) {
 
   const grassMat = new THREE.MeshLambertMaterial({
     map: grassBladeTexture(),
-    alphaTest: 0.45,
+    alphaTest: 0.5,
     side: THREE.DoubleSide,
     vertexColors: true
   });
@@ -131,8 +131,8 @@ export function buildGrassLayer(opts) {
 
     // 颜色变化：草甸偏亮绿，林缘偏暗绿，路边偏黄绿
     const hue = 0.25 + Math.random() * 0.08;
-    const sat = 0.40 + Math.random() * 0.15;
-    const lum = 0.18 + Math.random() * 0.14 + m.meadow * 0.06;
+    const sat = 0.45 + Math.random() * 0.18;
+    const lum = 0.35 + Math.random() * 0.18 + m.meadow * 0.08;
     col.setHSL(hue, sat, lum);
     grassInst.setColorAt(gi, col);
     gi++;
@@ -154,7 +154,7 @@ export function buildGrassLayer(opts) {
 
   const tuftMat = new THREE.MeshLambertMaterial({
     map: grassBladeTexture(),
-    alphaTest: 0.45,
+    alphaTest: 0.5,
     side: THREE.DoubleSide,
     vertexColors: true
   });
@@ -188,7 +188,7 @@ export function buildGrassLayer(opts) {
     dummy.updateMatrix();
     tuftInst.setMatrixAt(ti, dummy.matrix);
 
-    col.setHSL(0.24 + Math.random() * 0.07, 0.38 + Math.random() * 0.12, 0.20 + Math.random() * 0.12);
+    col.setHSL(0.24 + Math.random() * 0.07, 0.42 + Math.random() * 0.15, 0.35 + Math.random() * 0.15);
     tuftInst.setColorAt(ti, col);
     ti++;
   }

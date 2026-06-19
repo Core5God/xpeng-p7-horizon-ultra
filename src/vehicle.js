@@ -409,7 +409,7 @@ function physics(dt) {
   // —— 防楔入：超过 55cm 的台阶一律视为实体墙（错位路沿/桥侧/并行路段步差）。
   // 只回退"朝墙"的位移分量、保留沿墙切向滑动（贴墙不定住）；
   // 速度强制衰减，杜绝"位置冻结但速度高企 → 原地持续喷尾气"的死锁
-  if (!state.airborne && gy - state.pos.y > 0.8) {
+  if (!state.airborne && gy - state.pos.y > 1.5) {
     const cy = state.pos.y;
     const gxp = surfaceHeight(state.pos.x + 0.6, state.pos.z, cy) - surfaceHeight(state.pos.x - 0.6, state.pos.z, cy);
     const gzp = surfaceHeight(state.pos.x, state.pos.z + 0.6, cy) - surfaceHeight(state.pos.x, state.pos.z - 0.6, cy);
@@ -440,18 +440,18 @@ function physics(dt) {
   }
   const gap = state.pos.y - gy;
   if (state.airborne) {
-    state.vyAir -= 24*dt;
+    state.vyAir -= 18*dt; // 重力（比真实稍小，增加滞空感）
     state.pos.y += state.vyAir*dt;
     if (state.pos.y <= gy) {
-      if (state.vyAir < -7) {
-        G.shake = Math.max(G.shake, Math.min(0.6, -state.vyAir*0.045));
-        sfx('thud', Math.min(1.4, -state.vyAir*0.09));
-        if (state.vyAir < -10) skillPop('落地！', true);
+      if (state.vyAir < -5) {
+        G.shake = Math.max(G.shake, Math.min(0.6, -state.vyAir*0.04));
+        sfx('thud', Math.min(1.4, -state.vyAir*0.08));
+        if (state.vyAir < -8) skillPop('落地！', true);
         state.flow = Math.min(1, state.flow + 0.1);
         if (state.vyAir < -12) unlockAch('fly');
       }
       state.pos.y = gy;
-      state.vyAir = 0;
+      state.vyAir = Math.max(0, state.vyAir * -0.15); // 落地反弹
       state.airborne = false;
     }
   } else if (gap > 1.0 && state.vyAir > 2.5 && Math.abs(state.speed) > 15) {
@@ -460,12 +460,36 @@ function physics(dt) {
     state.airborne = true; // 突然悬空（冲出桥面/悬崖）
     state.vyAir = Math.min(state.vyAir, 0);
   } else {
-    // 贴地：下坡快速贴附（杜绝下坡误入腾空态造成的颠簸），上坡平滑
-    const prevY = state.pos.y;
-    const rate = gy < state.pos.y ? 30 : 22; // 上坡贴附加快：高速上坡时车身能跟上路面，避免落差误判为墙而原地截停
-    state.pos.y += (gy - state.pos.y) * Math.min(1, dt*rate);
-    const instV = dt > 0 ? (state.pos.y - prevY)/dt : 0;
-    state.vyAir = Math.max(-2, Math.min(14, state.vyAir*0.65 + instV*0.35)); // 平滑，滤掉起伏毛刺
+    // 弹簧-阻尼悬挂：车体不再硬贴地面，有悬挂压缩/回弹，冲坡可起飞
+    const springK = 65;   // 弹簧刚度（越高越硬）
+    const dampC = 12;     // 阻尼系数（抑制振荡）
+    const targetY = gy;
+    const displacement = targetY - state.pos.y;
+    // 弹簧力向上（正 displacement = 地面高于车 = 压缩弹簧）
+    const springForce = displacement * springK;
+    const dampForce = -state.vyAir * dampC;
+    const gravity = -18; // 重力（比真实 9.8 稍大，让车更快落地更爽）
+    state.vyAir += (springForce + dampForce + gravity) * dt;
+    state.pos.y += state.vyAir * dt;
+    // 触地：车低于地面时 clamp 并吸收能量
+    if (state.pos.y <= gy) {
+      state.pos.y = gy;
+      if (state.vyAir < -3) {
+        // 落地冲击：屏幕震动 + 音效 + 悬挂压缩反馈
+        const impact = Math.abs(state.vyAir);
+        G.shake = Math.max(G.shake, Math.min(0.5, impact * 0.035));
+        sfx('thud', Math.min(1.2, impact * 0.07));
+        if (impact > 8) skillPop('落地！', true);
+        state.flow = Math.min(1, state.flow + 0.08);
+        if (impact > 12) unlockAch('fly');
+      }
+      state.vyAir = Math.max(0, state.vyAir * -0.15); // 反弹 15%（硬悬挂）
+      state.airborne = false;
+    }
+    // 起飞：车高于地面 1.2m 以上 → 进入弹道飞行
+    if (state.pos.y - gy > 1.2 && state.vyAir > 1.0) {
+      state.airborne = true;
+    }
   }
   const hF = surfaceHeight(state.pos.x + fx*1.5, state.pos.z + fz*1.5, state.pos.y);
   const hB = surfaceHeight(state.pos.x - fx*1.5, state.pos.z - fz*1.5, state.pos.y);
