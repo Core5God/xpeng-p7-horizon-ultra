@@ -926,75 +926,134 @@ function buildRoad() {
   // —— 路口铺面（junction apron）：支线汇入主路处，两条直纹路面以夹角相交会留下
   // 一块没有沥青覆盖的楔形缺口（露出地形 + 边线交叉穿模）。这里用"主路边沿 + 支线边沿"
   // 采样点的凸包生成一块贴合路面高度的沥青补片，盖住缺口并覆盖杂乱的交叉车道线。
-  // —— 程序化路口缝合面（每个 Y 路口一块）：取三个断头的精确左右边缘点，
-  // 按绕路口中心的角度排序连成闭合多边形，从中心扇形三角化。
-  // 顶点精确落在三条路断头边缘 → 无缝、不外溢草地、不用凸包（凸包填太大变黑）。
-  // 独立 material + 独立 mesh，绝不碰 terrain material。
-  const patchMat = new THREE.MeshStandardMaterial({ map: asphaltTex, color: 0x33343a, roughness: 0.9, metalness: 0 });
+  // —— 程序化路口缝合面（每个 Y 路口一块）：三条臂（主路A/主路B/支路）各取 3 排
+  // 横截面形成有纵深的「臂带」，中心生成 8~12 点 hub 环；先 hub fan 三角化，再每条臂
+  // 独立缝到 hub（分臂 strip 防自交蝴蝶结）。最内排沿切线 overlap 进原路消浮点缝。
+  // 材质 = roadMat.clone()（共享同一 texture，零新采样器，不变蓝）；独立 mesh，绝不碰 terrain material。
+  const patchMat = roadMat.clone();
   // mainEnd1Idx/mainEnd2Idx：该路口主路两个断头的 samples 索引（已退 GAP）
   // branchEndIdx：该路口支线断头的 bSamples 索引（已退 GAP_B）
   // OVERLAP：缝合面顶点沿各断头的路方向往路里多伸 PATCH_OVERLAP m，
   // 与 ribbon 最后一行重叠一点点，消除亚像素黑缝（比追求绝对精确更稳）。
   const PATCH_OVERLAP = 0.4;
+  // 横截面排距（采样点步长）与中心 hub 点数、覆盖量（可调）：
+  const SEC_STEP = 2;        // 每排相隔 SEC_STEP 个采样点（规格1，约 2~3）
+  const SEC_ROWS = 3;        // 每条臂取 3 排横截面（规格1/2）
+  const HUB_PTS = 10;        // 中心 hub 环点数 8~12（规格4）
   function buildJunctionPatch(mainEnd1Idx, mainEnd2Idx, branchEndIdx) {
-    // 三个断头分别贡献一组（左右两个边缘点 + 断头中心线点 + 路切线）。
-    // 关键：必须把每个断头的两个边缘点“成对、按边界顺序”保留，
-    // 不能把 6 个点统一按绕中心角度排序——那会把同一断头的左右点拆散、
-    // 造成多边形自交（蝴蝶结），导致路口中心缺口没被盖住 → 露草（图1空洞根因）。
-    const ends = []; // {L,R,c}  c=中心线点用于排序/朝向
-    const addMain = (k) => {
-      const p = samples[k], n = normals[k], t = tangents[k];
-      const y = p.y + 0.05; // 与主路面 yLift=0.05 同高（统一高度来源，消图2高低差黑缝）
-      // 沿路切线往路里推 overlap（sign 使其朝远离路口中心方向 = 进入既有 ribbon）
-      const s = Math.sign((p.x - jcx)*t.x + (p.z - jcz)*t.z) || 1;
-      const ox = p.x + t.x*s*PATCH_OVERLAP, oz = p.z + t.z*s*PATCH_OVERLAP;
-      ends.push({
-        L: { x: ox + n.x*HALF_W, y, z: oz + n.z*HALF_W },
-        R: { x: ox - n.x*HALF_W, y, z: oz - n.z*HALF_W },
-        c: { x: p.x, z: p.z } });
-    };
-    const addBranch = (k) => {
-      const p = bSamples[k], n = bNormals[k], t = bTangents[k];
-      const y = p.y + 0.05;
-      const s = Math.sign((p.x - jcx)*t.x + (p.z - jcz)*t.z) || 1;
-      const ox = p.x + t.x*s*PATCH_OVERLAP, oz = p.z + t.z*s*PATCH_OVERLAP;
-      ends.push({
-        L: { x: ox + n.x*B_HALF, y, z: oz + n.z*B_HALF },
-        R: { x: ox - n.x*B_HALF, y, z: oz - n.z*B_HALF },
-        c: { x: p.x, z: p.z } });
-    };
-    // 路口中心 = 三断头中心线点均值（先算，供 overlap 朝向与角度排序用）
+    // ---- 规格1+2：每路口三条臂，每臂取 SEC_ROWS 排横截面（断头 + 往路里退）----
+    // 路口中心 = 三断头中心线点均值（先算，供 overlap 朝向用）
     const jcx = (samples[mainEnd1Idx].x + samples[mainEnd2Idx].x + bSamples[branchEndIdx].x) / 3;
     const jcz = (samples[mainEnd1Idx].z + samples[mainEnd2Idx].z + bSamples[branchEndIdx].z) / 3;
-    addMain(mainEnd1Idx);
-    addMain(mainEnd2Idx);
-    addBranch(branchEndIdx);
-    if (ends.length < 3) return;
-    // 三个断头按其中心线点绕路口中心的角度排序（决定环绕顺序）
-    ends.sort((a, b) => Math.atan2(a.c.z - jcz, a.c.x - jcx) - Math.atan2(b.c.z - jcz, b.c.x - jcx));
-    // 展开成边界多边形：每个断头按需翻转 L/R，使两点沿环绕方向相邻、不交叉
-    const edge = [];
-    for (const e of ends) {
-      const aL = Math.atan2(e.L.z - jcz, e.L.x - jcx);
-      const aR = Math.atan2(e.R.z - jcz, e.R.x - jcx);
-      let d = aL - aR; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI;
-      if (d < 0) { edge.push(e.L, e.R); } else { edge.push(e.R, e.L); }
+    // 一条臂 = 由内到外的 SEC_ROWS 排，每排 {L,R}（左右边缘点，含高度）。
+    // rows[0] = 最靠路口（断头排，做 overlap）；rows[last] = 最往路里那排。
+    // src=主路 samples / 支路 bSamples；getIdx(r) 给出第 r 排的索引（朝路里方向递增）。
+    const buildArm = (isMain, endIdx) => {
+      const S = isMain ? samples : bSamples;
+      const Nn = isMain ? normals : bNormals;
+      const Tn = isMain ? tangents : bTangents;
+      const half = isMain ? HALF_W : B_HALF;
+      const Len = S.length;
+      // 朝路里方向：从断头沿“远离路口中心”的相邻采样点判定符号
+      const p0 = S[endIdx], t0 = Tn[endIdx];
+      // dirSign：沿 tangent 哪个方向是“离开路口、进入既有 ribbon”
+      const dirSign = (Math.sign((p0.x - jcx) * t0.x + (p0.z - jcz) * t0.z) || 1);
+      const rows = [];
+      for (let r = 0; r < SEC_ROWS; r++) {
+        // r=0 断头排；r 增大 = 往路里退（沿 dirSign 方向移动索引）
+        let k = endIdx + (isMain ? dirSign : -dirSign) * r * SEC_STEP;
+        if (isMain) k = ((k % NS) + NS) % NS; else k = Math.max(0, Math.min(Len - 1, k));
+        const p = S[k], n = Nn[k], t = Tn[k];
+        const y = p.y + 0.05; // 与 ribbon yLift=0.05 同高（统一高度来源，消 z-fight）
+        let ox = p.x, oz = p.z;
+        if (r === 0) {
+          // 规格3：最内排沿切线往路里伸 overlap，与 ribbon 最后一行重叠杜绝浮点缝
+          ox += t.x * dirSign * PATCH_OVERLAP;
+          oz += t.z * dirSign * PATCH_OVERLAP;
+        }
+        rows.push({
+          L: { x: ox + n.x * half, y, z: oz + n.z * half },
+          R: { x: ox - n.x * half, y, z: oz - n.z * half },
+          cx: ox, cz: oz, y,
+        });
+      }
+      return rows;
+    };
+    const arms = [
+      buildArm(true, mainEnd1Idx),
+      buildArm(true, mainEnd2Idx),
+      buildArm(false, branchEndIdx),
+    ];
+    // 每条臂内排中点（rows[0] 的 L/R 中点）——hub 半径与对接锚点
+    const innerMid = arms.map(a => ({
+      x: (a[0].L.x + a[0].R.x) / 2,
+      z: (a[0].L.z + a[0].R.z) / 2,
+      y: a[0].y,
+    }));
+    // 规格4：路口中心 = 三臂内排中点平均
+    const cx = (innerMid[0].x + innerMid[1].x + innerMid[2].x) / 3;
+    const cz = (innerMid[0].z + innerMid[1].z + innerMid[2].z) / 3;
+    const cy = (innerMid[0].y + innerMid[1].y + innerMid[2].y) / 3;
+    // hub 半径 ≈ 到三臂内排中点的平均距离
+    let rAvg = 0;
+    for (const m of innerMid) rAvg += Math.hypot(m.x - cx, m.z - cz);
+    rAvg /= innerMid.length;
+    const hubR = rAvg;
+    // 8~12 点 hub 环（按角度均匀分布）
+    const hub = [];
+    for (let i = 0; i < HUB_PTS; i++) {
+      const a = (i / HUB_PTS) * Math.PI * 2;
+      hub.push({ x: cx + Math.cos(a) * hubR, z: cz + Math.sin(a) * hubR, y: cy, ang: a });
     }
-    // 顶点 y 也用各自断头高度（已含 +0.05），扇形中心 y 取均值
-    let cx = jcx, cz = jcz, cy = 0;
-    for (const e of edge) cy += e.y;
-    cy /= edge.length;
-    // 从中心扇形三角化（此时多边形为简单凸/弱凹六边形，中心在内部，无自交）
     const verts = [], uvs = [], idx = [];
-    verts.push(cx, cy, cz); uvs.push(0.5, 0.5);
-    for (const e of edge) { verts.push(e.x, e.y, e.z); uvs.push((e.x - cx)*0.04 + 0.5, (e.z - cz)*0.04 + 0.5); }
-    for (let i = 0; i < edge.length; i++) idx.push(0, 1 + i, 1 + (i + 1) % edge.length);
+    const U = 0.04; // UV 缩放（沿用原补片密度）
+    const push = (x, y, z) => { const i = verts.length / 3; verts.push(x, y, z); uvs.push((x - cx) * U + 0.5, (z - cz) * U + 0.5); return i; };
+    // ---- 三角化① 中心 hub fan（中心点 → hub 环，稳定凸多边形不自交，规格4）----
+    const cIdx = push(cx, cy, cz);
+    const hubIdx = hub.map(h => push(h.x, h.y, h.z));
+    for (let i = 0; i < HUB_PTS; i++) {
+      idx.push(cIdx, hubIdx[i], hubIdx[(i + 1) % HUB_PTS]);
+    }
+    // ---- 三角化② 每条臂带 (SEC_ROWS×2 点) 独立缝到 hub 环对应弧段 ----
+    // 每条臂在 hub 上取“离该臂左右边缘点角度最近”的两个环点，与臂带最内排 L/R 缝合，
+    // 再把臂带各排之间连成 triangle strip 一路盖到断头排。分臂独立 → 互不串扰、不自交。
+    const angOf = (x, z) => Math.atan2(z - cz, x - cx);
+    const nearestHub = (x, z) => {
+      let best = 0, bestD = Infinity;
+      const a = angOf(x, z);
+      for (let i = 0; i < HUB_PTS; i++) {
+        let d = Math.abs(((hub[i].ang - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      return best;
+    };
+    for (let ai = 0; ai < arms.length; ai++) {
+      const rows = arms[ai];
+      // 臂带顶点：先 push 所有排的 L/R，记录索引（[r].L,[r].R）
+      const vL = [], vR = [];
+      for (let r = 0; r < SEC_ROWS; r++) {
+        vL.push(push(rows[r].L.x, rows[r].L.y, rows[r].L.z));
+        vR.push(push(rows[r].R.x, rows[r].R.y, rows[r].R.z));
+      }
+      // 臂带内部 strip：相邻两排 L/R 连成四边形（盖住臂带纵深，r:0..SEC_ROWS-1）
+      for (let r = 0; r < SEC_ROWS - 1; r++) {
+        idx.push(vL[r], vR[r], vL[r + 1]);
+        idx.push(vR[r], vR[r + 1], vL[r + 1]);
+      }
+      // 内排 L/R 缝到 hub：取最近的两个环点，三角化成两片把臂口接到 hub 边
+      const hL = nearestHub(rows[0].L.x, rows[0].L.z);
+      const hR = nearestHub(rows[0].R.x, rows[0].R.z);
+      idx.push(vL[0], hubIdx[hL], vR[0]);
+      idx.push(hubIdx[hL], hubIdx[hR], vR[0]);
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
     g.setIndex(idx); g.computeVertexNormals();
     const m = new THREE.Mesh(g, patchMat); m.receiveShadow = true;
     scene.add(m);
+    // 返回 hub 中心与几何统计供 handoff 验证
+    return { cx, cy, cz, hubR, hubPts: HUB_PTS, armSectionPts: arms.length * SEC_ROWS * 2, verts: verts.length / 3, tris: idx.length / 3 };
   }
   // 路口 A：主路断头 = BRANCH_A±GAP；支线断头 = bSamples[B_S]（起点端）
   buildJunctionPatch((BRANCH_A - GAP + NS) % NS, (BRANCH_A + GAP) % NS, B_S);
