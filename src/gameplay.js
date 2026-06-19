@@ -148,35 +148,9 @@ function gameplayUpdate(dt, onRoad) {
   const now = performance.now();
   const px = state.pos.x, pz = state.pos.z;
   const spd = Math.hypot(state.vx, state.vz);
-  // —— 道具碰撞 / 沙滩球物理 / 擦身奖励
+  // —— 道具碰撞 / 擦身奖励（沙滩球已移除）
   for (const p of props) {
-    if (p.type === 'ball') {
-      const m = p.pieces[0];
-      const bdx = px - m.position.x, bdz = pz - m.position.z;
-      const bd2 = bdx*bdx + bdz*bdz;
-      if (bd2 < 4.4 && spd > 4) {
-        const bd = Math.sqrt(bd2) || 1;
-        p.vx = -bdx/bd*(spd*0.85 + 3) + state.vx*0.3;
-        p.vz = -bdz/bd*(spd*0.85 + 3) + state.vz*0.3;
-        p.vy = 4 + spd*0.28;
-        if (now - p.kickT > 700) { addScore(40, '沙滩球！'); sfx('boing'); }
-        p.kickT = now;
-      }
-      if (p.vx || p.vy || p.vz) {
-        p.vy -= 22*dt;
-        m.position.x += p.vx*dt; m.position.y += p.vy*dt; m.position.z += p.vz*dt;
-        m.rotation.x += p.vz*dt*2; m.rotation.z -= p.vx*dt*2;
-        const gy = meshGroundHeight(m.position.x, m.position.z) + 0.36;
-        if (m.position.y < gy) {
-          m.position.y = gy;
-          p.vy *= -0.55;
-          p.vx *= 0.92; p.vz *= 0.92;
-          if (Math.abs(p.vy) < 0.8) p.vy = 0;
-          if (Math.hypot(p.vx, p.vz) < 0.3) { p.vx = 0; p.vz = 0; }
-        }
-      }
-      continue;
-    }
+    if (p.type === 'ball') continue; // 兼容旧数据
     if (!p.intact) continue;
     const dx = px - p.x, dz = pz - p.z;
     const d2 = dx*dx + dz*dz;
@@ -312,7 +286,7 @@ function buildProps() {
   const metalM = new THREE.MeshStandardMaterial({color:0xb8b2a6, roughness:0.5, metalness:0.4});
   const blueM = new THREE.MeshStandardMaterial({color:0x2b6fb5, roughness:0.6});
   const darkM = new THREE.MeshStandardMaterial({color:0x4a3d31, roughness:0.9});
-  const ballMs = [0xff6b57, 0x4fc3f7, 0xffd54f].map(c => new THREE.MeshStandardMaterial({color:c, roughness:0.45}));
+  const ballMs = []; // 沙滩球已移除
   const pastel = [0xf0dfc0, 0xcfe3da, 0xf3cfc0, 0xdcd4ec];
   const umbPoleG = new THREE.CylinderGeometry(0.035, 0.05, 2.25, 6); umbPoleG.translate(0, 1.12, 0);
   const umbLeafG = new THREE.BoxGeometry(0.95, 0.05, 0.62);
@@ -325,7 +299,7 @@ function buildProps() {
   const fRailG = new THREE.BoxGeometry(1.75, 0.1, 0.05);
   const sgPoleG = new THREE.CylinderGeometry(0.04, 0.04, 1.65, 6); sgPoleG.translate(0, 0.82, 0);
   const sgPanelG = new THREE.BoxGeometry(0.8, 0.55, 0.05); sgPanelG.translate(0, 1.55, 0);
-  const ballG = new THREE.SphereGeometry(0.36, 12, 10);
+  // 沙滩球几何已移除
   function reg(group, x, z, rotY, r, type) {
     // 贴"可行驶表面"：近路取路面高度（路锥不沉入路面），路外取渲染网格（道具不悬浮）
     group.position.set(x, surfaceHeight(x, z), z);
@@ -378,12 +352,7 @@ function buildProps() {
     g.add(new THREE.Mesh(sgPanelG, blueM));
     reg(g, x, z, rot, 0.5, 'sign');
   }
-  function mkBall(x, z) {
-    const m = new THREE.Mesh(ballG, ballMs[Math.floor(Math.random()*3)]);
-    m.position.set(x, surfaceHeight(x, z) + 0.36, z);
-    scene.add(m);
-    props.push({x, z, r:0.36, type:'ball', group:m, pieces:[m], intact:true, nearMiss:true, vx:0, vy:0, vz:0, kickT:0});
-  }
+  // mkBall 已移除（路边弹跳球体）
   function beachSpot(minRoad, hMin, hMax) {
     for (let t = 0; t < 300; t++) {
       const a = Math.random()*Math.PI*2, r = 60 + Math.random()*540;
@@ -485,7 +454,6 @@ function buildProps() {
     mkParasol(s.x + (Math.random()-0.5)*4, s.z + (Math.random()-0.5)*4);
     mkChair(s.x + 1.6 + Math.random(), s.z + (Math.random()-0.5)*3, Math.random()*6.3);
     if (Math.random() < 0.7) mkChair(s.x - 1.8 - Math.random(), s.z + (Math.random()-0.5)*3, Math.random()*6.3);
-    if (Math.random() < 0.7) mkBall(s.x + (Math.random()-0.5)*7, s.z + (Math.random()-0.5)*7);
     if (Math.random() < 0.5) mkCrate(s.x + (Math.random()-0.5)*8, s.z + (Math.random()-0.5)*8);
   }
   for (const s of hutSpots) if (Math.random() < 0.8) mkCrate(s.x + 3 + Math.random()*2, s.z + 2);
