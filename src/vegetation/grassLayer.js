@@ -1,31 +1,70 @@
 // ---------- 草地层 ----------
-// 用 InstancedMesh 生成真正有体积感的草地，替代纯贴图草
+// 用 InstancedMesh + 真实贴图生成有体积感的草地
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getTerrainMasks } from '../terrainMasks.js';
 import { randomRange, clamp } from './vegetationUtils.js';
 
-// 草叶贴图（程序化生成，与 world.js 的 bladeTexture 风格一致）
+// 近景草叶贴图：密集叶片填满整个画布，避免透明空洞
 function grassBladeTexture() {
   const c = document.createElement('canvas');
-  c.width = 64; c.height = 64;
+  c.width = 128; c.height = 128;
   const g = c.getContext('2d');
-  g.clearRect(0, 0, 64, 64);
-  for (let i = 0; i < 8; i++) {
-    const x = 4 + Math.random() * 56;
-    const w = 1.2 + Math.random() * 1.5;
-    const h = 28 + Math.random() * 30;
-    const bend = (Math.random() - 0.5) * 14;
-    g.strokeStyle = `rgba(${160 + Math.random()*60|0},${190 + Math.random()*50|0},${80 + Math.random()*40|0},0.88)`;
-    g.lineWidth = w;
+  // 背景全透明
+  g.clearRect(0, 0, 128, 128);
+  // 画 20+ 片宽叶片，覆盖整个画布
+  for (let i = 0; i < 24; i++) {
+    const x = 4 + Math.random() * 120;
+    const w = 3 + Math.random() * 5;           // 宽叶片 3-8px
+    const h = 50 + Math.random() * 70;          // 高度覆盖大部分画布
+    const bend = (Math.random() - 0.5) * 30;
+    const gr = 120 + Math.random() * 80 | 0;
+    const rd = 50 + Math.random() * 50 | 0;
+    const bl = 20 + Math.random() * 30 | 0;
+    // 叶片填充（非描边）
+    g.fillStyle = `rgba(${rd},${gr},${bl},0.95)`;
     g.beginPath();
-    g.moveTo(x, 63);
-    g.quadraticCurveTo(x + bend * 0.5, 63 - h * 0.5, x + bend, 63 - h);
-    g.stroke();
+    g.moveTo(x - w/2, 127);
+    g.quadraticCurveTo(x + bend * 0.3, 127 - h * 0.5, x + bend, 127 - h);
+    g.quadraticCurveTo(x + bend * 0.3 + w * 0.4, 127 - h * 0.5, x + w/2, 127);
+    g.closePath();
+    g.fill();
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// 中景草簇贴图：更高更密的草丛
+function grassTuftTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 128, 128);
+  for (let i = 0; i < 30; i++) {
+    const x = 2 + Math.random() * 124;
+    const w = 3 + Math.random() * 6;
+    const h = 60 + Math.random() * 60;
+    const bend = (Math.random() - 0.5) * 35;
+    const gr = 110 + Math.random() * 80 | 0;
+    const rd = 40 + Math.random() * 50 | 0;
+    const bl = 15 + Math.random() * 25 | 0;
+    g.fillStyle = `rgba(${rd},${gr},${bl},0.92)`;
+    g.beginPath();
+    g.moveTo(x - w/2, 127);
+    g.quadraticCurveTo(x + bend * 0.4, 127 - h * 0.6, x + bend, 127 - h);
+    g.quadraticCurveTo(x + bend * 0.4 + w * 0.3, 127 - h * 0.6, x + w/2, 127);
+    g.closePath();
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
   return tex;
 }
 
@@ -45,19 +84,18 @@ export function buildGrassLayer(opts) {
   const ctx = { meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase };
 
   // ---------- 近景短草 ----------
-  // 纯色小三角片代替交叉平面+canvas纹理，消除黑线/z-fighting
-  const bladeA = new THREE.PlaneGeometry(0.25, 0.55);
-  bladeA.translate(0, 0.275, 0);
+  // 交叉平面 + 真实草叶贴图
+  const bladeA = new THREE.PlaneGeometry(0.5, 0.7);
+  bladeA.translate(0, 0.35, 0);
   const bladeB = bladeA.clone();
-  bladeB.rotateY(Math.PI * 0.38); // 非 90° 避免对称交叉
-  const bladeC = bladeA.clone();
-  bladeC.rotateY(-Math.PI * 0.38);
-  const grassGeo = mergeGeometries([bladeA, bladeB, bladeC]);
+  bladeB.rotateY(Math.PI * 0.5);
+  const grassGeo = mergeGeometries([bladeA, bladeB]);
 
   const grassMat = new THREE.MeshLambertMaterial({
-    color: 0x5a9a48,       // 绿色底：未设 instanceColor 时也显示绿色
-    side: THREE.FrontSide
-    // 不用 vertexColors：instanceColor 由 setColorAt 提供变化
+    map: grassBladeTexture(),
+    alphaTest: 0.2,          // 低阈值保留更多叶片
+    side: THREE.DoubleSide,
+    color: 0x88cc77          // 浅绿色调：与贴图叠加产生变化
   });
 
   // 风摆 shader 注入
@@ -135,10 +173,10 @@ export function buildGrassLayer(opts) {
     dummy.updateMatrix();
     grassInst.setMatrixAt(gi, dummy.matrix);
 
-    // 颜色变化：明亮草绿，林缘偏深绿，草甸偏黄绿
+    // instanceColor 提供色调变化（与材质色相乘，用浅色避免压暗）
     const hue = 0.25 + Math.random() * 0.1;
-    const sat = 0.50 + Math.random() * 0.2;
-    const lum = 0.45 + Math.random() * 0.2 + m.meadow * 0.08;
+    const sat = 0.30 + Math.random() * 0.2;
+    const lum = 0.70 + Math.random() * 0.25;  // 高亮度：不压暗贴图
     col.setHSL(hue, sat, lum);
     grassInst.setColorAt(gi, col);
     gi++;
@@ -151,18 +189,18 @@ export function buildGrassLayer(opts) {
   // 草不 castShadow（性能考虑）
   scene.add(grassInst);
 
-  // ---------- 中景草簇（纯色三角片，无 canvas 纹理） ----------
-  const tuftA = new THREE.PlaneGeometry(0.65, 0.95);
-  tuftA.translate(0, 0.475, 0);
+  // ---------- 中景草簇（贴图交叉平面） ----------
+  const tuftA = new THREE.PlaneGeometry(0.85, 1.2);
+  tuftA.translate(0, 0.6, 0);
   const tuftB = tuftA.clone();
-  tuftB.rotateY(Math.PI * 0.38);
-  const tuftC = tuftA.clone();
-  tuftC.rotateY(-Math.PI * 0.38);
-  const tuftGeo = mergeGeometries([tuftA, tuftB, tuftC]);
+  tuftB.rotateY(Math.PI * 0.5);
+  const tuftGeo = mergeGeometries([tuftA, tuftB]);
 
   const tuftMat = new THREE.MeshLambertMaterial({
-    color: 0x4d8a3e,       // 绿色底
-    side: THREE.FrontSide
+    map: grassTuftTexture(),
+    alphaTest: 0.2,
+    side: THREE.DoubleSide,
+    color: 0x77bb66       // 偏暗绿：中景草比近景深
   });
   tuftMat.onBeforeCompile = grassMat.onBeforeCompile; // 共享风摆
 
@@ -194,7 +232,7 @@ export function buildGrassLayer(opts) {
     dummy.updateMatrix();
     tuftInst.setMatrixAt(ti, dummy.matrix);
 
-    col.setHSL(0.24 + Math.random() * 0.08, 0.48 + Math.random() * 0.18, 0.42 + Math.random() * 0.18);
+    col.setHSL(0.24 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.65 + Math.random() * 0.25);
     tuftInst.setColorAt(ti, col);
     ti++;
   }

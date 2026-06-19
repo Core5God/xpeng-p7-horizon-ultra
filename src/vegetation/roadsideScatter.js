@@ -5,37 +5,60 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getTerrainMasks } from '../terrainMasks.js';
 import { randomRange, clamp } from './vegetationUtils.js';
 
-// 路边花草贴图
+// 花簇贴图：叶片 + 花朵填满画布
 function wildflowerTexture() {
   const c = document.createElement('canvas');
-  c.width = 64; c.height = 64;
+  c.width = 128; c.height = 128;
   const g = c.getContext('2d');
-  g.clearRect(0, 0, 64, 64);
-  // 茎
-  for (let i = 0; i < 4; i++) {
-    const x = 10 + Math.random() * 44;
-    g.strokeStyle = `rgba(${80+Math.random()*40|0},${130+Math.random()*40|0},${50+Math.random()*30|0},0.8)`;
-    g.lineWidth = 1.2;
+  g.clearRect(0, 0, 128, 128);
+  // 先画茎叶（覆盖下半部分）
+  for (let i = 0; i < 8; i++) {
+    const x = 10 + Math.random() * 108;
+    const h = 40 + Math.random() * 50;
+    const bend = (Math.random() - 0.5) * 20;
+    const gr = 100 + Math.random() * 80 | 0;
+    g.strokeStyle = `rgba(${40 + Math.random()*30|0},${gr},${30 + Math.random()*20|0},0.9)`;
+    g.lineWidth = 2 + Math.random() * 2;
     g.beginPath();
-    g.moveTo(x, 62);
-    g.lineTo(x + (Math.random()-0.5)*8, 62 - 30 - Math.random()*25);
+    g.moveTo(x, 127);
+    g.quadraticCurveTo(x + bend * 0.4, 127 - h * 0.5, x + bend, 127 - h);
     g.stroke();
-    // 花朵
-    const fy = 62 - 30 - Math.random() * 25;
-    const fx = x + (Math.random()-0.5)*8;
-    const colors = ['#ff6688','#ffcc44','#ff88aa','#ffffff','#aaccff'];
-    g.fillStyle = colors[Math.floor(Math.random()*colors.length)];
-    for (let p = 0; p < 5; p++) {
-      const pa = p / 5 * Math.PI * 2;
+    // 小叶片
+    if (Math.random() > 0.4) {
+      const ly = 127 - h * (0.3 + Math.random() * 0.3);
+      const lx = x + bend * (ly / (127 - h));
+      g.fillStyle = `rgba(${50 + Math.random()*30|0},${110 + Math.random()*60|0},${30 + Math.random()*20|0},0.85)`;
       g.beginPath();
-      g.ellipse(fx + Math.cos(pa)*3, fy + Math.sin(pa)*3, 2.5, 2, pa, 0, Math.PI*2);
+      g.ellipse(lx + (Math.random() > 0.5 ? 5 : -5), ly, 6, 3, Math.random() * 0.5, 0, Math.PI * 2);
       g.fill();
     }
-    g.fillStyle = '#ffdd66';
-    g.beginPath(); g.arc(fx, fy, 1.5, 0, Math.PI*2); g.fill();
+  }
+  // 花朵（覆盖上半部分）
+  const petalColors = ['#ff6688', '#ffcc44', '#ff99bb', '#ffffff', '#aaddff', '#ffaa55', '#dd88ff'];
+  for (let i = 0; i < 6; i++) {
+    const fx = 15 + Math.random() * 98;
+    const fy = 10 + Math.random() * 60;
+    const petalColor = petalColors[Math.floor(Math.random() * petalColors.length)];
+    const petalSize = 4 + Math.random() * 5;
+    // 5 片花瓣
+    for (let p = 0; p < 5; p++) {
+      const pa = p / 5 * Math.PI * 2;
+      g.fillStyle = petalColor;
+      g.beginPath();
+      g.ellipse(fx + Math.cos(pa) * petalSize, fy + Math.sin(pa) * petalSize, petalSize * 0.7, petalSize * 0.45, pa, 0, Math.PI * 2);
+      g.fill();
+    }
+    // 花蕊
+    g.fillStyle = '#ffdd44';
+    g.beginPath();
+    g.arc(fx, fy, petalSize * 0.35, 0, Math.PI * 2);
+    g.fill();
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
   return tex;
 }
 
@@ -75,15 +98,17 @@ export function buildRoadsideEcology(opts) {
   const col = new THREE.Color();
 
   // ---------- 路边花簇 ----------
-  const flowerGeo = new THREE.PlaneGeometry(0.4, 0.4);
+  const flowerGeo = new THREE.PlaneGeometry(0.5, 0.6);
+  flowerGeo.translate(0, 0.3, 0);
   const flowerGeo2 = flowerGeo.clone();
   flowerGeo2.rotateY(Math.PI / 2);
   const crossFlower = mergeGeometries([flowerGeo, flowerGeo2]);
 
   const flowerMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,      // 白色底：instanceColor 提供花色
-    side: THREE.FrontSide  // 单面消除交叉面 z-fighting
-    // 不用 map / alphaTest / vertexColors：纯色面片 + instanceColor
+    map: wildflowerTexture(),
+    alphaTest: 0.15,        // 低阈值保留更多花瓣
+    side: THREE.DoubleSide,
+    color: 0xffffff         // 白色底：花色完全由贴图 + instanceColor 控制
   });
 
   const FLOWER_COUNT = 3500;
