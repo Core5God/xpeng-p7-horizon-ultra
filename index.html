@@ -71,48 +71,82 @@
   #minimap{position:fixed;bottom:28px;left:28px;z-index:10;border-radius:50%;background:rgba(15,18,28,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     border:1px solid rgba(255,255,255,.12);box-shadow:0 2px 16px rgba(0,0,0,.25);width:110px!important;height:110px!important;opacity:.7;transition:opacity .3s}
   #minimap:hover{opacity:1}
-  /* ====== 菜单（左侧导轨，主机游戏风） ====== */
+  /* ====== 菜单（左侧面板，XPENG 品牌感） ====== */
   .menu{position:fixed;inset:0;z-index:20;display:none;color:#fff}
   .menu.show{display:block}
-  .menu::before{content:'';position:absolute;inset:0;background:linear-gradient(100deg,rgba(2,6,15,.55) 0%,rgba(2,6,15,.30) 40%,transparent 65%)}
-  .rail{position:absolute;top:20px;bottom:20px;left:20px;width:500px;padding:40px 36px 30px;overflow-y:auto;
-    background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.4);
-    border-radius:var(--panel-radius);border:1px solid var(--glass-border);
-    box-shadow:0 8px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);
-    animation:railIn .4s cubic-bezier(.2,.9,.25,1) both}
-  @keyframes railIn{from{opacity:0;transform:translateX(-50px)}to{opacity:1;transform:none}}
-  .logoblk{margin-bottom:28px}
-  .xlogo{font-size:13px;font-weight:500;letter-spacing:8px;color:var(--cy);margin-bottom:6px}
-  .rail h1{font-size:42px;margin:0;font-weight:700;letter-spacing:0;line-height:1.05}
-  .rail .sub{font-size:12px;letter-spacing:4px;opacity:.5;margin-top:8px}
-  .cta{display:block;width:100%;margin:0 0 12px;padding:16px 24px;border:none;border-radius:var(--btn-radius);cursor:pointer;color:#fff;text-align:left;
-    background:linear-gradient(135deg,rgba(0,132,224,.85),rgba(111,59,255,.75));
-    transition:transform var(--fast-ease),filter var(--fast-ease),box-shadow var(--fast-ease);
-    box-shadow:0 4px 20px rgba(40,90,255,.25)}
-  .cta.cta2{background:linear-gradient(135deg,rgba(255,109,0,.85),rgba(213,0,0,.75));box-shadow:0 4px 20px rgba(255,80,20,.2)}
-  .cta.ghost{background:rgba(255,255,255,.08);box-shadow:none;border:1px solid var(--glass-border)}
-  .cta>span{display:block;font-size:20px;font-weight:600;letter-spacing:2px;line-height:1.2}
-  .cta>em{display:block;font-style:normal;font-size:12px;letter-spacing:2px;opacity:.6;margin-top:4px}
-  .cta:hover:not(:disabled){transform:var(--hover-lift);filter:brightness(1.12);box-shadow:0 6px 28px rgba(40,90,255,.35)}
+  .menu::before{content:'';position:absolute;inset:0;background:linear-gradient(100deg,rgba(2,6,15,.65) 0%,rgba(2,6,15,.35) 45%,transparent 70%)}
+  .rail{position:absolute;top:16px;bottom:16px;left:16px;width:560px;padding:0;overflow:hidden;
+    background:linear-gradient(170deg,rgba(12,16,28,.82),rgba(8,10,20,.92));
+    backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
+    border-radius:20px;border:1px solid rgba(255,255,255,.1);
+    box-shadow:0 12px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.03),inset 0 1px 0 rgba(255,255,255,.07);
+    animation:railIn .45s cubic-bezier(.15,.9,.25,1) both;
+    display:flex;flex-direction:column}
+  @keyframes railIn{from{opacity:0;transform:translateX(-40px) scale(.97)}to{opacity:1;transform:none}}
+  /* 品牌头部区域 */
+  .rail-header{padding:36px 40px 24px;position:relative;flex-shrink:0;
+    background:linear-gradient(180deg,rgba(25,211,255,.04) 0%,transparent 100%);
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .rail-header::after{content:'';position:absolute;bottom:-1px;left:40px;right:40px;height:1px;
+    background:linear-gradient(90deg,var(--cy),rgba(111,59,255,.6),transparent)}
+  .logoblk{margin-bottom:0}
+  .xlogo{font-size:11px;font-weight:600;letter-spacing:10px;color:var(--cy);margin-bottom:8px;opacity:.8}
+  .rail h1{font-size:44px;margin:0;font-weight:800;letter-spacing:-1px;line-height:1;
+    background:linear-gradient(135deg,#fff 30%,rgba(25,211,255,.7));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .rail .sub{font-size:11px;letter-spacing:5px;opacity:.4;margin-top:10px;text-transform:uppercase}
+  /* 可滚动内容区 */
+  .rail-body{flex:1;overflow-y:auto;padding:24px 40px 30px;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
+  .rail-body::-webkit-scrollbar{width:4px}
+  .rail-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+  /* 主行动按钮 */
+  .cta{display:block;width:100%;margin:0 0 10px;padding:18px 28px;border:none;border-radius:14px;cursor:pointer;color:#fff;text-align:left;
+    position:relative;overflow:hidden;
+    transition:transform var(--fast-ease),filter var(--fast-ease),box-shadow var(--fast-ease)}
+  .cta::before{content:'';position:absolute;inset:0;border-radius:14px;
+    background:linear-gradient(135deg,rgba(0,140,240,.9),rgba(100,50,255,.8));
+    transition:opacity var(--fast-ease)}
+  .cta::after{content:'';position:absolute;top:0;left:0;right:0;height:50%;border-radius:14px 14px 0 0;
+    background:linear-gradient(180deg,rgba(255,255,255,.12),transparent);pointer-events:none}
+  .cta.cta2::before{background:linear-gradient(135deg,rgba(255,115,0,.9),rgba(220,30,0,.8))}
+  .cta.ghost::before{background:rgba(255,255,255,.06)}
+  .cta.ghost{border:1px solid rgba(255,255,255,.12)}
+  .cta.ghost::after{display:none}
+  .cta>span{display:block;font-size:18px;font-weight:700;letter-spacing:3px;line-height:1.2;position:relative;z-index:1}
+  .cta>em{display:block;font-style:normal;font-size:11px;letter-spacing:2px;opacity:.55;margin-top:5px;position:relative;z-index:1}
+  .cta:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.15);
+    box-shadow:0 8px 32px rgba(0,120,255,.3)}
   .cta:active:not(:disabled){transform:scale(.98)}
   .cta:disabled{opacity:.3;cursor:wait}
-  .sec{font-size:11px;font-weight:600;letter-spacing:4px;color:var(--text-tertiary);text-transform:uppercase;margin:28px 0 12px;padding:0}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .swatch{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.22);cursor:pointer;padding:0;transition:transform var(--fast-ease),box-shadow var(--fast-ease)}
-  .swatch:hover{transform:scale(1.12)}
-  .swatch.sel{border-color:var(--cy);box-shadow:0 0 14px rgba(25,211,255,.6)}
-  .opt{font-family:inherit;font-size:14px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.07);border:1px solid var(--glass-border);
-    border-radius:var(--btn-radius-sm);padding:10px 20px;cursor:pointer;letter-spacing:.5px;transition:background var(--fast-ease)}
-  .opt.sel{background:rgba(0,150,230,.35);border-color:var(--cy)}
-  .opt:hover{background:rgba(255,255,255,.15)}
-  /* —— 角色选择卡 —— */
-  .charrow{gap:12px}
-  .charcard{font-family:inherit;min-width:140px;color:#fff;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
-    border-radius:var(--btn-radius-sm);padding:14px 18px;cursor:pointer;text-align:left;
-    transition:background var(--fast-ease),box-shadow var(--fast-ease),transform var(--fast-ease)}
-  .charcard>b{display:block;font-size:18px;font-weight:600;letter-spacing:1px;line-height:1.2}
-  .charcard>i{display:block;font-style:normal;font-size:11px;letter-spacing:1px;opacity:.55;margin-top:3px}
-  .charcard:hover{background:rgba(255,255,255,.14);transform:var(--hover-lift)}
+  /* 分区标题 */
+  .sec{font-size:10px;font-weight:700;letter-spacing:5px;color:rgba(255,255,255,.3);text-transform:uppercase;
+    margin:26px 0 14px;padding:0 0 8px;
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  /* 车漆色块 */
+  .swatch{width:40px;height:40px;border-radius:50%;border:2px solid rgba(255,255,255,.18);cursor:pointer;padding:0;
+    transition:transform var(--fast-ease),box-shadow var(--fast-ease),border-color var(--fast-ease);
+    box-shadow:0 2px 8px rgba(0,0,0,.3)}
+  .swatch:hover{transform:scale(1.15);border-color:rgba(255,255,255,.4)}
+  .swatch.sel{border-color:var(--cy);box-shadow:0 0 0 3px rgba(25,211,255,.25),0 0 16px rgba(25,211,255,.4)}
+  /* 选项按钮 */
+  .opt{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-primary);
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:10px;padding:10px 18px;cursor:pointer;letter-spacing:.5px;
+    transition:all var(--fast-ease)}
+  .opt.sel{background:rgba(25,211,255,.15);border-color:rgba(25,211,255,.4);color:var(--cy)}
+  .opt:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
+  /* 角色选择卡 */
+  .charrow{gap:10px}
+  .charcard{font-family:inherit;min-width:130px;color:#fff;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px 18px;cursor:pointer;text-align:left;
+    transition:all var(--fast-ease)}
+  .charcard>b{display:block;font-size:17px;font-weight:700;letter-spacing:1px;line-height:1.2}
+  .charcard>i{display:block;font-style:normal;font-size:10px;letter-spacing:1px;opacity:.4;margin-top:4px}
+  .charcard:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);transform:translateY(-2px)}
+  .charcard.sel{background:linear-gradient(135deg,rgba(25,211,255,.12),rgba(111,59,255,.08));
+    border-color:rgba(25,211,255,.35);box-shadow:0 0 20px rgba(25,211,255,.15)}
   .charcard.sel{background:rgba(0,150,230,.3);border-color:var(--cy);box-shadow:0 0 14px rgba(25,211,255,.4)}
   #loadbar{height:4px;width:100%;background:rgba(255,255,255,.1);margin-top:24px;overflow:hidden;border-radius:2px}
   #loadfill{height:100%;width:0%;background:linear-gradient(90deg,#00e5ff,#7c4dff);transition:width .3s;border-radius:2px}
@@ -277,22 +311,26 @@
 <!-- 车库 / 主菜单 -->
 <div class="menu show" id="garage">
   <div class="rail">
-    <div class="logoblk">
-      <div class="xlogo">X P E N G</div>
-      <h1>THE NEXT P7</h1>
-      <div class="sub">HORIZON COAST · ULTRA</div>
+    <div class="rail-header">
+      <div class="logoblk">
+        <div class="xlogo">X P E N G</div>
+        <h1>THE NEXT P7</h1>
+        <div class="sub">HORIZON COAST · ULTRA</div>
+      </div>
+      <button class="cta" id="btnRoam" disabled><span>自由漫游</span><em>FREE ROAM</em></button>
+      <button class="cta cta2" id="btnRace" disabled><span>竞速赛</span><em>CIRCUIT · 10 CHECKPOINTS</em></button>
     </div>
-    <button class="cta" id="btnRoam" disabled><span>自由漫游</span><em>FREE ROAM</em></button>
-    <button class="cta cta2" id="btnRace" disabled><span>竞速赛</span><em>CIRCUIT · 10 CHECKPOINTS</em></button>
-    <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowG"></div>
-    <div class="sec">车漆 PAINT</div><div class="row" id="paintRowG"></div>
-    <div class="sec">路线 ROUTE</div><div class="row" id="routeRow"></div>
-    <div class="sec">战绩 RECORDS</div><div id="recordsBox"></div>
-    <div class="sec">成就 ACHIEVEMENTS</div><div class="row" id="achRow"></div>
-    <div class="sec">设置 SETTINGS</div>
-    <div class="row"><button class="opt" id="gQuality">画质：高</button><button class="opt" id="gSound">声音：开</button><button class="opt" id="gMusic">音乐：开</button><button class="opt" id="gMusicMode">电台</button></div>
-    <div id="loadbar"><div id="loadfill"></div></div>
-    <div id="loadtext">正在加载 E29 车辆模型…</div>
+    <div class="rail-body">
+      <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowG"></div>
+      <div class="sec">车漆 PAINT</div><div class="row" id="paintRowG"></div>
+      <div class="sec">路线 ROUTE</div><div class="row" id="routeRow"></div>
+      <div class="sec">战绩 RECORDS</div><div id="recordsBox"></div>
+      <div class="sec">成就 ACHIEVEMENTS</div><div class="row" id="achRow"></div>
+      <div class="sec">设置 SETTINGS</div>
+      <div class="row"><button class="opt" id="gQuality">画质：高</button><button class="opt" id="gSound">声音：开</button><button class="opt" id="gMusic">音乐：开</button><button class="opt" id="gMusicMode">电台</button></div>
+      <div id="loadbar"><div id="loadfill"></div></div>
+      <div id="loadtext">正在加载 E29 车辆模型…</div>
+    </div>
   </div>
   <div class="hintbar"><kbd>W A S D</kbd>驾驶<kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>N</kbd>时间<kbd>P</kbd>照片<kbd>ESC</kbd>菜单</div>
 </div>
@@ -300,18 +338,22 @@
 <!-- 暂停菜单 -->
 <div class="menu" id="pausemenu">
   <div class="rail">
-    <div class="logoblk">
-      <div class="xlogo">X P E N G</div>
-      <h1>PAUSED</h1>
-      <div class="sub">已暂停</div>
+    <div class="rail-header">
+      <div class="logoblk">
+        <div class="xlogo">X P E N G</div>
+        <h1>PAUSED</h1>
+        <div class="sub">已暂停</div>
+      </div>
+      <button class="cta" id="btnResume"><span>继续</span><em>RESUME · ESC</em></button>
+      <button class="cta ghost" id="btnPhoto"><span>照片模式</span><em>PHOTO MODE · P</em></button>
+      <button class="cta ghost" id="btnGarage"><span>回车库</span><em>GARAGE</em></button>
     </div>
-    <button class="cta" id="btnResume"><span>继续</span><em>RESUME · ESC</em></button>
-    <button class="cta ghost" id="btnPhoto"><span>照片模式</span><em>PHOTO MODE · P</em></button>
-    <button class="cta ghost" id="btnGarage"><span>回车库</span><em>GARAGE</em></button>
-    <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowP"></div>
-    <div class="sec">车漆 PAINT</div><div class="row" id="paintRowP"></div>
-    <div class="sec">设置 SETTINGS</div>
-    <div class="row"><button class="opt" id="pQuality">画质：高</button><button class="opt" id="pSound">声音：开</button><button class="opt" id="pMusic">音乐：开</button><button class="opt" id="pMusicMode">电台</button></div>
+    <div class="rail-body">
+      <div class="sec">角色 CHARACTER</div><div class="row charrow" id="charRowP"></div>
+      <div class="sec">车漆 PAINT</div><div class="row" id="paintRowP"></div>
+      <div class="sec">设置 SETTINGS</div>
+      <div class="row"><button class="opt" id="pQuality">画质：高</button><button class="opt" id="pSound">声音：开</button><button class="opt" id="pMusic">音乐：开</button><button class="opt" id="pMusicMode">电台</button></div>
+    </div>
   </div>
 </div>
 
