@@ -128,21 +128,21 @@ const finalComposer = new EffectComposer(renderer);
 finalComposer.renderToScreen = true;
 finalComposer.addPass(new RenderPass(scene, camera));
 // Additive composite: scene + bloomTexture，在 OutputPass 之前叠加确保一起进 tone mapping
+// ShaderPass 自动把 tDiffuse uniform 设为 readBuffer（即上一 pass 的场景渲染结果）
 const compositePass = new ShaderPass({
   uniforms: {
-    baseTexture: { value: null },
+    tDiffuse: { value: null },
     bloomTexture: { value: bloomRT.texture }
   },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
-    uniform sampler2D baseTexture;
+    uniform sampler2D tDiffuse;
     uniform sampler2D bloomTexture;
     varying vec2 vUv;
     void main() {
-      gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+      gl_FragColor = texture2D(tDiffuse, vUv) + texture2D(bloomTexture, vUv);
     }`
 });
-compositePass.uniforms.bloomTexture.value = bloomRT.texture;
 finalComposer.addPass(compositePass);
 finalComposer.addPass(new OutputPass());
 
