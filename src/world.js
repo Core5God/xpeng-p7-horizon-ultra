@@ -940,6 +940,7 @@ function buildRoad() {
   const SEC_STEP = 2;        // 每排相隔 SEC_STEP 个采样点（规格1，约 2~3）
   const SEC_ROWS = 3;        // 每条臂取 3 排横截面（规格1/2）
   const HUB_PTS = 10;        // 中心 hub 环点数 8~12（规格4）
+  const HUB_MARGIN = 2.5;    // 修复2：hubR 在主路缺口半跨上加的余量（m，可调 2~3）
   function buildJunctionPatch(mainEnd1Idx, mainEnd2Idx, branchEndIdx) {
     // ---- 规格1+2：每路口三条臂，每臂取 SEC_ROWS 排横截面（断头 + 往路里退）----
     // 路口中心 = 三断头中心线点均值（先算，供 overlap 朝向用）
@@ -984,26 +985,42 @@ function buildRoad() {
       buildArm(true, mainEnd2Idx),
       buildArm(false, branchEndIdx),
     ];
-    // 每条臂内排中点（rows[0] 的 L/R 中点）——hub 半径与对接锚点
+    // 每条臂内排中点（rows[0] 的 L/R 中点）——对接锚点（arms[0]=main1, arms[1]=main2, arms[2]=branch）
     const innerMid = arms.map(a => ({
       x: (a[0].L.x + a[0].R.x) / 2,
       z: (a[0].L.z + a[0].R.z) / 2,
       y: a[0].y,
     }));
-    // 规格4：路口中心 = 三臂内排中点平均
-    const cx = (innerMid[0].x + innerMid[1].x + innerMid[2].x) / 3;
-    const cz = (innerMid[0].z + innerMid[1].z + innerMid[2].z) / 3;
-    const cy = (innerMid[0].y + innerMid[1].y + innerMid[2].y) / 3;
-    // hub 半径 ≈ 到三臂内排中点的平均距离
-    let rAvg = 0;
-    for (const m of innerMid) rAvg += Math.hypot(m.x - cx, m.z - cz);
-    rAvg /= innerMid.length;
-    const hubR = rAvg;
-    // 8~12 点 hub 环（按角度均匀分布）
+    // 修复1：hub 中心 = 两个 main 断头内排中点的中点（不再被支路+近邻 main 拽偏）。
+    //   这样两条 main 臂对 hub 对称，远侧 main 臂不再落在环外悬空。
+    const cx = (innerMid[0].x + innerMid[1].x) / 2;
+    const cz = (innerMid[0].z + innerMid[1].z) / 2;
+    // 修复2：hubR = 主路缺口半跨 + 余量 = 0.5*dist(main1,main2) + HUB_MARGIN，
+    //   确保两 main 臂内排横截面都落在环内/环上，strip 不退化；支路臂由 nearestHub 缝到最近弧段。
+    const mainGapHalf = 0.5 * Math.hypot(innerMid[0].x - innerMid[1].x, innerMid[0].z - innerMid[1].z);
+    const hubR = mainGapHalf + HUB_MARGIN;
+    // 修复3：hub 各环点 y 不用单一平均，按角度在三断头 y 之间做角度加权（反距离）插值。
+    //   每个环点用最接近的断头（main1/main2/branch）y 加权，消除高度落差架空。
+    const endAng = innerMid.map(m => Math.atan2(m.z - cz, m.x - cx));
+    const endY = [innerMid[0].y, innerMid[1].y, innerMid[2].y];
+    const angDiff = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    const yAtAng = (a) => {
+      let wsum = 0, ysum = 0, exact = null;
+      for (let j = 0; j < 3; j++) {
+        const d = angDiff(a, endAng[j]);
+        if (d < 1e-4) { exact = endY[j]; break; }
+        const w = 1 / (d * d);
+        wsum += w; ysum += w * endY[j];
+      }
+      return exact !== null ? exact : ysum / wsum;
+    };
+    // hub 中心顶点 y：三断头均权
+    const cy = (endY[0] + endY[1] + endY[2]) / 3;
+    // 8~12 点 hub 环（按角度均匀分布，y 按角度插值消架空）
     const hub = [];
     for (let i = 0; i < HUB_PTS; i++) {
       const a = (i / HUB_PTS) * Math.PI * 2;
-      hub.push({ x: cx + Math.cos(a) * hubR, z: cz + Math.sin(a) * hubR, y: cy, ang: a });
+      hub.push({ x: cx + Math.cos(a) * hubR, z: cz + Math.sin(a) * hubR, y: yAtAng(a), ang: a });
     }
     const verts = [], uvs = [], idx = [];
     const U = 0.04; // UV 缩放（沿用原补片密度）
