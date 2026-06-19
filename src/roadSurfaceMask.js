@@ -4,7 +4,8 @@ import * as THREE from 'three';
 // junction / line, sampled in terrain shader by world (x,z).
 //
 // All four CanvasTextures cover the terrain bounds [-terrainSize/2, terrainSize/2].
-// World->UV: u = (x + S/2)/S, v = (z + S/2)/S (no flip; terrain plane uses x/z directly).
+// World->UV: u = (x + S/2)/S, v = (z + S/2)/S. Mask CanvasTextures use
+// flipY=false so the baked pixel row (v*H) matches the shader sample row.
 
 const CANVAS_SIZE = 2048;
 
@@ -51,6 +52,11 @@ function samplesToPx(samples, terrainSize, canvasSize) {
 
 function makeTexture(canvas) {
   const tex = new THREE.CanvasTexture(canvas);
+  // Data mask textures must NOT be vertically flipped: canvas pixel rows are
+  // baked via worldToPx (v = (wz+S/2)/S, row = v*H) and the shader samples with
+  // the same v from world z. CanvasTexture defaults flipY=true, which mirrored
+  // the mask on the z axis (off-center-z surfaces landed on the opposite side).
+  tex.flipY = false;
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = THREE.LinearFilter;
