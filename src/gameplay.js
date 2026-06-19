@@ -515,7 +515,9 @@ function buildProps() {
   // 终点拱门（起跑线上方，XPENG 横幅）
   {
     const p = samples[0], n = normals[0];
-    const archM = new THREE.MeshStandardMaterial({color:0x2a2e36, roughness:0.5, metalness:0.6});
+    // 终点拱门钢架：原 0x2a2e36 太暗，从 fastdebug 俯视镜头（恰好压在右立柱正上方）
+    // 投影成一条近黑的 L 形「黑斜杠/黑壁」。改为浅钢灰，任意角度都读成金属龙门架而非黑块。
+    const archM = new THREE.MeshStandardMaterial({color:0x9aa0a8, roughness:0.5, metalness:0.5});
     const arch = new THREE.Group();
     for (const s2 of [-1, 1]) {
       const py = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.5), archM);
