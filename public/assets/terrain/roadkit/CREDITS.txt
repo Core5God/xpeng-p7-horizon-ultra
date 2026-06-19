@@ -1,0 +1,32 @@
+VIK ROAD KIT — real-world road materials
+=========================================
+
+Source : Provided by VIK via Feishu cloud-drive folder
+         (parent token S0rsfyM5hlk2kOdZTotcPbHcnOe, 6 sub-folders).
+Format : 2K JPG (2048x2048), recompressed for web.
+Archived: 2026-06-19
+Purpose : Real highway surface + intersection (junction) stitch-face materials.
+Status  : Assets only — NOT wired into the renderer yet.
+
+Sets
+----
+asphalt026c  (Asphalt026C_2K-JPG)  — dark charcoal asphalt road surface, faint hairline cracks.
+                                      Maps: diff, nrm, rough, disp
+lines_033c   (RoadLines033C)        — worn yellow painted block/zone marking (large solid painted patch, heavily worn/cracked).
+lines_031c   (RoadLines031C)        — yellow directional arrow: straight-ahead + left-turn combined arrow.
+lines_029c   (RoadLines029C)        — yellow directional arrow: single straight-ahead (forward) arrow.
+lines_028c   (RoadLines028C)        — yellow broken/dashed lane line (short dashes).
+lines_024b   (RoadLines024B)        — yellow solid continuous line (thin solid lane/edge line).
+
+Each lines_* set maps: diff (Color), nrm (NormalGL), rough (Roughness), opacity (Opacity mask = where paint is vs transparent road).
+
+Naming
+------
+Color        -> diff.jpg
+NormalGL     -> nrm.jpg
+Roughness    -> rough.jpg
+Opacity      -> opacity.jpg  (RoadLines only)
+Displacement -> disp.jpg     (asphalt only)
+
+Source pack also contained NormalDX, AmbientOcclusion, and .usdc/.tres/.mtlx/.blend/.png
+source files — not downloaded (not needed for the web renderer use case).
