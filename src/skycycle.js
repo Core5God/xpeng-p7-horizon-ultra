@@ -151,7 +151,8 @@ export function skyCycleUpdate(dt) {
   }
 
   // 可见天空背景：blendRT（等距混合），不用 cubeRT
-  if (scene.background !== blendRT.texture && curTex) scene.background = blendRT.texture;
+  // 强制每帧设置以确保 three.js r169 正确更新背景
+  if (curTex) scene.background = blendRT.texture;
 
   const nightAmt = ws.nightAmount;
 
