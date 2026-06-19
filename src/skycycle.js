@@ -12,6 +12,8 @@ import { WeatherController } from './weatherController.js';
 // 车身真实反射 = reflectRT.texture（由 vehicle.js CubeCamera 渲染）。
 // 禁止：procedural sun / sunSprite / 程序月亮 / 程序云片 / 程序星点。
 
+const SKY_DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+
 // 从 SKY_PRESETS 提取唯一 HDR 文件名并建立索引
 const PRESET_KEYS = Object.keys(SKY_PRESETS);
 const UNIQUE_FILES = [...new Set(PRESET_KEYS.map(k => SKY_PRESETS[k].file))];
@@ -73,11 +75,13 @@ export function buildSkyCycle() {
   // 天气控制器：12 分钟昼夜 + 随机天气
   weatherCtrl = new WeatherController();
 
-  // 调试条
-  _dbg = document.createElement('div');
-  _dbg.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.65);color:#5f5;font:12px monospace;padding:3px 10px;border-radius:4px;pointer-events:none;white-space:nowrap';
-  _dbg.textContent = 'SKY 加载中 0/' + N;
-  document.body.appendChild(_dbg);
+  // 调试条：只允许 ?debug=1 时出现，避免线上破坏极简 UI
+  if (SKY_DEBUG) {
+    _dbg = document.createElement('div');
+    _dbg.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.65);color:#5f5;font:12px monospace;padding:3px 10px;border-radius:4px;pointer-events:none;white-space:nowrap';
+    _dbg.textContent = 'SKY 加载中 0/' + N;
+    document.body.appendChild(_dbg);
+  }
 
   // 加载唯一 HDR 文件
   const loader = new RGBELoader();
@@ -224,7 +228,7 @@ export function skyCycleUpdate(dt) {
     lastEnvTex = rt.texture;
     scene.environment = lastEnvTex;
   }
-  if (_dbg) _dbg.textContent = `SKY ${ws.todPhase} ${ws.currentPreset}${ws.inTransition ? '→' + ws.nextPreset : ''} blend=${f.toFixed(2)} night=${nightAmt.toFixed(2)} sunY=${curSunDir.y.toFixed(2)}${weatherCtrl.timeScale > 1 ? ' ⏩×' + weatherCtrl.timeScale : ''}`;
+  if (_dbg) _dbg.textContent = `SKY ${ws.todPhase} ${ws.currentPreset}${ws.nextPreset !== ws.currentPreset ? '→' + ws.nextPreset : ''} blend=${f.toFixed(2)} night=${nightAmt.toFixed(2)} sunY=${curSunDir.y.toFixed(2)}${weatherCtrl.timeScale > 1 ? ' ⏩×' + weatherCtrl.timeScale : ''}`;
   } catch (e) {
     if (_dbg) _dbg.textContent = 'SKY 异常: ' + (e && e.message ? e.message : e);
   }
