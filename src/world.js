@@ -545,6 +545,9 @@ function buildTerrain() {
   const sandD = texColor(TP+'sand_diff.jpg'), forestD = texColor(TP+'forest_diff.jpg'), rockD = texColor(TP+'rock_diff.jpg'), dryD = texColor(TP+'dry_diff.jpg');
   const sandR = texData(TP+'sand_rough.webp'), rockR = texData(TP+'rock_rough.webp'), dryR = texData(TP+'dry_rough.webp'), forestR = texData(TP+'forest_rough.webp');
   const forestN = texData(TP+'forest_nrm.webp');
+  // 路口渐隐过渡贴图（破损沥青 C / 碎石 B）—只加载一次，平铺
+  const crackD = texColor(TP+'asphalt_crack_diff.jpg');
+  const gravelD = texColor(TP+'gravel_diff.jpg');
   // —— Road surface masks (PR2/PR3): bake top-down asphalt/shoulder/junction/line and blend in terrain shader
   const roadMasks = createRoadSurfaceMasks({
     samples, bSamples,
@@ -563,6 +566,8 @@ function buildTerrain() {
     shader.uniforms.uJunctionMask = { value: roadMasks.junctionMask };
     shader.uniforms.uLineMask = { value: roadMasks.lineMask };
     shader.uniforms.uTerrainSize = { value: TERR_SIZE };
+    shader.uniforms.uCrackDiff = { value: crackD };
+    shader.uniforms.uGravelDiff = { value: gravelD };
     shader.vertexShader = 'varying vec4 vW;\nvarying vec3 vWorldPos;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
       '#include <begin_vertex>',
       'vec4 wp = modelMatrix * vec4(position, 1.0);',
@@ -575,7 +580,7 @@ function buildTerrain() {
       'vec4 w = vec4(wSand, 1.0, wRock, wDry);',                     // forest 作底
       'vW = w / (w.x + w.y + w.z + w.w);'
     ].join('\n'));
-    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; uniform sampler2D uAsphaltMask,uShoulderMask,uJunctionMask,uLineMask; uniform float uTerrainSize; varying vec4 vW; varying vec3 vWorldPos;\n' + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; uniform sampler2D uAsphaltMask,uShoulderMask,uJunctionMask,uLineMask; uniform float uTerrainSize; uniform sampler2D uCrackDiff,uGravelDiff; varying vec4 vW; varying vec3 vWorldPos;\n' + shader.fragmentShader
       .replace('#include <map_fragment>', [
         'vec2 uvT = vMapUv * uTile;',
         'vec3 dF = texture2D(map, uvT).rgb;',
@@ -611,6 +616,18 @@ function buildTerrain() {
         'vec3 rsAsph = vec3(0.040, 0.043, 0.046);',
         'rsBase = mix(rsBase, rsDirt, shoulderM * 0.55);',
         'rsBase = mix(rsBase, rsAsph, asphaltM);',
+        // —— 路口渐隐过渡：沥青 → 破损沥青(C) → 碎石(B)，以 junctionM 作为破损程度 decay
+        'float decay = junctionM;',
+        'vec2 tileUv = roadUv * (uTerrainSize / 8.0);',          // 约 8m 一遍
+        'vec3 crackCol  = texture2D(uCrackDiff,  tileUv).rgb;',
+        'vec3 gravelCol = texture2D(uGravelDiff, tileUv).rgb;',
+        'float t1 = smoothstep(0.15, 0.55, decay);',             // 沥青→破损
+        'float t2 = smoothstep(0.55, 0.95, decay);',             // 破损→碎石
+        'vec3 roadSurf = rsAsph;',
+        'roadSurf = mix(roadSurf, crackCol,  t1);',
+        'roadSurf = mix(roadSurf, gravelCol, t2);',
+        // 只在路面区域(asphaltM)生效，不污染草地
+        'rsBase = mix(rsBase, roadSurf, asphaltM * decay);',
         'rsBase = mix(rsBase, vec3(1.0, 0.85, 0.10), yellowLine * 0.95);',
         'rsBase = mix(rsBase, vec3(0.95, 0.95, 0.95), whiteLine * 0.95);',
         'diffuseColor.rgb = rsBase;'
@@ -622,7 +639,9 @@ function buildTerrain() {
         'float rS = texture2D(tSandR, uvR).g;',
         'float rR = texture2D(tRockR, uvR*0.6).g;',
         'float rD = texture2D(tDryR, uvR).g;',
-        'roughnessFactor *= (rS*vW.x + rF*vW.y + rR*vW.z + rD*vW.w);'
+        'roughnessFactor *= (rS*vW.x + rF*vW.y + rR*vW.z + rD*vW.w);',
+        // 破损/碎石区更粗糙不反光（junctionM 复用为 decay，只在路面生效）
+        'roughnessFactor = mix(roughnessFactor, 0.95, asphaltM * junctionM);'
       ].join('\n'));
   };
   const m = new THREE.Mesh(g, mat);
