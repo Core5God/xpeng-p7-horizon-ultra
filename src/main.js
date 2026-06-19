@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim } from './core.js';
-import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU } from './world.js';
+import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms } from './world.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
 import { buildCharacter, characterUpdate, characterCamera, characterPreviewUpdate, charState } from './character.js';
 import { buildSkyCycle, skyCycleUpdate } from './skycycle.js';
@@ -66,7 +66,7 @@ function loopBody() {
   const dt = Math.min((now - last)/1000, 0.05);
   last = now;
 
-  if (G.waterOK && G.water.material.normalMap) { const n = G.water.material.normalMap; n.offset.x += dt*0.012; n.offset.y += dt*0.008; } // 法线滚动 → 动态波纹
+  if (G.waterOK && oceanUniforms.normalMap.value) { const off = oceanUniforms.normalOffset.value; off.x += dt*0.012; off.y += dt*0.008; } // 法线滚动 → 动态波纹
 
   let onRoad = true, boost = false;
   // 仅座舱视角玻璃透明，其余视角保持原厂深色玻璃

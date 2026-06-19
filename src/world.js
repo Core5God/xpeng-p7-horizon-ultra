@@ -584,10 +584,92 @@ function buildTerrain() {
   scene.add(m);
 }
 
-// ---------- 海洋（环境反射 PBR 海面：反射循环天空(IBL)，几乎零额外开销） ----------
+// ---------- 海洋（三段式海岸着色：浅滩 → 深海 → 远海 horizon） ----------
 // 弃用 Three.js Water 的实时平面反射——它每帧把整个场景重渲一遍做反射，而海面 98% 时间看不到，
-// 性价比极差。改用低粗糙度 PBR 平面 + 法线波纹，靠 scene.environment 反射天空，开销可忽略。
-const oceanMat = new THREE.MeshStandardMaterial({ color: 0x0d3b52, roughness: 0.12, metalness: 0.0, envMapIntensity: 1.5 });
+// 性价比极差。改用自定义 shader：按距岛心距离分三段着色 + 法线波纹 + 环境反射。
+const oceanUniforms = {
+  normalMap: { value: null },
+  normalScale: { value: 0.45 },
+  normalOffset: { value: new THREE.Vector2(0, 0) },
+  shallowColor: { value: new THREE.Color(0x2db5a0) },  // 近岸浅滩：明亮青绿
+  deepColor: { value: new THREE.Color(0x0a3d5c) },     // 离岸深水：深海蓝
+  horizonColor: { value: new THREE.Color(0x1a4a6e) },  // 远海：地平线蓝灰
+  envMapIntensity: { value: 1.5 },
+  roughness: { value: 0.12 },
+  islandCenter: { value: new THREE.Vector2(0, 0) },
+  fogColor: { value: new THREE.Color(0xc97e58) },
+  fogNear: { value: 260.0 },
+  fogFar: { value: 1600.0 }
+};
+const oceanMat = new THREE.ShaderMaterial({
+  uniforms: oceanUniforms,
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    void main() {
+      vUv = uv;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D normalMap;
+    uniform float normalScale;
+    uniform vec2 normalOffset;
+    uniform vec3 shallowColor;
+    uniform vec3 deepColor;
+    uniform vec3 horizonColor;
+    uniform float envMapIntensity;
+    uniform float roughness;
+    uniform vec2 islandCenter;
+    uniform vec3 fogColor;
+    uniform float fogNear;
+    uniform float fogFar;
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+
+    float smoothstep2(float edge0, float edge1, float x) {
+      float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+      return t * t * (3.0 - 2.0 * t);
+    }
+
+    void main() {
+      float dist = length(vWorldPos.xz - islandCenter);
+
+      // 三段式颜色混合
+      float shallowFactor = 1.0 - smoothstep2(400.0, 750.0, dist);
+      float horizonFactor = smoothstep2(1200.0, 2800.0, dist);
+      vec3 waterColor = mix(deepColor, shallowColor, shallowFactor);
+      waterColor = mix(waterColor, horizonColor, horizonFactor);
+
+      // 法线扰动（模拟波纹）
+      vec2 uv1 = vUv * 48.0 + normalOffset;
+      vec2 uv2 = vUv * 48.0 - normalOffset * 0.7;
+      vec3 n1 = texture2D(normalMap, uv1).rgb * 2.0 - 1.0;
+      vec3 n2 = texture2D(normalMap, uv2).rgb * 2.0 - 1.0;
+      vec3 waveNormal = normalize(vec3((n1.xy + n2.xy) * normalScale, 1.0));
+
+      // 简单光照模拟：法线扰动影响亮度
+      float waveLight = dot(waveNormal, normalize(vec3(0.3, 1.0, 0.5))) * 0.5 + 0.5;
+      waterColor *= 0.85 + 0.3 * waveLight;
+
+      // 高光（模拟太阳/月亮反射）
+      vec3 viewDir = normalize(cameraPosition - vWorldPos);
+      vec3 halfDir = normalize(normalize(vec3(0.5, 0.8, 0.3)) + viewDir);
+      float spec = pow(max(dot(waveNormal, halfDir), 0.0), 64.0) * envMapIntensity * 0.4;
+      waterColor += vec3(spec);
+
+      // 雾效（远海渐隐入天空）
+      float viewDist = length(cameraPosition - vWorldPos);
+      float fogFactor = smoothstep2(fogNear, fogFar, viewDist);
+      waterColor = mix(waterColor, fogColor, fogFactor * 0.7);
+
+      gl_FragColor = vec4(waterColor, 1.0);
+    }
+  `,
+  fog: false
+});
 const ocean = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), oceanMat);
 ocean.rotation.x = -Math.PI / 2;
 scene.add(ocean);
@@ -599,9 +681,7 @@ new THREE.TextureLoader().load(
   (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(48, 48);
-    oceanMat.normalMap = tex;          // 法线波纹（offset 在主循环滚动 → 动态水面）
-    oceanMat.normalScale.set(0.45, 0.45);
-    oceanMat.needsUpdate = true;
+    oceanUniforms.normalMap.value = tex;
   }
 );
 
@@ -1182,16 +1262,126 @@ function buildEnv() {
   if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
   scene.add(inst);
 
-  // —— 远岛剪影（雾中层次）
-  const isleM = new THREE.MeshStandardMaterial({color:0x46526c, roughness:1});
-  for (let i = 0; i < 4; i++) {
-    const a = Math.PI*0.3 + i*1.45 + Math.random()*0.5;
-    const r = 1050 + Math.random()*450;
-    const isle = new THREE.Mesh(new THREE.ConeGeometry(110 + Math.random()*130, 26 + Math.random()*36, 7), isleM);
-    isle.position.set(Math.cos(a)*r, -4, Math.sin(a)*r);
-    isle.rotation.y = Math.random()*3;
+  // —— 远山 / 远岛剪影（三层深度：近岛暗色 → 中远山 → 极远山淡色）
+  // 近岛群（800-1200m）：较暗、较清晰
+  const nearIsleM = new THREE.MeshStandardMaterial({color:0x3a4458, roughness:1, fog:true});
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI * 2 / 6 + Math.random() * 0.6;
+    const r = 800 + Math.random() * 400;
+    const w = 80 + Math.random() * 120;
+    const h = 18 + Math.random() * 28;
+    const geo = new THREE.ConeGeometry(w, h, 5 + Math.floor(Math.random() * 4));
+    // 顶点扰动：让锥体更像自然山脊
+    const pos = geo.attributes.position;
+    for (let v = 0; v < pos.count; v++) {
+      if (pos.getY(v) < h * 0.4) {
+        pos.setX(v, pos.getX(v) + (Math.random() - 0.5) * w * 0.3);
+        pos.setZ(v, pos.getZ(v) + (Math.random() - 0.5) * w * 0.3);
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    const isle = new THREE.Mesh(geo, nearIsleM);
+    isle.position.set(Math.cos(a) * r, -6, Math.sin(a) * r);
+    isle.rotation.y = Math.random() * Math.PI * 2;
     scene.add(isle);
   }
+  // 中远山脊（1400-2000m）：中等色调、模糊
+  const midRidgeM = new THREE.MeshStandardMaterial({color:0x556078, roughness:1, fog:true});
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI * 2 / 8 + Math.random() * 0.4;
+    const r = 1400 + Math.random() * 600;
+    const w = 120 + Math.random() * 200;
+    const h = 30 + Math.random() * 50;
+    // 多峰山脊：合并 2-3 个锥体
+    const group = new THREE.Group();
+    const peaks = 2 + Math.floor(Math.random() * 2);
+    for (let p = 0; p < peaks; p++) {
+      const pw = w * (0.6 + Math.random() * 0.5);
+      const ph = h * (0.7 + Math.random() * 0.4);
+      const peak = new THREE.Mesh(new THREE.ConeGeometry(pw, ph, 6), midRidgeM);
+      peak.position.set((Math.random() - 0.5) * w * 0.8, ph * 0.3, (Math.random() - 0.5) * w * 0.4);
+      group.add(peak);
+    }
+    group.position.set(Math.cos(a) * r, -8, Math.sin(a) * r);
+    group.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(group);
+  }
+  // 极远山（2500-3500m）：淡色、几乎融入雾中
+  const farMtnM = new THREE.MeshStandardMaterial({color:0x7a8598, roughness:1, fog:true, transparent:true, opacity:0.6});
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI * 2 / 12 + Math.random() * 0.3;
+    const r = 2500 + Math.random() * 1000;
+    const w = 200 + Math.random() * 350;
+    const h = 40 + Math.random() * 80;
+    const mtn = new THREE.Mesh(new THREE.ConeGeometry(w, h, 5), farMtnM);
+    mtn.position.set(Math.cos(a) * r, -12, Math.sin(a) * r);
+    mtn.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(mtn);
+  }
+
+  // —— 海岸礁石群（沿岛岸线程序化散布）
+  const reefM = new THREE.MeshStandardMaterial({color:0x4a4a42, roughness:0.9, metalness:0.05});
+  for (let i = 0; i < 60; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 580 + Math.random() * 100; // 岛岸线约 600-680m
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const h = islandBase(x, z);
+    if (h < -2 || h > 3) continue; // 只放在水线附近
+    // 多块礁石组合
+    const cluster = new THREE.Group();
+    const rocks = 2 + Math.floor(Math.random() * 3);
+    for (let r2 = 0; r2 < rocks; r2++) {
+      const rw = 1.5 + Math.random() * 4;
+      const rh = 1 + Math.random() * 3;
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(rw, 0),
+        reefM
+      );
+      rock.scale.set(1, rh / rw, 1);
+      rock.position.set((Math.random() - 0.5) * 4, rh * 0.3, (Math.random() - 0.5) * 4);
+      rock.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+      rock.castShadow = true;
+      cluster.add(rock);
+    }
+    cluster.position.set(x, Math.max(h, -0.5) - 0.3, z);
+    scene.add(cluster);
+  }
+
+  // —— 路肩碎石带（道路边缘过渡，消除硬切边）
+  const shoulderGravelM = new THREE.MeshStandardMaterial({color:0x8a8070, roughness:0.85});
+  const shoulderGeo = new THREE.DodecahedronGeometry(0.18, 0);
+  const shoulderCount = 2000;
+  const shoulderInst = new THREE.InstancedMesh(shoulderGeo, shoulderGravelM, shoulderCount);
+  const sDummy = new THREE.Object3D();
+  const sColor = new THREE.Color();
+  let si = 0;
+  for (let i = 0; i < NS && si < shoulderCount; i += 2) {
+    const s = samples[i];
+    const n = normals[i];
+    for (const side of [-1, 1]) {
+      if (si >= shoulderCount) break;
+      if (Math.random() > 0.6) continue; // 概率控制密度
+      const off = HALF_W + 1.1 + Math.random() * 2.5; // 路肩外侧 1.1-3.6m
+      const x = s.x + n.x * side * off;
+      const z = s.z + n.z * side * off;
+      const h = meshGroundHeight(x, z);
+      if (h < 0.3) continue;
+      sDummy.position.set(x, h - 0.05, z);
+      sDummy.rotation.set(Math.random() * 0.3, Math.random() * Math.PI, Math.random() * 0.3);
+      sDummy.scale.setScalar(0.4 + Math.random() * 0.8);
+      sDummy.updateMatrix();
+      shoulderInst.setMatrixAt(si, sDummy.matrix);
+      sColor.setHSL(0.08 + Math.random() * 0.04, 0.15, 0.35 + Math.random() * 0.15);
+      shoulderInst.setColorAt(si, sColor);
+      si++;
+    }
+  }
+  shoulderInst.count = si;
+  shoulderInst.instanceMatrix.needsUpdate = true;
+  if (shoulderInst.instanceColor) shoulderInst.instanceColor.needsUpdate = true;
+  scene.add(shoulderInst);
 }
 
 // ---------- 时间切换 ----------
@@ -1215,7 +1405,11 @@ function applyTod(name) {
   scene.fog.color.setHex(P.fog);
   bloomPass.strength = G.hiQuality ? P.bloom : 0;
   stars.visible = (name === 'night');
-  if (G.waterOK) G.water.material.color.setHex(P.water);
+  if (G.waterOK && oceanUniforms) {
+    oceanUniforms.deepColor.value.setHex(P.water);
+    oceanUniforms.shallowColor.value.setHex(P.water).offsetHSL(0.05, 0.15, 0.20);
+    oceanUniforms.horizonColor.value.setHex(P.water).offsetHSL(-0.02, -0.05, 0.10);
+  }
   // 车灯
   for (const h of G.headlights) h.intensity = P.lights ? 150 : 0;
   // 环境元素昼夜联动（环境可能尚未构建完成，需判空）
@@ -1239,4 +1433,4 @@ function applyTod(name) {
 }
 
 
-export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, BRANCH_A, BRANCH_B, bSamples, bNormals, bBridge, env, fallbackOcean, sky, stars, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };
+export { PRESETS, curSunDir, NS, samples, tangents, normals, HALF_W, garageIdx, nearestRoad, islandBase, groundHeight, meshGroundHeight, surfaceHeight, branchInfo, B_HALF, BRANCH_A, BRANCH_B, bSamples, bNormals, bBridge, env, fallbackOcean, sky, stars, oceanUniforms, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod };

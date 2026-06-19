@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, camera, sun, hemi, rim, bloomPass } from './core.js';
-import { curSunDir, env, sky, stars, fallbackOcean } from './world.js';
+import { curSunDir, env, sky, stars, fallbackOcean, oceanUniforms } from './world.js';
 import { SKY_PRESETS } from './skyPresets.js';
 import { WeatherController } from './weatherController.js';
 
@@ -167,7 +167,14 @@ export function skyCycleUpdate(dt) {
   bloomPass.strength = G.hiQuality ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
   rim.color.copy(sun.color);
-  if (G.waterOK && G.water) G.water.material.color.copy(A._water).lerp(B._water, f);
+  if (G.waterOK && G.water && oceanUniforms) {
+    // 三段式着色随时段插值：深水区跟 preset 水色走，浅滩和远海做偏移
+    const baseWater = new THREE.Color(A._water).lerp(new THREE.Color(B._water), f);
+    oceanUniforms.deepColor.value.copy(baseWater);
+    oceanUniforms.shallowColor.value.copy(baseWater).offsetHSL(0.05, 0.15, 0.20); // 浅滩偏亮偏青
+    oceanUniforms.horizonColor.value.copy(baseWater).offsetHSL(-0.02, -0.05, 0.10); // 远海偏灰偏亮
+    oceanUniforms.fogColor.value.copy(scene.fog.color);
+  }
 
   // 夜间灯光：连续淡入系数 nf
   const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
