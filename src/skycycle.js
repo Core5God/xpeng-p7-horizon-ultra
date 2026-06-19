@@ -222,8 +222,16 @@ export function skyCycleUpdate(dt) {
     lastEnvTex = rt.texture;
     scene.environment = lastEnvTex;
   }
-  if (_dbg) _dbg.textContent = `SKY ${ws.todPhase} ${ws.currentPreset}${ws.inTransition ? '→' + ws.nextPreset : ''} blend=${f.toFixed(2)} night=${nightAmt.toFixed(2)} sunY=${curSunDir.y.toFixed(2)}`;
+  if (_dbg) _dbg.textContent = `SKY ${ws.todPhase} ${ws.currentPreset}${ws.inTransition ? '→' + ws.nextPreset : ''} blend=${f.toFixed(2)} night=${nightAmt.toFixed(2)} sunY=${curSunDir.y.toFixed(2)}${weatherCtrl.timeScale > 1 ? ' ⏩×' + weatherCtrl.timeScale : ''}`;
   } catch (e) {
     if (_dbg) _dbg.textContent = 'SKY 异常: ' + (e && e.message ? e.message : e);
   }
+}
+
+// 时间加速控制（+/- 快捷键）
+export function setTimeScale(scale) {
+  if (weatherCtrl) weatherCtrl.timeScale = Math.max(1, Math.min(120, scale));
+}
+export function getTimeScale() {
+  return weatherCtrl ? weatherCtrl.timeScale : 1;
 }

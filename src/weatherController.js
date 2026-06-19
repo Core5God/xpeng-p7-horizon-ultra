@@ -20,6 +20,7 @@ export class WeatherController {
     this.weatherMaxSec = cfg.weatherMaxSec;
     this.transitionSec = cfg.transitionSec;
 
+    this.timeScale = 1;     // 时间加速倍率（+/- 快捷键控制）
     this.time = 0;
     this.todPhase = 'day';
     this.todT = 0;          // 当前阶段内进度 0-1
@@ -47,7 +48,7 @@ export class WeatherController {
   }
 
   update(dt) {
-    this.time += dt;
+    this.time += dt * this.timeScale;
     const { phase, localT } = this._getTodPhase(this.time);
     const prevPhase = this.todPhase;
     this.todPhase = phase;

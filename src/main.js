@@ -3,7 +3,7 @@ import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, sel
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms } from './world.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
 import { buildCharacter, characterUpdate, characterCamera, characterPreviewUpdate, charState } from './character.js';
-import { buildSkyCycle, skyCycleUpdate } from './skycycle.js';
+import { buildSkyCycle, skyCycleUpdate, setTimeScale, getTimeScale } from './skycycle.js';
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
@@ -166,6 +166,16 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   finalComposer.setSize(innerWidth, innerHeight);
   bloomComposer.setSize(Math.round(innerWidth/2), Math.round(innerHeight/2));
+});
+
+// 时间加速快捷键：+ 加速 ×2（最高 ×120），- 减速回 ×1
+addEventListener('keydown', (e) => {
+  if (e.key === '+' || e.key === '=') {
+    const cur = getTimeScale();
+    setTimeScale(cur >= 120 ? 120 : cur * 2);
+  } else if (e.key === '-' || e.key === '_') {
+    setTimeScale(1);
+  }
 });
 
 // ---------- 分阶段异步启动：让出主线程刷新进度，消除首访资源竞态 ----------
