@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getTerrainMasks } from '../terrainMasks.js';
-import { randomRange, clamp } from './vegetationUtils.js';
+import { randomRange, clamp, smoothstep } from './vegetationUtils.js';
 
 // 近景草叶贴图：密集叶片填满整个画布，避免透明空洞
 function grassBladeTexture() {
