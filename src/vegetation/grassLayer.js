@@ -55,9 +55,9 @@ export function buildGrassLayer(opts) {
   const grassGeo = mergeGeometries([bladeA, bladeB, bladeC]);
 
   const grassMat = new THREE.MeshLambertMaterial({
-    color: 0x5a9a48,       // 亮草绿底色
-    side: THREE.FrontSide,  // 单面渲染消除 z-fighting 黑线
-    vertexColors: true
+    color: 0xffffff,       // 白色底：不压暗顶点色
+    side: THREE.FrontSide,
+    vertexColors: true      // 颜色完全由顶点色决定
   });
 
   // 风摆 shader 注入
@@ -131,10 +131,10 @@ export function buildGrassLayer(opts) {
     dummy.updateMatrix();
     grassInst.setMatrixAt(gi, dummy.matrix);
 
-    // 颜色变化：草甸偏亮绿，林缘偏暗绿，路边偏黄绿
-    const hue = 0.25 + Math.random() * 0.08;
-    const sat = 0.45 + Math.random() * 0.18;
-    const lum = 0.35 + Math.random() * 0.18 + m.meadow * 0.08;
+    // 颜色变化：明亮草绿，林缘偏深绿，草甸偏黄绿
+    const hue = 0.25 + Math.random() * 0.1;
+    const sat = 0.50 + Math.random() * 0.2;
+    const lum = 0.45 + Math.random() * 0.2 + m.meadow * 0.08;
     col.setHSL(hue, sat, lum);
     grassInst.setColorAt(gi, col);
     gi++;
@@ -157,7 +157,7 @@ export function buildGrassLayer(opts) {
   const tuftGeo = mergeGeometries([tuftA, tuftB, tuftC]);
 
   const tuftMat = new THREE.MeshLambertMaterial({
-    color: 0x4d8a3e,       // 稍暗的草绿
+    color: 0xffffff,       // 白色底
     side: THREE.FrontSide,
     vertexColors: true
   });
@@ -191,7 +191,7 @@ export function buildGrassLayer(opts) {
     dummy.updateMatrix();
     tuftInst.setMatrixAt(ti, dummy.matrix);
 
-    col.setHSL(0.24 + Math.random() * 0.07, 0.42 + Math.random() * 0.15, 0.35 + Math.random() * 0.15);
+    col.setHSL(0.24 + Math.random() * 0.08, 0.48 + Math.random() * 0.18, 0.42 + Math.random() * 0.18);
     tuftInst.setColorAt(ti, col);
     ti++;
   }
