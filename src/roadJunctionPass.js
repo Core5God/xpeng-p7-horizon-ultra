@@ -238,6 +238,13 @@ function buildFlaredJunction({ mainIdx, branchIdx, branchForward }) {
 }
 
 export function buildRoadJunctionPass() {
+  // PR1 stop-loss: flared junction geometry (commit 038581e) produces a large
+  // black block at the junction. Disable this pass entirely (no-op) until the
+  // road surface mask system replaces it. Original implementation kept below
+  // for rollback — do NOT delete.
+  console.log('[ROAD] junction pass disabled: switching to road surface mask system');
+  return;
+
   if (built || !samples?.length || !bSamples?.length) return;
   built = true;
 
