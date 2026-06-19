@@ -87,18 +87,18 @@ export function buildRoadsideEcology(opts) {
     vertexColors: true
   });
 
-  const FLOWER_COUNT = 2000;
+  const FLOWER_COUNT = 3500;
   const flowerInst = new THREE.InstancedMesh(crossFlower, flowerMat, FLOWER_COUNT);
   let fi = 0, guard = 0;
 
   // 沿道路采样放置
-  for (let i = 0; i < samples.length && fi < FLOWER_COUNT; i += 3) {
+  for (let i = 0; i < samples.length && fi < FLOWER_COUNT; i += 2) {
     const p = samples[i];
     const n = normals[i];
 
     for (const side of [-1, 1]) {
       if (fi >= FLOWER_COUNT) break;
-      if (Math.random() > 0.55) continue; // 不是每个采样点都放
+      if (Math.random() > 0.7) continue; // 高采样率确保路边花草密集
 
       const dist = randomRange(HALF_W + 6, HALF_W + 18); // 12-24m from center = 6-18m 草花带
       const jitter = randomRange(-1.5, 1.5);
@@ -139,7 +139,7 @@ export function buildRoadsideEcology(opts) {
     color: 0x8a8278, roughness: 0.95, flatShading: true
   });
 
-  const GRAVEL_COUNT = 1000;
+  const GRAVEL_COUNT = 1800;
   const gravelInst = new THREE.InstancedMesh(gravelGeo, gravelMat, GRAVEL_COUNT);
   let gvi = 0; guard = 0;
 
@@ -175,17 +175,17 @@ export function buildRoadsideEcology(opts) {
     color: 0x4a7a3a, roughness: 0.85, flatShading: true, vertexColors: true
   });
 
-  const BUSH_ROAD_COUNT = 800;
+  const BUSH_ROAD_COUNT = 1400;
   const bushInst = new THREE.InstancedMesh(bGeo, bMat, BUSH_ROAD_COUNT);
   let bi = 0; guard = 0;
 
-  for (let i = 0; i < samples.length && bi < BUSH_ROAD_COUNT; i += 5) {
+  for (let i = 0; i < samples.length && bi < BUSH_ROAD_COUNT; i += 3) {
     const p = samples[i];
     const n = normals[i];
 
     for (const side of [-1, 1]) {
       if (bi >= BUSH_ROAD_COUNT) break;
-      if (Math.random() > 0.45) continue;
+      if (Math.random() > 0.6) continue;
 
       const dist = randomRange(HALF_W + 18, HALF_W + 40); // 24-46m from center = 18-40m 灌木/小树带
       const x = p.x + n.x * side * dist + randomRange(-2, 2);

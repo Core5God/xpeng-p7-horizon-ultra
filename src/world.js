@@ -7,7 +7,6 @@ import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER } fr
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
-import { buildTreeImpostors } from './vegetation/treeImpostors.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -570,21 +569,21 @@ function buildTerrain() {
         'vec3 dS = texture2D(tSandD, uvT).rgb;',
         'vec3 dR = texture2D(tRockD, uvT*0.6).rgb;',
         'vec3 dD = texture2D(tDryD, uvT).rgb;',
-        // 宏观色带：大尺度噪声打破重复感
+        // 宏观色带：大尺度噪声打破重复感（强化版）
         'float macro1 = sin(vWorldPos.x*0.008 + 1.3) * cos(vWorldPos.z*0.006 + 0.7) * 0.5 + 0.5;',
         'float macro2 = sin(vWorldPos.x*0.023 + 3.1) * sin(vWorldPos.z*0.019 + 2.4) * 0.5 + 0.5;',
         'float macro3 = cos(vWorldPos.x*0.047 + 0.5) * cos(vWorldPos.z*0.039 + 1.8) * 0.5 + 0.5;',
         'float macroVal = macro1 * 0.5 + macro2 * 0.3 + macro3 * 0.2;',
-        'vec3 macroTint = mix(vec3(0.88, 0.92, 0.85), vec3(1.06, 1.03, 0.96), macroVal);',
-        // 海岸线湿润暗化
-        'float shoreH = smoothstep(3.0, 0.3, vWorldPos.y);',
-        'vec3 shoreTint = mix(vec3(1.0), vec3(0.78, 0.82, 0.72), shoreH * 0.35);',
+        'vec3 macroTint = mix(vec3(0.78, 0.85, 0.72), vec3(1.12, 1.06, 0.92), macroVal);',
+        // 海岸线湿润暗化（加强）
+        'float shoreH = smoothstep(4.0, 0.2, vWorldPos.y);',
+        'vec3 shoreTint = mix(vec3(1.0), vec3(0.68, 0.75, 0.62), shoreH * 0.5);',
         // 路边绿色增强带
         'float roadDist = length(vWorldPos.xz);',
-        // 中景植被暗化（假阴影）：森林/草甸区域地面稍暗，模拟树冠遮蔽
-        'float vegDark = smoothstep(3.0, 8.0, vWorldPos.y) * (1.0 - smoothstep(18.0, 26.0, vWorldPos.y));',
+        // 中景植被暗化（假阴影）：森林/草甸区域地面明显暗化，模拟树冠遮蔽
+        'float vegDark = smoothstep(2.5, 7.0, vWorldPos.y) * (1.0 - smoothstep(20.0, 28.0, vWorldPos.y));',
         'vegDark *= (1.0 - vW.z * 0.7);', // 岩石区域不需要暗化
-        'float vegShadow = mix(1.0, 0.72, vegDark * 0.6);',
+        'float vegShadow = mix(1.0, 0.55, vegDark * 0.75);',
         'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1 * macroTint * shoreTint * vegShadow;'
       ].join('\n'))
       .replace('#include <roughnessmap_fragment>', [
@@ -932,7 +931,7 @@ async function buildScenery() {
   // ---------- 森林斑块系统：替代旧的随机撒树 ----------
   const treeSpots = generateForestSpots({
     meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase,
-    targetTrees: 2200, targetBushes: 1600
+    targetTrees: 3500, targetBushes: 2400
   });
 
   // ---------- 棕榈（低地 < 3.5m）+ 散岩 ----------
@@ -1125,12 +1124,6 @@ async function buildScenery() {
       scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU, samples, normals
     });
   } catch (e) { console.warn('[GRASS] 草地层生成失败：', e); }
-
-  try {
-    buildTreeImpostors({
-      scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase
-    });
-  } catch (e) { console.warn('[IMPOSTOR] 中景树丛 impostor 生成失败：', e); }
 
   try {
     buildRoadsideEcology({
