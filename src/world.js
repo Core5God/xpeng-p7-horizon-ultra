@@ -933,30 +933,58 @@ function buildRoad() {
   const patchMat = new THREE.MeshStandardMaterial({ map: asphaltTex, color: 0x33343a, roughness: 0.9, metalness: 0 });
   // mainEnd1Idx/mainEnd2Idx：该路口主路两个断头的 samples 索引（已退 GAP）
   // branchEndIdx：该路口支线断头的 bSamples 索引（已退 GAP_B）
+  // OVERLAP：缝合面顶点沿各断头的路方向往路里多伸 PATCH_OVERLAP m，
+  // 与 ribbon 最后一行重叠一点点，消除亚像素黑缝（比追求绝对精确更稳）。
+  const PATCH_OVERLAP = 0.4;
   function buildJunctionPatch(mainEnd1Idx, mainEnd2Idx, branchEndIdx) {
-    // 三个断头的左右边缘点（世界坐标 + 高度）
-    const edge = []; // {x,y,z}
-    const pushMain = (k) => {
-      const p = samples[k], n = normals[k], y = p.y + 0.05; // 与主路面 yLift=0.05 同高
-      edge.push({ x: p.x + n.x*HALF_W, y, z: p.z + n.z*HALF_W });
-      edge.push({ x: p.x - n.x*HALF_W, y, z: p.z - n.z*HALF_W });
+    // 三个断头分别贡献一组（左右两个边缘点 + 断头中心线点 + 路切线）。
+    // 关键：必须把每个断头的两个边缘点“成对、按边界顺序”保留，
+    // 不能把 6 个点统一按绕中心角度排序——那会把同一断头的左右点拆散、
+    // 造成多边形自交（蝴蝶结），导致路口中心缺口没被盖住 → 露草（图1空洞根因）。
+    const ends = []; // {L,R,c}  c=中心线点用于排序/朝向
+    const addMain = (k) => {
+      const p = samples[k], n = normals[k], t = tangents[k];
+      const y = p.y + 0.05; // 与主路面 yLift=0.05 同高（统一高度来源，消图2高低差黑缝）
+      // 沿路切线往路里推 overlap（sign 使其朝远离路口中心方向 = 进入既有 ribbon）
+      const s = Math.sign((p.x - jcx)*t.x + (p.z - jcz)*t.z) || 1;
+      const ox = p.x + t.x*s*PATCH_OVERLAP, oz = p.z + t.z*s*PATCH_OVERLAP;
+      ends.push({
+        L: { x: ox + n.x*HALF_W, y, z: oz + n.z*HALF_W },
+        R: { x: ox - n.x*HALF_W, y, z: oz - n.z*HALF_W },
+        c: { x: p.x, z: p.z } });
     };
-    const pushBranch = (k) => {
-      const p = bSamples[k], n = bNormals[k], y = p.y + 0.05;
-      edge.push({ x: p.x + n.x*B_HALF, y, z: p.z + n.z*B_HALF });
-      edge.push({ x: p.x - n.x*B_HALF, y, z: p.z - n.z*B_HALF });
+    const addBranch = (k) => {
+      const p = bSamples[k], n = bNormals[k], t = bTangents[k];
+      const y = p.y + 0.05;
+      const s = Math.sign((p.x - jcx)*t.x + (p.z - jcz)*t.z) || 1;
+      const ox = p.x + t.x*s*PATCH_OVERLAP, oz = p.z + t.z*s*PATCH_OVERLAP;
+      ends.push({
+        L: { x: ox + n.x*B_HALF, y, z: oz + n.z*B_HALF },
+        R: { x: ox - n.x*B_HALF, y, z: oz - n.z*B_HALF },
+        c: { x: p.x, z: p.z } });
     };
-    pushMain(mainEnd1Idx);
-    pushMain(mainEnd2Idx);
-    pushBranch(branchEndIdx);
-    if (edge.length < 3) return;
-    // 路口中心 = 所有边缘点平均（近似三个断头中点均值）
-    let cx = 0, cy = 0, cz = 0;
-    for (const e of edge) { cx += e.x; cy += e.y; cz += e.z; }
-    cx /= edge.length; cy /= edge.length; cz /= edge.length;
-    // 按绕中心角度排序（xz 平面）
-    edge.sort((a, b) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(b.z - cz, b.x - cx));
-    // 从中心扇形三角化
+    // 路口中心 = 三断头中心线点均值（先算，供 overlap 朝向与角度排序用）
+    const jcx = (samples[mainEnd1Idx].x + samples[mainEnd2Idx].x + bSamples[branchEndIdx].x) / 3;
+    const jcz = (samples[mainEnd1Idx].z + samples[mainEnd2Idx].z + bSamples[branchEndIdx].z) / 3;
+    addMain(mainEnd1Idx);
+    addMain(mainEnd2Idx);
+    addBranch(branchEndIdx);
+    if (ends.length < 3) return;
+    // 三个断头按其中心线点绕路口中心的角度排序（决定环绕顺序）
+    ends.sort((a, b) => Math.atan2(a.c.z - jcz, a.c.x - jcx) - Math.atan2(b.c.z - jcz, b.c.x - jcx));
+    // 展开成边界多边形：每个断头按需翻转 L/R，使两点沿环绕方向相邻、不交叉
+    const edge = [];
+    for (const e of ends) {
+      const aL = Math.atan2(e.L.z - jcz, e.L.x - jcx);
+      const aR = Math.atan2(e.R.z - jcz, e.R.x - jcx);
+      let d = aL - aR; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI;
+      if (d < 0) { edge.push(e.L, e.R); } else { edge.push(e.R, e.L); }
+    }
+    // 顶点 y 也用各自断头高度（已含 +0.05），扇形中心 y 取均值
+    let cx = jcx, cz = jcz, cy = 0;
+    for (const e of edge) cy += e.y;
+    cy /= edge.length;
+    // 从中心扇形三角化（此时多边形为简单凸/弱凹六边形，中心在内部，无自交）
     const verts = [], uvs = [], idx = [];
     verts.push(cx, cy, cz); uvs.push(0.5, 0.5);
     for (const e of edge) { verts.push(e.x, e.y, e.z); uvs.push((e.x - cx)*0.04 + 0.5, (e.z - cz)*0.04 + 0.5); }
