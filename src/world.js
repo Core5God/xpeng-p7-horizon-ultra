@@ -3,7 +3,7 @@ import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER } from './core.js';
+import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER, FASTDEBUG } from './core.js';
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
@@ -1246,16 +1246,18 @@ async function buildScenery() {
   const rockG = new THREE.DodecahedronGeometry(1.6, 0);
   const rockM = new THREE.MeshStandardMaterial({color:0x7d7468, flatShading:true, roughness:0.9});
   // ---------- 森林斑块系统：替代旧的随机撒树 ----------
+  // FASTDEBUG：树/灌木数量降到极小（generateForestSpots 是本函最耗时的生成步骤）
   const treeSpots = generateForestSpots({
     meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase,
-    targetTrees: 3500, targetBushes: 2400
+    targetTrees: FASTDEBUG ? 40 : 3500, targetBushes: FASTDEBUG ? 20 : 2400
   });
 
   // ---------- 棕榈（低地 < 3.5m）+ 散岩 ----------
   const trunkGeos = [], palmLeafGeos = [], rockGeos = [];
   const tmpO = new THREE.Object3D();
   let palmRockPlaced = 0, guard2 = 0;
-  while (palmRockPlaced < 400 && guard2++ < 5000) {
+  const palmRockTarget = FASTDEBUG ? 0 : 400; // FASTDEBUG：跳过棕榈/散岩撒点
+  while (palmRockPlaced < palmRockTarget && guard2++ < 5000) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
     if (nearestRoad(x, z).dist < 16 || branchInfo(x, z).dist < 14) continue;
@@ -1333,13 +1335,13 @@ async function buildScenery() {
   })();
   const flowerM = new THREE.MeshLambertMaterial({color:0xffffff, map: flowerTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
   const reedM2 = new THREE.MeshLambertMaterial({color:0xffffff, map: reedTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
-  scatter(crossG, flowerM, 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 1.0, s1: 1.0, sink: 0.04,
+  scatter(crossG, flowerM, FASTDEBUG ? 0 : 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 1.0, s1: 1.0, sink: 0.04,
     color: (c) => c.setHSL([0.95, 0.13, 0.0, 0.78][Math.floor(Math.random()*4)], 0.7, 0.66) }); // 花簇
-  scatter(reedG, reedM2, 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.8, s1: 1.0, ys: 1.2, sink: 0.06,
+  scatter(reedG, reedM2, FASTDEBUG ? 0 : 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.8, s1: 1.0, ys: 1.2, sink: 0.06,
     color: (c) => c.setHSL(0.13 + Math.random()*0.04, 0.42, 0.34 + Math.random()*0.12) }); // 芦苇/滨草
   const reefG = new THREE.DodecahedronGeometry(1, 0);
   const reefM = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.9, flatShading:true});
-  scatter(reefG, reefM, 120, { minRoad: 12, hMin: -0.2, hMax: 1.0, s0: 0.5, s1: 1.1, ys: 0.6, sink: 0.3,
+  scatter(reefG, reefM, FASTDEBUG ? 0 : 120, { minRoad: 12, hMin: -0.2, hMax: 1.0, s0: 0.5, s1: 1.1, ys: 0.6, sink: 0.3,
     color: (c) => c.setHSL(0.08, 0.08, 0.3 + Math.random()*0.12) }); // 水线礁石
 
   // —— EZ-Tree：生成 9 种树形 → 每种 2 个 InstancedMesh（枝干+树叶）
@@ -1436,6 +1438,8 @@ async function buildScenery() {
   }
 
   // ---------- 草地层 + 道路生态带 ----------
+  // FASTDEBUG：跳过草地层（28000 实例，本模块最耗算力）与道路生态带
+  if (!FASTDEBUG) {
   try {
     buildGrassLayer({
       scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU, samples, normals
@@ -1447,6 +1451,9 @@ async function buildScenery() {
       scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W
     });
   } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
+  } else {
+    console.log('[FASTDEBUG] buildScenery: skipped grass+roadside, trees=40 bushes=20, palm/rock+scatter=0');
+  }
 }
 
 // ---------- 湿路面控制 ----------

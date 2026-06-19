@@ -15,6 +15,14 @@ export function wrapPi(a) {
   return a === a ? a : 0;
 }
 
+// ---------- 隐藏调试快速模式 ----------
+// 仅供内部无头截图自检：`?fastdebug=1` 跳过/削减最吃算力的生成步骤、降到最低画质、
+// 自动进入可截图状态。正式访客（无参数）行为完全不受影响——所有分支都包在 FASTDEBUG 判断内。
+export const FASTDEBUG = (() => {
+  try { return new URLSearchParams(location.search).get('fastdebug') === '1'; }
+  catch { return false; }
+})();
+
 // ---------- 跨模块共享的可变状态 ----------
 export const G = {
   appState: 'garage',   // garage | drive | pause | photo
@@ -48,6 +56,13 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.35;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// FASTDEBUG：最低画质 + 关阴影，快速进入可截图状态（仅无头自检；正式访客不走此分支）
+if (FASTDEBUG) {
+  renderer.setPixelRatio(1);
+  renderer.shadowMap.enabled = false;
+  console.log('[FASTDEBUG] core: pixelRatio=1, shadows off');
+}
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xc97e58, 260, 1600);
@@ -94,12 +109,14 @@ gtaoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, r
 // 默认关闭：GTAO 会把整个场景深度/法线重渲一遍（≈绘制翻倍），中低端 GPU 扛不住。
 // 改成可选项，由 G.aoOn 控制（设置里可开）；普通高画质只保留便宜的 SMAA + 照片电影感
 gtaoPass.enabled = !!G.aoOn; // 关闭：GTAO 后期 pass 与透明烟雾/粒子冲突(黑块)且会在地面产生随视角移动的白膜，留待用更干净的 AO 方案
+if (FASTDEBUG) gtaoPass.enabled = false; // FASTDEBUG：明确关 GTAO
 composer.addPass(gtaoPass);
 
 // Bloom 在半分辨率下计算：本就是模糊辉光，半分辨率肉眼几乎无差，开销减半
 // 收紧参数：threshold 提高到 1.2，只有 emissive 灯具/车灯等高亮物进入 Bloom，
 // 天空、车漆、地形等常规亮度不触发 Bloom，避免"页游感"泛光
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(Math.round(innerWidth/2), Math.round(innerHeight/2)), 0.16, 0.40, 1.2);
+if (FASTDEBUG) bloomPass.strength = 0; // FASTDEBUG：关后期辉光
 
 // ---------- Selective Bloom ----------
 // Layer 31 标记为"进入 Bloom"的对象；其余对象在 bloom 渲染时被临时替换为纯黑，

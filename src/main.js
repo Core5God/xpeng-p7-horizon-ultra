@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim } from './core.js';
+import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms } from './world.js';
 import { buildRoadJunctionPass } from './roadJunctionPass.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
@@ -8,7 +8,7 @@ import { buildSkyCycle, skyCycleUpdate, setTimeScale, getTimeScale } from './sky
 import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arrow, arrowPivot, raceBestText } from './gameplay.js';
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
-import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
+import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, startDrive, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 import { preloadCriticalAssets } from './assetPreload.js';
 import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
 
@@ -79,7 +79,11 @@ function loopBody() {
     raceUpdate();
     gameplayUpdate(dt, onRoad);
     fxUpdate(dt, onRoad, boost);
-    updateChaseCamera(dt, boost);
+    if (G.fastdebugLockCam) {
+      // FASTDEBUG：保持静态俰视，不让追车相机接管
+    } else {
+      updateChaseCamera(dt, boost);
+    }
   } else if (G.appState === 'walk') {
     // 步行模式：角色控制器接管；无人车自然滚停
     characterUpdate(dt);
@@ -219,6 +223,20 @@ addEventListener('keydown', (e) => {
     setQuality(G.hiQuality);
     enterGarage();
     loop();
+    // FASTDEBUG：自动跳过车库菜单直接进驾驶，并把相机放到路面上方俰视，方便无头直接截到 3D 路面
+    if (FASTDEBUG) {
+      try {
+        startDrive(false);
+        // 把相机抬到车辆（起始位于路面）正上方俰视，看得到地形/路
+        const cp = state.pos;
+        camera.position.set(cp.x + 6, cp.y + 28, cp.z + 6);
+        camera.lookAt(cp.x, cp.y, cp.z);
+        camera.updateProjectionMatrix();
+        // 抑制帧率自适应降质提示 / 保持静态俯视：直接锁住相机不跟车
+        G.fastdebugLockCam = true;
+        console.log('[FASTDEBUG] auto-entered drive, overhead camera at junction/road');
+      } catch (e) { console.warn('[FASTDEBUG] auto-enter failed:', e); }
+    }
     requestAnimationFrame(() => {
       const b = document.getElementById('boot');
       if (b) b.remove();
