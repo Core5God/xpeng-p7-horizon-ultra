@@ -9,6 +9,7 @@ import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 import { preloadCriticalAssets } from './assetPreload.js';
+import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
@@ -94,6 +95,7 @@ function loopBody() {
   }
   audioUpdate();
   skyCycleUpdate(dt); // 动态天空/天气循环（接管太阳/雾/曝光/反射）
+  updateMinimalDriveHud(G.appState, race.phase, dt);
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
@@ -208,6 +210,7 @@ addEventListener('keydown', (e) => {
     if (elTip) elTip.textContent = '资源就绪，正在进入车库…';
     await new Promise(r => requestAnimationFrame(r));
     initUI();
+    installMinimalDriveHud();
     initFX();
     settleCarPose();
     applyTod(G.curTod);
