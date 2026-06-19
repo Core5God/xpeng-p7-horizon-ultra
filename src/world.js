@@ -872,9 +872,9 @@ function buildRoad() {
     const m = new THREE.Mesh(g, apronMat); m.receiveShadow = true;
     scene.add(m);
   }
-  junctionApron(BRANCH_A, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-  const lastB = bSamples.length - 1;
-  junctionApron(BRANCH_B, [lastB, lastB-1, lastB-2, lastB-3, lastB-4, lastB-5, lastB-6, lastB-7, lastB-8]);
+  // junctionApron(BRANCH_A, [0, 1, 2, 3, 4, 5, 6, 7, 8]); // disabled: convex-hull apron produced black junction patch, switching to road surface mask system
+  // const lastB = bSamples.length - 1; // disabled with junctionApron call below
+  // junctionApron(BRANCH_B, [lastB, lastB-1, lastB-2, lastB-3, lastB-4, lastB-5, lastB-6, lastB-7, lastB-8]); // disabled: convex-hull apron produced black junction patch, switching to road surface mask system
 
   const pylonM = new THREE.MeshStandardMaterial({color:0x8d8d94, roughness:0.8});
   const bRailM = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
