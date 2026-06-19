@@ -137,7 +137,7 @@ export function skyCycleUpdate(dt) {
   const texA = texForPreset(ws.currentPreset);
   const texB = texForPreset(ws.nextPreset);
   let curTex;
-  if (texA && texB) {
+  if (texA && texB && texA !== texB) {
     blendMat.uniforms.tA.value = texA;
     blendMat.uniforms.tB.value = texB;
     blendMat.uniforms.uT.value = f;
@@ -150,9 +150,8 @@ export function skyCycleUpdate(dt) {
     curTex = texA || texB || anyTex();
   }
 
-  // 可见天空背景：blendRT（等距混合），不用 cubeRT
-  // 强制每帧设置以确保 three.js r169 正确更新背景
-  if (curTex) scene.background = blendRT.texture;
+  // 可见天空背景：blend 时走 blendRT，单 HDR 时直接用原始纹理
+  if (curTex) scene.background = curTex;
 
   const nightAmt = ws.nightAmount;
 
