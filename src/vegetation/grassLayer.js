@@ -45,16 +45,18 @@ export function buildGrassLayer(opts) {
   const ctx = { meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase };
 
   // ---------- 近景短草 ----------
-  const bladeA = new THREE.PlaneGeometry(0.35, 0.8);
-  bladeA.translate(0, 0.4, 0);
+  // 纯色小三角片代替交叉平面+canvas纹理，消除黑线/z-fighting
+  const bladeA = new THREE.PlaneGeometry(0.25, 0.55);
+  bladeA.translate(0, 0.275, 0);
   const bladeB = bladeA.clone();
-  bladeB.rotateY(Math.PI / 2);
-  const grassGeo = mergeGeometries([bladeA, bladeB]);
+  bladeB.rotateY(Math.PI * 0.38); // 非 90° 避免对称交叉
+  const bladeC = bladeA.clone();
+  bladeC.rotateY(-Math.PI * 0.38);
+  const grassGeo = mergeGeometries([bladeA, bladeB, bladeC]);
 
   const grassMat = new THREE.MeshLambertMaterial({
-    map: grassBladeTexture(),
-    alphaTest: 0.5,
-    side: THREE.DoubleSide,
+    color: 0x5a9a48,       // 亮草绿底色
+    side: THREE.FrontSide,  // 单面渲染消除 z-fighting 黑线
     vertexColors: true
   });
 
@@ -145,17 +147,18 @@ export function buildGrassLayer(opts) {
   // 草不 castShadow（性能考虑）
   scene.add(grassInst);
 
-  // ---------- 中景草簇（更大的 billboard） ----------
-  const tuftA = new THREE.PlaneGeometry(0.85, 1.2);
-  tuftA.translate(0, 0.6, 0);
+  // ---------- 中景草簇（纯色三角片，无 canvas 纹理） ----------
+  const tuftA = new THREE.PlaneGeometry(0.65, 0.95);
+  tuftA.translate(0, 0.475, 0);
   const tuftB = tuftA.clone();
-  tuftB.rotateY(Math.PI / 2);
-  const tuftGeo = mergeGeometries([tuftA, tuftB]);
+  tuftB.rotateY(Math.PI * 0.38);
+  const tuftC = tuftA.clone();
+  tuftC.rotateY(-Math.PI * 0.38);
+  const tuftGeo = mergeGeometries([tuftA, tuftB, tuftC]);
 
   const tuftMat = new THREE.MeshLambertMaterial({
-    map: grassBladeTexture(),
-    alphaTest: 0.5,
-    side: THREE.DoubleSide,
+    color: 0x4d8a3e,       // 稍暗的草绿
+    side: THREE.FrontSide,
     vertexColors: true
   });
   tuftMat.onBeforeCompile = grassMat.onBeforeCompile; // 共享风摆

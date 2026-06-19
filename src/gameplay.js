@@ -492,9 +492,6 @@ function buildProps() {
     curv.push({i, c: 1 - (t1.x*t2.x + t1.z*t2.z)});
   }
   curv.sort((a, b) => b.c - a.c);
-  const tyreM2 = new THREE.MeshStandardMaterial({color:0x16181c, roughness:0.95});
-  const tyreBandM = new THREE.MeshStandardMaterial({color:0xe8e4da, roughness:0.8});
-  const tyreG2 = new THREE.CylinderGeometry(0.36, 0.36, 0.25, 10);
   const used = [];
   for (const cv of curv) {
     if (used.length >= 4) break;
@@ -502,31 +499,12 @@ function buildProps() {
     const i = cv.i;
     const dA0 = Math.min(Math.abs(i - BRANCH_A), NS - Math.abs(i - BRANCH_A));
     const dB0 = Math.min(Math.abs(i - BRANCH_B), NS - Math.abs(i - BRANCH_B));
-    if (dA0 < 20 || dB0 < 20) continue; // 支线汇入口让位
+    if (dA0 < 20 || dB0 < 20) continue;
     used.push(i);
     const p = samples[i], n = normals[i], tg = tangents[i];
     const p2 = samples[(i+12) % NS];
     const turnDir = Math.sign((p2.x - p.x)*n.x + (p2.z - p.z)*n.z) || 1;
-    const out = -turnDir;
-    // 弯外侧轮胎墙（3 组叠放，软碰撞）
-    for (let k = -1; k <= 1; k++) {
-      const j = (i + k*5 + NS) % NS;
-      const pp = samples[j], nn = normals[j];
-      const bx = pp.x + nn.x*out*(HALF_W + 2.2), bz = pp.z + nn.z*out*(HALF_W + 2.2);
-      const by = surfaceHeight(bx, bz);
-      const stack = new THREE.Group();
-      for (const [ox, oy] of [[-0.4, 0.18], [0.4, 0.18], [0, 0.62]]) {
-        const ty = new THREE.Mesh(tyreG2, oy > 0.3 ? tyreBandM : tyreM2);
-        ty.rotation.z = Math.PI/2;
-        ty.position.set(ox, oy, 0);
-        stack.add(ty);
-      }
-      stack.position.set(bx, by, bz);
-      stack.rotation.y = Math.atan2(tg.x, tg.z);
-      stack.traverse(o => { if (o.isMesh) o.castShadow = true; });
-      scene.add(stack);
-      buildingCols.push({x: bx, z: bz, r: 1.0, soft: true});
-    }
+    // 轮胎墙已移除（1白圆+2黑圆的弯道障碍物）
     // 弯内侧路肩锥桶
     for (let k = 0; k < 4; k++) {
       const j = (i + k*3 + NS) % NS;
