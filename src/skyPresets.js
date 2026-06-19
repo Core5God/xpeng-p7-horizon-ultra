@@ -7,6 +7,7 @@ export const SKY_PRESETS = {
     file: 'day3',
     tod: 'day',
     weather: 'clear',
+    wet: 0,               // 干燥路面
     dir: [0, 0.33, 0.95],
     sunC: 0xfff4e0, sunI: 7.0,
     hemiC: 0xcfe5ff, hemiI: 1.3,
@@ -18,6 +19,7 @@ export const SKY_PRESETS = {
     file: 'day2',
     tod: 'day',
     weather: 'cloudy',
+    wet: 0.7,             // 阴雨天 → 湿路面
     dir: [0.79, 0.12, 0.60],
     sunC: 0xdfe6ee, sunI: 3.0,
     hemiC: 0xc8d2dc, hemiI: 1.6,
@@ -29,6 +31,7 @@ export const SKY_PRESETS = {
     file: 'evening',
     tod: 'dusk',
     weather: 'warm',
+    wet: 0,               // 干燥路面
     dir: [0.05, 0.09, 0.99],
     sunC: 0xffc792, sunI: 6.0,
     hemiC: 0xffd9b0, hemiI: 1.3,
@@ -40,6 +43,7 @@ export const SKY_PRESETS = {
     file: 'night2',
     tod: 'night',
     weather: 'clear',
+    wet: 0,               // 干燥路面
     dir: [0.016, 0.45, 0.89],
     sunC: 0x9fb6e0, sunI: 1.2,
     hemiC: 0x2a3a55, hemiI: 0.6,
@@ -51,6 +55,7 @@ export const SKY_PRESETS = {
     file: 'night1',
     tod: 'night',
     weather: 'cloudy',
+    wet: 0.8,             // 夜间阴雨 → 湿路面
     dir: [0.32, 0.945, 0.04],
     sunC: 0x8aa0cc, sunI: 0.8,
     hemiC: 0x223355, hemiI: 0.5,

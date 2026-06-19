@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, camera, sun, hemi, rim, bloomPass } from './core.js';
-import { curSunDir, env, sky, stars, fallbackOcean, oceanUniforms } from './world.js';
+import { curSunDir, env, sky, stars, fallbackOcean, oceanUniforms, setRoadWetness } from './world.js';
 import { SKY_PRESETS } from './skyPresets.js';
 import { WeatherController } from './weatherController.js';
 
@@ -175,6 +175,12 @@ export function skyCycleUpdate(dt) {
     oceanUniforms.horizonColor.value.copy(baseWater).offsetHSL(-0.02, -0.05, 0.10); // 远海偏灰偏亮
     oceanUniforms.fogColor.value.copy(scene.fog.color);
   }
+
+  // 路面湿度：晴天干燥、阴雨天湿润，随天气过渡平滑插值
+  const wetA = A.wet || 0;
+  const wetB = B.wet || 0;
+  const roadWetness = wetA + (wetB - wetA) * f;
+  setRoadWetness(roadWetness);
 
   // 夜间灯光：连续淡入系数 nf
   const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
