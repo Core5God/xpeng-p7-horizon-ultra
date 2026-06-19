@@ -1415,13 +1415,61 @@ function buildEnv() {
     scene.add(cluster);
   }
 
-  // —— 路肩碎石带（道路边缘过渡，消除硬切边）
-  const shoulderGravelM = new THREE.MeshStandardMaterial({color:0x8a8070, roughness:0.85});
-  const shoulderGeo = new THREE.DodecahedronGeometry(0.18, 0);
+  // —— 路肩碎石带（程序化纹理石头，非低多面体）
+  // 石头贴图：canvas 生成自然岩石纹理
+  function stoneTexture() {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const cx = cv.getContext('2d');
+    // 底色：灰棕色
+    cx.fillStyle = '#7a7268';
+    cx.fillRect(0, 0, 64, 64);
+    // 噪点：模拟岩石颗粒
+    for (let i = 0; i < 400; i++) {
+      const x = Math.random() * 64, y = Math.random() * 64;
+      const s = 1 + Math.random() * 3;
+      const v = 80 + Math.random() * 80 | 0;
+      cx.fillStyle = `rgba(${v},${v - 10},${v - 20},${0.3 + Math.random() * 0.4})`;
+      cx.fillRect(x, y, s, s);
+    }
+    // 裂纹/暗斑
+    for (let i = 0; i < 8; i++) {
+      cx.strokeStyle = `rgba(${40 + Math.random()*30|0},${35 + Math.random()*25|0},${30 + Math.random()*20|0},${0.3 + Math.random() * 0.3})`;
+      cx.lineWidth = 0.5 + Math.random() * 1;
+      cx.beginPath();
+      cx.moveTo(Math.random() * 64, Math.random() * 64);
+      cx.lineTo(Math.random() * 64, Math.random() * 64);
+      cx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  // 石头几何：扰动的十二面体（更自然的形状）
+  function stoneGeometry() {
+    const g = new THREE.DodecahedronGeometry(0.2, 1); // detail 1 = 更多面
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      // 随机扰动顶点：打破规则几何感
+      pos.setX(i, pos.getX(i) * (0.7 + Math.random() * 0.6));
+      pos.setY(i, pos.getY(i) * (0.5 + Math.random() * 0.5)); // 压扁
+      pos.setZ(i, pos.getZ(i) * (0.7 + Math.random() * 0.6));
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    map: stoneTexture(),
+    roughness: 0.92,
+    metalness: 0.02,
+    color: 0x998877
+  });
+  const shoulderGeo = stoneGeometry();
   const shoulderCount = 2000;
-  const shoulderInst = new THREE.InstancedMesh(shoulderGeo, shoulderGravelM, shoulderCount);
+  const shoulderInst = new THREE.InstancedMesh(shoulderGeo, stoneMat, shoulderCount);
   const sDummy = new THREE.Object3D();
-  const sColor = new THREE.Color();
   let si = 0;
   for (let i = 0; i < NS && si < shoulderCount; i += 2) {
     const s = samples[i];
@@ -1434,40 +1482,58 @@ function buildEnv() {
       const z = s.z + n.z * side * off;
       const h = meshGroundHeight(x, z);
       if (h < 0.3) continue;
-      sDummy.position.set(x, h - 0.05, z);
-      sDummy.rotation.set(Math.random() * 0.3, Math.random() * Math.PI, Math.random() * 0.3);
-      sDummy.scale.setScalar(0.4 + Math.random() * 0.8);
+      sDummy.position.set(x, h - 0.06, z);
+      sDummy.rotation.set(Math.random() * 0.5, Math.random() * Math.PI * 2, Math.random() * 0.3);
+      const ss = 0.5 + Math.random() * 1.0;
+      sDummy.scale.set(ss, ss * (0.4 + Math.random() * 0.6), ss); // 扁平化
       sDummy.updateMatrix();
       shoulderInst.setMatrixAt(si, sDummy.matrix);
-      sColor.setHSL(0.08 + Math.random() * 0.04, 0.15, 0.35 + Math.random() * 0.15);
-      shoulderInst.setColorAt(si, sColor);
       si++;
     }
   }
   shoulderInst.count = si;
   shoulderInst.instanceMatrix.needsUpdate = true;
-  if (shoulderInst.instanceColor) shoulderInst.instanceColor.needsUpdate = true;
+  shoulderInst.castShadow = true;
+  shoulderInst.receiveShadow = true;
   scene.add(shoulderInst);
 
-  // —— 远景地平线雾化带：环形半透明幕，融合远山/海面与天空
-  const hazeGeo = new THREE.CylinderGeometry(2400, 2400, 80, 48, 1, true);
-  const hazeMat = new THREE.MeshBasicMaterial({
-    color: 0x8a9ab0, transparent: true, opacity: 0.35,
-    side: THREE.BackSide, depthWrite: false, fog: false
-  });
-  const hazeRing = new THREE.Mesh(hazeGeo, hazeMat);
-  hazeRing.position.y = 10; // 海平面以上
-  scene.add(hazeRing);
+  // —— 多层雾化带：创造远景树线的大气透视层次
+  // 创建渐变纹理：底部不透明→顶部透明（模拟地面雾）
+  function makeHazeTexture(baseColor, topAlpha) {
+    const cv = document.createElement('canvas');
+    cv.width = 4; cv.height = 64;
+    const cx = cv.getContext('2d');
+    const r = (baseColor >> 16) & 0xff, g2 = (baseColor >> 8) & 0xff, b = baseColor & 0xff;
+    const grad = cx.createLinearGradient(0, 63, 0, 0);
+    grad.addColorStop(0, `rgba(${r},${g2},${b},0.6)`);
+    grad.addColorStop(0.3, `rgba(${r},${g2},${b},0.35)`);
+    grad.addColorStop(0.7, `rgba(${r},${g2},${b},${topAlpha * 0.5})`);
+    grad.addColorStop(1, `rgba(${r},${g2},${b},0)`);
+    cx.fillStyle = grad;
+    cx.fillRect(0, 0, 4, 64);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
+  }
 
-  // 第二层更远更淡的雾化带
-  const hazeGeo2 = new THREE.CylinderGeometry(3200, 3200, 120, 48, 1, true);
-  const hazeMat2 = new THREE.MeshBasicMaterial({
-    color: 0x9aabbf, transparent: true, opacity: 0.22,
-    side: THREE.BackSide, depthWrite: false, fog: false
-  });
-  const hazeRing2 = new THREE.Mesh(hazeGeo2, hazeMat2);
-  hazeRing2.position.y = -5;
-  scene.add(hazeRing2);
+  // 四层雾化带：近→远，由浓到淡
+  const hazeLayers = [
+    { r: 350,  h: 35, color: 0x8899aa, opacity: 0.20, topA: 0.08 },  // 近景树线雾
+    { r: 700,  h: 50, color: 0x8a9ab0, opacity: 0.28, topA: 0.10 },  // 中景雾
+    { r: 1500, h: 70, color: 0x8a9ab0, opacity: 0.35, topA: 0.12 },  // 远景雾
+    { r: 2800, h: 100, color: 0x9aabbf, opacity: 0.30, topA: 0.08 }, // 地平线雾
+  ];
+  for (const l of hazeLayers) {
+    const geo = new THREE.CylinderGeometry(l.r, l.r, l.h, 48, 1, true);
+    const mat = new THREE.MeshBasicMaterial({
+      map: makeHazeTexture(l.color, l.topA),
+      transparent: true, opacity: l.opacity,
+      side: THREE.BackSide, depthWrite: false, fog: false
+    });
+    const ring = new THREE.Mesh(geo, mat);
+    ring.position.y = l.h * 0.15; // 底部贴近地面
+    scene.add(ring);
+  }
 }
 
 // ---------- 时间切换 ----------

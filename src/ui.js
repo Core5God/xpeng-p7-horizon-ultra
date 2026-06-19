@@ -288,7 +288,7 @@ function resumeGame() {
   if (race.phase === 'racing') race.t0 += performance.now() - race.pauseT;
 }
 function enterPhoto() {
-  const fromDrive = G.appState === 'drive';
+  G._prePhotoState = G.appState; // 记住进入前的状态（drive/walk/pause）
   G.appState = 'photo';
   document.body.style.cursor = '';
   clearKeys();
@@ -300,10 +300,10 @@ function enterPhoto() {
   controls.enabled = true; controls.autoRotate = false;
   setOrbitAroundCar(6.5, 1.5);
   // 从暂停菜单进入时保留原 pauseT，暂停+拍照时间在退出时一并补偿
-  if (race.phase === 'racing' && fromDrive) race.pauseT = performance.now();
+  if (race.phase === 'racing' && G._prePhotoState === 'drive') race.pauseT = performance.now();
 }
 function exitPhoto() {
-  G.appState = 'drive';
+  G.appState = G._prePhotoState || 'drive'; // 恢复到进入前的状态
   document.body.classList.remove('nohud');
   document.body.classList.remove('photo');
   photoPass.enabled = false;
@@ -485,7 +485,7 @@ addEventListener('keydown', e => {
     else if (G.appState === 'photo') exitPhoto();
   }
   if (e.code === 'KeyP') {
-    if (G.appState === 'drive' || G.appState === 'pause') enterPhoto();
+    if (G.appState === 'drive' || G.appState === 'walk' || G.appState === 'pause') enterPhoto();
     else if (G.appState === 'photo') exitPhoto();
   }
   // 全局设置键（车库内同样可用）
