@@ -894,7 +894,56 @@ function buildRoad() {
   // GAP_B：支线在两端接主路处各退 GAP_B 点截断，留出干净断头给缝合面（可调）。
   const GAP_B = 6;
   const NBL = bSamples.length;            // 支线采样点数
-  const B_S = GAP_B, B_E = NBL - 1 - GAP_B; // 支线保留区间 [B_S, B_E]
+  // —— 任务1：支路断头改为「动态求 index」（不再固定退 GAP_B）——
+  // 根因：支路在接路口前曲线先过冲甩出再勾回（hairpin）。固定退 6 点（B_E=254）断头
+  // 停在 hairpin 弧外、距 patch 中心 16.9m > hubR(14.8) → hairpin 段露在 patch 外 = 舌头。
+  // 修复：从支路一端沿采样点走向路口，找到「该点到本路口 patch 中心距离 ≤ hubR」的
+  // 第一个点作为断头。这样断头正好停在 hub 边缘、被 patch 接住，hairpin 过冲段不再绘制。
+  // hub 中心/半径仅由两条「主路臂」决定（与支路断头无关，避免鸡生蛋），半径用 main-only
+  // hubR（min 两主臂到中心距离 - HUB_INSET），与 buildJunctionPatch 内 hubRmain 同源。
+  const _HUB_INSET = 2.5;     // 与下方 patch HUB_INSET 保持一致
+  const _PATCH_OVERLAP = 0.4; // 与下方 patch PATCH_OVERLAP 一致（断头沿切线伸入路里）
+  // 给定路口两个主路断头 index，算 hub 中心(cx,cz) 与 main-only hubR。
+  function junctionHubMainOnly(mainEnd1Idx, mainEnd2Idx) {
+    const jcx = (samples[mainEnd1Idx].x + samples[mainEnd2Idx].x) / 2;
+    const jcz = (samples[mainEnd1Idx].z + samples[mainEnd2Idx].z) / 2;
+    const inner = (endIdx) => {
+      const p0 = samples[endIdx], t0 = tangents[endIdx], n = normals[endIdx];
+      const dirSign = (Math.sign((p0.x - jcx) * t0.x + (p0.z - jcz) * t0.z) || 1);
+      const ox = p0.x + t0.x * dirSign * _PATCH_OVERLAP;
+      const oz = p0.z + t0.z * dirSign * _PATCH_OVERLAP;
+      // 内排中点 = 中心线点（L/R 关于中心线对称，中点即 ox,oz）
+      return { x: ox, z: oz };
+    };
+    const m0 = inner(mainEnd1Idx), m1 = inner(mainEnd2Idx);
+    const cx = (m0.x + m1.x) / 2, cz = (m0.z + m1.z) / 2;
+    const d0 = Math.hypot(m0.x - cx, m0.z - cz), d1 = Math.hypot(m1.x - cx, m1.z - cz);
+    const hubR = Math.max(2.0, Math.min(d0, d1) - _HUB_INSET);
+    return { cx, cz, hubR };
+  }
+  // 沿支路从一端走向路口，返回第一个「到 hub 中心 ≤ hubR」的 bSamples index。
+  // fromEnd='start' 从 i=0 递增；fromEnd='end' 从 i=NBL-1 递减。
+  function dynBranchCut(mainEnd1Idx, mainEnd2Idx, fromEnd) {
+    const { cx, cz, hubR } = junctionHubMainOnly(mainEnd1Idx, mainEnd2Idx);
+    if (fromEnd === 'end') {
+      for (let i = 0; i < NBL; i++) {
+        if (Math.hypot(bSamples[i].x - cx, bSamples[i].z - cz) <= hubR) return i;
+      }
+      return NBL - 1 - GAP_B;
+    } else {
+      for (let i = NBL - 1; i >= 0; i--) {
+        if (Math.hypot(bSamples[i].x - cx, bSamples[i].z - cz) <= hubR) return i;
+      }
+      return GAP_B;
+    }
+  }
+  // 主路两个断头 index（已退 GAP，GAP 在上方主路段定义=6）
+  const _mAe1 = (BRANCH_A - GAP + NS) % NS, _mAe2 = (BRANCH_A + GAP) % NS;
+  const _mBe1 = (BRANCH_B - GAP + NS) % NS, _mBe2 = (BRANCH_B + GAP) % NS;
+  // A 端（无 hairpin）：动态判据自然得 6 = 原 GAP_B，A 截断保持现状。
+  // B 端（有 hairpin）：动态判据退到 ~236（比原 254 再退 ~18 点），hairpin 不再绘制。
+  const B_S = dynBranchCut(_mAe1, _mAe2, 'start'); // 支线保留区间起点 index
+  const B_E = dynBranchCut(_mBe1, _mBe2, 'end');   // 支线保留区间末点 index
   function branchRibbon(off1, off2, yLift, mat, sIdx, eIdx) {
     const s = (sIdx === undefined) ? 0 : sIdx;
     const e = (eIdx === undefined) ? NBL - 1 : eIdx;
@@ -1080,6 +1129,55 @@ function buildRoad() {
       const hR = nearestHub(rows[0].R.x, rows[0].R.z);
       idx.push(vL[0], hubIdx[hL], vR[0]);
       idx.push(hubIdx[hL], hubIdx[hR], vR[0]);
+    }
+    // ---- 任务2：路口曲线过渡（硬切 → 弧形）----
+    // 相邻两臂的断头之间原本是 hub 多边形直边角；这里在两臂「面向缺口」的断头外角点
+    // 之间用 Catmull-Rom 生成一段平滑外弧（切线沿各臂边缘方向），再每段独立 fan 三角化
+    // 到 hub 中心，把硬切角填成弧形过渡。三臂 → 3 段过渡弧；每段独立 strip 防自交。
+    // 高度沿 yAtAng（与三断头连续）；UV 仍按世界 xz 平铺（push 内统一处理），不动 terrain。
+    {
+      const TWO_PI = Math.PI * 2;
+      const wrap = (a) => ((a % TWO_PI) + TWO_PI) % TWO_PI;
+      const angDist = (a, b) => Math.abs(((a - b + Math.PI * 3) % TWO_PI) - Math.PI);
+      // 每臂两个断头外角点 {L,R}（rows[0]，含 overlap）+ 中点角度，按中点角度排臂序
+      const armCorners = arms.map((rows) => {
+        const Lc = rows[0].L, Rc = rows[0].R;
+        return {
+          L: { x: Lc.x, z: Lc.z, ang: angOf(Lc.x, Lc.z) },
+          R: { x: Rc.x, z: Rc.z, ang: angOf(Rc.x, Rc.z) },
+          mid: angOf((Lc.x + Rc.x) / 2, (Lc.z + Rc.z) / 2),
+        };
+      });
+      const order = armCorners.map((_, i) => i).sort((a, b) => wrap(armCorners[a].mid) - wrap(armCorners[b].mid));
+      const ARC_SEG = 6; // 每段过渡弧细分段数（独立 strip）
+      for (let oi = 0; oi < order.length; oi++) {
+        const ca = armCorners[order[oi]];
+        const cb = armCorners[order[(oi + 1) % order.length]];
+        // ca 朝向 cb 的角点 = ca 两角点中距 cb.mid 角距最小者；反之为远端。
+        const caNear = angDist(ca.L.ang, cb.mid) < angDist(ca.R.ang, cb.mid) ? ca.L : ca.R;
+        const caFar  = caNear === ca.L ? ca.R : ca.L;
+        const cbNear = angDist(cb.L.ang, ca.mid) < angDist(cb.R.ang, ca.mid) ? cb.L : cb.R;
+        const cbFar  = cbNear === cb.L ? cb.R : cb.L;
+        // Catmull-Rom：[caFar, caNear, cbNear, cbFar]，端点切线由本臂另一角点给出（沿路边方向）
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(caFar.x, 0, caFar.z),
+          new THREE.Vector3(caNear.x, 0, caNear.z),
+          new THREE.Vector3(cbNear.x, 0, cbNear.z),
+          new THREE.Vector3(cbFar.x, 0, cbFar.z),
+        ], false, 'catmullrom', 0.5);
+        // 仅取 caNear→cbNear 中间段（t:1/3..2/3）生成外弧，y 沿 yAtAng 连续
+        const arcPts = [];
+        for (let s = 0; s <= ARC_SEG; s++) {
+          const t = 1 / 3 + (s / ARC_SEG) * (1 / 3);
+          const p = curve.getPoint(t);
+          const a = angOf(p.x, p.z);
+          arcPts.push(push(p.x, yAtAng(a), p.z));
+        }
+        // 每段弧点与 hub 中心 fan 三角化（独立 strip，不自交）
+        for (let s = 0; s < ARC_SEG; s++) {
+          idx.push(cIdx, arcPts[s], arcPts[s + 1]);
+        }
+      }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
