@@ -604,8 +604,10 @@ function buildTerrain() {
         'float shoulderM = clamp(texture2D(uShoulderMask, roadUv).r - asphaltM, 0.0, 1.0);',
         'float junctionM = texture2D(uJunctionMask, roadUv).r;',
         'vec2 lineRG = texture2D(uLineMask, roadUv).rg;',
-        'float yellowLine = lineRG.r * (1.0 - junctionM);',
-        'float whiteLine = lineRG.g * (1.0 - junctionM);',
+        // 路口收线：junctionM>0.45 核心区 lineKeep=0 完全无线，0.12~0.45 软渐隐，<0.12 直路正常
+        'float lineKeep = 1.0 - smoothstep(0.12, 0.45, junctionM);',
+        'float yellowLine = lineRG.r * lineKeep;',
+        'float whiteLine = lineRG.g * lineKeep;',
         'vec3 rsBase = diffuseColor.rgb;',
         'vec3 rsDirt = vec3(0.18, 0.16, 0.13);',
         'vec3 rsAsph = vec3(0.040, 0.043, 0.046);',

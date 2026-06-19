@@ -92,11 +92,10 @@ function drawJunction(ctx, centersPx, radiusPx) {
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   for (const [cx, cy] of centersPx) {
-    // 更软更宽的径向渐变：core 实心 decay=1，往外羽化到 0，给沥青→破损→碎石两段过渡留足空间
-    const grad = ctx.createRadialGradient(cx, cy, radiusPx * 0.30, cx, cy, radiusPx);
+    // 内 60% 半径实心 alpha=1（核心区 junctionM≈1，线条抑制可靠），外 40% 软过渡到 0
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
     grad.addColorStop(0.0, 'rgba(255,255,255,1.0)');
-    grad.addColorStop(0.45, 'rgba(255,255,255,0.85)');
-    grad.addColorStop(0.75, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(0.6, 'rgba(255,255,255,1.0)');
     grad.addColorStop(1.0, 'rgba(255,255,255,0.0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -190,7 +189,7 @@ export function createRoadSurfaceMasks({
   // --- junction ---
   const cJunction = makeCanvas(canvasSize);
   const ctxJ = cJunction.getContext('2d');
-  const junctionRadiusM = HALF_W + B_HALF + 8.0; // 加宽过渡范围，让沥青→破损→碎石渐隐更充分
+  const junctionRadiusM = HALF_W + B_HALF + 12.0; // 加大覆盖，让三线交错的交汇区被充分盖住
   const junctionRadiusPx = junctionRadiusM / metersPerPx;
   const centersPx = [];
   if (samples[BRANCH_A]) {
