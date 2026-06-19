@@ -7,6 +7,7 @@ import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER } fr
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
+import { createRoadSurfaceMasks, maybeShowRoadMaskDebug } from './roadSurfaceMask.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -544,12 +545,24 @@ function buildTerrain() {
   const sandD = texColor(TP+'sand_diff.jpg'), forestD = texColor(TP+'forest_diff.jpg'), rockD = texColor(TP+'rock_diff.jpg'), dryD = texColor(TP+'dry_diff.jpg');
   const sandR = texData(TP+'sand_rough.webp'), rockR = texData(TP+'rock_rough.webp'), dryR = texData(TP+'dry_rough.webp'), forestR = texData(TP+'forest_rough.webp');
   const forestN = texData(TP+'forest_nrm.webp');
+  // —— Road surface masks (PR2/PR3): bake top-down asphalt/shoulder/junction/line and blend in terrain shader
+  const roadMasks = createRoadSurfaceMasks({
+    samples, bSamples,
+    HALF_W, B_HALF, BRANCH_A, BRANCH_B,
+    terrainSize: TERR_SIZE,
+  });
+  maybeShowRoadMaskDebug(roadMasks);
   const mat = new THREE.MeshStandardMaterial({ vertexColors:true, map: forestD, normalMap: forestN, roughnessMap: forestR, roughness:1.0, metalness:0, envMapIntensity:0.55 });
   mat.normalScale.set(1.0, 1.0); // 法线强度回到 1.0：保留凹凸但不至于在暗部糊成死黑
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.tSandD = { value: sandD }; shader.uniforms.tRockD = { value: rockD }; shader.uniforms.tDryD = { value: dryD };
     shader.uniforms.tSandR = { value: sandR }; shader.uniforms.tRockR = { value: rockR }; shader.uniforms.tDryR = { value: dryR };
     shader.uniforms.uTile = { value: 320.0 }; // 平铺更密 → 贴图颗粒回到真实尺寸（~6m/铺），不再像被放大
+    shader.uniforms.uAsphaltMask = { value: roadMasks.asphaltMask };
+    shader.uniforms.uShoulderMask = { value: roadMasks.shoulderMask };
+    shader.uniforms.uJunctionMask = { value: roadMasks.junctionMask };
+    shader.uniforms.uLineMask = { value: roadMasks.lineMask };
+    shader.uniforms.uTerrainSize = { value: TERR_SIZE };
     shader.vertexShader = 'varying vec4 vW;\nvarying vec3 vWorldPos;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
       '#include <begin_vertex>',
       'vec4 wp = modelMatrix * vec4(position, 1.0);',
@@ -562,7 +575,7 @@ function buildTerrain() {
       'vec4 w = vec4(wSand, 1.0, wRock, wDry);',                     // forest 作底
       'vW = w / (w.x + w.y + w.z + w.w);'
     ].join('\n'));
-    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; varying vec4 vW; varying vec3 vWorldPos;\n' + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; uniform sampler2D uAsphaltMask,uShoulderMask,uJunctionMask,uLineMask; uniform float uTerrainSize; varying vec4 vW; varying vec3 vWorldPos;\n' + shader.fragmentShader
       .replace('#include <map_fragment>', [
         'vec2 uvT = vMapUv * uTile;',
         'vec3 dF = texture2D(map, uvT).rgb;',
@@ -584,7 +597,23 @@ function buildTerrain() {
         'float vegDark = smoothstep(2.5, 7.0, vWorldPos.y) * (1.0 - smoothstep(20.0, 28.0, vWorldPos.y));',
         'vegDark *= (1.0 - vW.z * 0.7);', // 岩石区域不需要暗化
         'float vegShadow = mix(1.0, 0.55, vegDark * 0.75);',
-        'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1 * macroTint * shoreTint * vegShadow;'
+        'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1 * macroTint * shoreTint * vegShadow;',
+        // —— Road surface mask blend: asphalt / shoulder / junction / lane lines
+        'vec2 roadUv = vec2(vWorldPos.x + uTerrainSize*0.5, vWorldPos.z + uTerrainSize*0.5) / uTerrainSize;',
+        'float asphaltM = texture2D(uAsphaltMask, roadUv).r;',
+        'float shoulderM = clamp(texture2D(uShoulderMask, roadUv).r - asphaltM, 0.0, 1.0);',
+        'float junctionM = texture2D(uJunctionMask, roadUv).r;',
+        'vec2 lineRG = texture2D(uLineMask, roadUv).rg;',
+        'float yellowLine = lineRG.r * (1.0 - junctionM);',
+        'float whiteLine = lineRG.g * (1.0 - junctionM);',
+        'vec3 rsBase = diffuseColor.rgb;',
+        'vec3 rsDirt = vec3(0.18, 0.16, 0.13);',
+        'vec3 rsAsph = vec3(0.040, 0.043, 0.046);',
+        'rsBase = mix(rsBase, rsDirt, shoulderM * 0.55);',
+        'rsBase = mix(rsBase, rsAsph, asphaltM);',
+        'rsBase = mix(rsBase, vec3(1.0, 0.85, 0.10), yellowLine * 0.95);',
+        'rsBase = mix(rsBase, vec3(0.95, 0.95, 0.95), whiteLine * 0.95);',
+        'diffuseColor.rgb = rsBase;'
       ].join('\n'))
       .replace('#include <roughnessmap_fragment>', [
         'float roughnessFactor = roughness;',
