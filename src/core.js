@@ -62,9 +62,9 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -130; sun.shadow.camera.right = 130; // ±130：覆盖道路两侧植被阴影
-sun.shadow.camera.top = 130; sun.shadow.camera.bottom = -130;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
+sun.shadow.camera.left = -80; sun.shadow.camera.right = 80; // 收窄到近景走廊：提高阴影纹素密度
+sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 350; // 近景真实阴影，远景靠植被暗化
 sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.06;
 scene.add(sun); scene.add(sun.target);

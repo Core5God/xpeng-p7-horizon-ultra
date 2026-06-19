@@ -100,7 +100,7 @@ export function buildRoadsideEcology(opts) {
       if (fi >= FLOWER_COUNT) break;
       if (Math.random() > 0.55) continue; // 不是每个采样点都放
 
-      const dist = randomRange(HALF_W + 2, HALF_W + 14); // 6-18m 范围
+      const dist = randomRange(HALF_W + 6, HALF_W + 18); // 12-24m from center = 6-18m 草花带
       const jitter = randomRange(-1.5, 1.5);
       const x = p.x + n.x * side * dist + jitter;
       const z = p.z + n.z * side * dist + jitter;
@@ -187,14 +187,14 @@ export function buildRoadsideEcology(opts) {
       if (bi >= BUSH_ROAD_COUNT) break;
       if (Math.random() > 0.45) continue;
 
-      const dist = randomRange(HALF_W + 8, HALF_W + 25); // 14-31m
+      const dist = randomRange(HALF_W + 18, HALF_W + 40); // 24-46m from center = 18-40m 灌木/小树带
       const x = p.x + n.x * side * dist + randomRange(-2, 2);
       const z = p.z + n.z * side * dist + randomRange(-2, 2);
 
       const m = getTerrainMasks(x, z, ctx);
       if (m.height < 1.0 || m.height > 16) continue;
       if (m.slope > 0.4) continue;
-      if (m.roadDist < HALF_W + 5) continue;
+      if (m.roadDist < HALF_W + 14) continue; // 灌木不在花草带内
 
       const y = m.height - 0.12;
       dummy.position.set(x, y, z);

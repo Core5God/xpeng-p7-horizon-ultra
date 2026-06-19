@@ -229,6 +229,7 @@ function enterGarage() {
   state.speed = 0; state.vx = 0; state.vz = 0;
   settleCarPose();
   document.body.classList.add('nohud');
+  document.body.classList.remove('drive');
   elGarage.classList.add('show');
   elPause.classList.remove('show');
   elPhotobar.classList.remove('show');
@@ -255,6 +256,7 @@ function startDrive(raceMode) {
   document.body.style.cursor = 'none';
   setCharacterVisible(false);   // 关闭车库站立预览
   document.body.classList.remove('nohud');
+  document.body.classList.add('drive');
   elGarage.classList.remove('show');
   elPause.classList.remove('show');
   elPhotobar.classList.remove('show');

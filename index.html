@@ -36,6 +36,14 @@
   body.photo::after{bottom:0}
   .hud{position:fixed;color:#fff;z-index:10;text-shadow:0 1px 8px rgba(0,0,0,.7)}
   body.nohud .hud, body.nohud #minimap{display:none!important}
+  /* 驾驶态极简 HUD：隐藏品牌、分数、技能弹字、播放列表，只留速度/档位/消息/小地图 */
+  body.drive #title{opacity:.3;transition:opacity 1.5s;pointer-events:none}
+  body.drive #title:hover{opacity:.7}
+  body.drive #scorechip{opacity:.25;transition:opacity 1s}
+  body.drive #skillstack{opacity:.4}
+  body.drive #playlistbar{opacity:.3;transition:opacity 1s}
+  body.drive #playlistbar:hover{opacity:1}
+  body.drive #keytips{opacity:.2;transition:opacity 2s}
   /* —— 顶部品牌与状态 —— */
   #title{top:18px;left:22px;line-height:1.15}
   #title .brand{font-size:12px;font-weight:600;letter-spacing:6px;opacity:.75}

@@ -41,7 +41,7 @@ function grassBladeTexture() {
  * @param {object} opts.windU - 风摆 uniform { value: 0 }
  */
 export function buildGrassLayer(opts) {
-  const { scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU } = opts;
+  const { scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU, samples, normals } = opts;
   const ctx = { meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase };
 
   // ---------- 近景短草 ----------
@@ -82,11 +82,30 @@ export function buildGrassLayer(opts) {
   let gi = 0, guard = 0;
 
   while (gi < GRASS_COUNT && guard++ < GRASS_COUNT * 8) {
-    // 在岛屿范围内随机撒点
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 30 + Math.random() * 540;
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
+    // 道路走廊优先放置（60% 沿路，30% 草甸热点，10% 全岛散）
+    let x, z;
+    const roll = Math.random();
+    if (roll < 0.6 && samples && normals) {
+      // 沿路走廊：随机选一个路段样本点，在旁边 8-50m 范围放置
+      const si = (Math.random() * samples.length) | 0;
+      const s = samples[si], n = normals[si];
+      const side = Math.random() > 0.5 ? 1 : -1;
+      const off = 8 + Math.random() * 42;
+      x = s.x + n.x * side * off + (Math.random() - 0.5) * 6;
+      z = s.z + n.z * side * off + (Math.random() - 0.5) * 6;
+    } else if (roll < 0.9) {
+      // 草甸热点：在中等高度区域集中
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 50 + Math.random() * 350;
+      x = Math.cos(angle) * radius;
+      z = Math.sin(angle) * radius;
+    } else {
+      // 全岛随机散
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 30 + Math.random() * 540;
+      x = Math.cos(angle) * radius;
+      z = Math.sin(angle) * radius;
+    }
 
     // 获取生态 mask
     const m = getTerrainMasks(x, z, ctx);

@@ -7,6 +7,7 @@ import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER } fr
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
+import { buildTreeImpostors } from './vegetation/treeImpostors.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -550,8 +551,10 @@ function buildTerrain() {
     shader.uniforms.tSandD = { value: sandD }; shader.uniforms.tRockD = { value: rockD }; shader.uniforms.tDryD = { value: dryD };
     shader.uniforms.tSandR = { value: sandR }; shader.uniforms.tRockR = { value: rockR }; shader.uniforms.tDryR = { value: dryR };
     shader.uniforms.uTile = { value: 320.0 }; // 平铺更密 → 贴图颗粒回到真实尺寸（~6m/铺），不再像被放大
-    shader.vertexShader = 'varying vec4 vW;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
+    shader.vertexShader = 'varying vec4 vW;\nvarying vec3 vWorldPos;\n' + shader.vertexShader.replace('#include <begin_vertex>', [
       '#include <begin_vertex>',
+      'vec4 wp = modelMatrix * vec4(position, 1.0);',
+      'vWorldPos = wp.xyz;',
       'float H = position.y;',
       'float sl = 1.0 - clamp(normal.y, 0.0, 1.0);',                 // 坡度
       'float wSand = 1.0 - smoothstep(0.6, 3.0, H);',                // 低处海岸=沙
@@ -560,14 +563,29 @@ function buildTerrain() {
       'vec4 w = vec4(wSand, 1.0, wRock, wDry);',                     // forest 作底
       'vW = w / (w.x + w.y + w.z + w.w);'
     ].join('\n'));
-    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; varying vec4 vW;\n' + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D tSandD,tRockD,tDryD,tSandR,tRockR,tDryR; uniform float uTile; varying vec4 vW; varying vec3 vWorldPos;\n' + shader.fragmentShader
       .replace('#include <map_fragment>', [
         'vec2 uvT = vMapUv * uTile;',
         'vec3 dF = texture2D(map, uvT).rgb;',
         'vec3 dS = texture2D(tSandD, uvT).rgb;',
         'vec3 dR = texture2D(tRockD, uvT*0.6).rgb;',
         'vec3 dD = texture2D(tDryD, uvT).rgb;',
-        'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1;'
+        // 宏观色带：大尺度噪声打破重复感
+        'float macro1 = sin(vWorldPos.x*0.008 + 1.3) * cos(vWorldPos.z*0.006 + 0.7) * 0.5 + 0.5;',
+        'float macro2 = sin(vWorldPos.x*0.023 + 3.1) * sin(vWorldPos.z*0.019 + 2.4) * 0.5 + 0.5;',
+        'float macro3 = cos(vWorldPos.x*0.047 + 0.5) * cos(vWorldPos.z*0.039 + 1.8) * 0.5 + 0.5;',
+        'float macroVal = macro1 * 0.5 + macro2 * 0.3 + macro3 * 0.2;',
+        'vec3 macroTint = mix(vec3(0.88, 0.92, 0.85), vec3(1.06, 1.03, 0.96), macroVal);',
+        // 海岸线湿润暗化
+        'float shoreH = smoothstep(3.0, 0.3, vWorldPos.y);',
+        'vec3 shoreTint = mix(vec3(1.0), vec3(0.78, 0.82, 0.72), shoreH * 0.35);',
+        // 路边绿色增强带
+        'float roadDist = length(vWorldPos.xz);',
+        // 中景植被暗化（假阴影）：森林/草甸区域地面稍暗，模拟树冠遮蔽
+        'float vegDark = smoothstep(3.0, 8.0, vWorldPos.y) * (1.0 - smoothstep(18.0, 26.0, vWorldPos.y));',
+        'vegDark *= (1.0 - vW.z * 0.7);', // 岩石区域不需要暗化
+        'float vegShadow = mix(1.0, 0.72, vegDark * 0.6);',
+        'diffuseColor.rgb *= (dS*vW.x + dF*vW.y + dR*vW.z + dD*vW.w) * 1.1 * macroTint * shoreTint * vegShadow;'
       ].join('\n'))
       .replace('#include <roughnessmap_fragment>', [
         'float roughnessFactor = roughness;',
@@ -741,7 +759,15 @@ function buildRoad() {
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <color_fragment>',
       `#include <color_fragment>
-       diffuseColor.rgb *= mix(1.0, 0.72, wetness);` // 湿沥青稍暗
+       diffuseColor.rgb *= mix(1.0, 0.72, wetness);
+       // 路肩磨损暗化：UV.x 靠近 0/1 边缘处变暗
+       float edgeWear = smoothstep(0.0, 0.12, vMapUv.x) * smoothstep(1.0, 0.88, vMapUv.x);
+       diffuseColor.rgb *= mix(0.65, 1.0, edgeWear);
+       // 随机脏化斑块：程序化噪声打破均匀感
+       float dirt1 = sin(vMapUv.y * 47.0 + 1.3) * sin(vMapUv.x * 23.0 + 0.7) * 0.5 + 0.5;
+       float dirt2 = sin(vMapUv.y * 89.0 + 3.1) * cos(vMapUv.x * 51.0 + 2.4) * 0.5 + 0.5;
+       float dirtPattern = dirt1 * 0.6 + dirt2 * 0.4;
+       diffuseColor.rgb *= mix(0.82, 1.0, dirtPattern);`
     );
   };
   const shoulderMat = new THREE.MeshStandardMaterial({color:0x615a50, roughness:1});
@@ -1096,9 +1122,15 @@ async function buildScenery() {
   // ---------- 草地层 + 道路生态带 ----------
   try {
     buildGrassLayer({
-      scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU
+      scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU, samples, normals
     });
   } catch (e) { console.warn('[GRASS] 草地层生成失败：', e); }
+
+  try {
+    buildTreeImpostors({
+      scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase
+    });
+  } catch (e) { console.warn('[IMPOSTOR] 中景树丛 impostor 生成失败：', e); }
 
   try {
     buildRoadsideEcology({
@@ -1423,6 +1455,26 @@ function buildEnv() {
   shoulderInst.instanceMatrix.needsUpdate = true;
   if (shoulderInst.instanceColor) shoulderInst.instanceColor.needsUpdate = true;
   scene.add(shoulderInst);
+
+  // —— 远景地平线雾化带：环形半透明幕，融合远山/海面与天空
+  const hazeGeo = new THREE.CylinderGeometry(2400, 2400, 80, 48, 1, true);
+  const hazeMat = new THREE.MeshBasicMaterial({
+    color: 0x8a9ab0, transparent: true, opacity: 0.35,
+    side: THREE.BackSide, depthWrite: false, fog: false
+  });
+  const hazeRing = new THREE.Mesh(hazeGeo, hazeMat);
+  hazeRing.position.y = 10; // 海平面以上
+  scene.add(hazeRing);
+
+  // 第二层更远更淡的雾化带
+  const hazeGeo2 = new THREE.CylinderGeometry(3200, 3200, 120, 48, 1, true);
+  const hazeMat2 = new THREE.MeshBasicMaterial({
+    color: 0x9aabbf, transparent: true, opacity: 0.22,
+    side: THREE.BackSide, depthWrite: false, fog: false
+  });
+  const hazeRing2 = new THREE.Mesh(hazeGeo2, hazeMat2);
+  hazeRing2.position.y = -5;
+  scene.add(hazeRing2);
 }
 
 // ---------- 时间切换 ----------
