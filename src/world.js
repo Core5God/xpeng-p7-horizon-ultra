@@ -888,6 +888,9 @@ function buildRoad() {
     scene.add(rm);
   }
   // （悬崖护栏已改为可破坏道具，见 gameplay.buildProps）
+
+  // 绑定路面材质供 setRoadWetness 使用
+  _bindRoadMat(roadMat);
 }
 
 // ---------- 植被 / 岩石（EZ-Tree 程序化森林，实例化渲染） ----------
@@ -1102,9 +1105,6 @@ async function buildScenery() {
       scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W
     });
   } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
-
-  // 绑定路面材质供 setRoadWetness 使用
-  _bindRoadMat(roadMat);
 }
 
 // ---------- 湿路面控制 ----------
