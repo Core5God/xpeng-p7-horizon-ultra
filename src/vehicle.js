@@ -23,16 +23,17 @@ const PAINTS = [
 const car = new THREE.Group();
 scene.add(car);
 
-// —— 车辆反射探针：仅在车库/照片模式运行（驾驶模式车漆默认走 scene.environment HDR PMREM IBL，
-// 不需要实时 CubeCamera 开销）。拍照截图时启用，隐藏高亮对象防脏反射。
+// —— 车辆反射探针：CubeCamera 把真实周围环境渲染进 cubemap 作为车的环境贴图。
+// sunSprite 已删除 + selective bloom 隔离发光体 + 渲染时隐藏高亮对象 → 反射输入干净。
 const reflectRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
 const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
 let _reflN = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  // 驾驶模式车漆默认吃 HDR PMREM IBL（scene.environment），无需实时 CubeCamera
-  if (G.appState !== 'garage' && G.appState !== 'photo') return;
-  if ((_reflN++ % 16) !== 0) return;
+  // 速度自适应更新频率：低速每 32 帧、中速每 16 帧、高速每 8 帧
+  const sp = Math.abs(state.speed);
+  const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
+  if ((_reflN++ % interval) !== 0) return;
 
   // 隐藏高亮 sprite / 光球 / 发光体，防止进入车身 CubeCamera 反射造成脏反射
   const hidden = [];
@@ -139,14 +140,15 @@ loader.load(GLB_URL, (gltf) => {
         if (m.name && m.name.startsWith('Mat_E29_Body')) {
           // 车身有两个材质（Mat_E29_Body 带纹理 + Mat_E29_Body.001 纯色），都要染色
           paintMats.push(m);
-          // 4A 级车漆：HDR PMREM IBL 主导，默认走 scene.environment
-          // 反射输入干净 → 不会出现光球/白点污染
-          m.metalness = 0.82;
-          m.roughness = 0.32;
-          m.envMapIntensity = 1.15;
+          // 实时 CubeCamera 反射 + 保守 PBR：sunSprite 已删除、selective bloom 已隔离发光体、
+          // CubeCamera 渲染时已隐藏高亮对象 → 反射输入干净，保留环境反射不失真
+          m.metalness = 0.88;
+          m.roughness = 0.22;
+          m.envMapIntensity = 1.45;
+          m.envMap = reflectRT.texture;
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
-            m.clearcoatRoughness = 0.10;
+            m.clearcoatRoughness = 0.08;
           }
           m.normalMap = flakeNormalTex;  // 金属闪片
           m.normalScale.set(0.5, 0.5);   // 明显的金属颗粒闪
@@ -160,10 +162,10 @@ loader.load(GLB_URL, (gltf) => {
           o.layers.enable(BLOOM_LAYER); // 车灯进 selective bloom
         }
         if (m.name === 'Mat_E29_Glass') {
-          // 玻璃默认走 scene.environment（HDR PMREM IBL）
-          // 反射输入干净 → 不会出现光球/白点污染
-          m.envMapIntensity = 1.20;
+          // 玻璃保留实时 CubeCamera 反射（污染源已清除：sunSprite 删除、发光体隐藏）
+          m.envMapIntensity = 1.50;
           m.roughness = 0.05;
+          m.envMap = reflectRT.texture;
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;
