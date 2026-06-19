@@ -461,8 +461,8 @@ function physics(dt) {
     state.vyAir = Math.min(state.vyAir, 0);
   } else {
     // 弹簧-阻尼悬挂：车体不再硬贴地面，有悬挂压缩/回弹，冲坡可起飞
-    const springK = 65;   // 弹簧刚度（越高越硬）
-    const dampC = 12;     // 阻尼系数（抑制振荡）
+    const springK = 65;   // 弹簧刚度
+    const dampC = 18;     // 阻尼系数（≥2√K≈16.1 为临界/过阻尼，不振荡）
     const targetY = gy;
     const displacement = targetY - state.pos.y;
     // 弹簧力向上（正 displacement = 地面高于车 = 压缩弹簧）

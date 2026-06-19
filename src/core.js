@@ -110,7 +110,9 @@ bloomLayer.set(BLOOM_LAYER);
 const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const darkSpriteMat = new THREE.SpriteMaterial({ color: 0x000000 });
 const darkPointsMat = new THREE.PointsMaterial({ color: 0x000000, size: 0 });
-const _darkCache = [];
+const _darkObjs = [];   // 预分配对象引用数组（零每帧分配）
+const _darkMats = [];   // 预分配原始材质数组
+let _darkCount = 0;
 
 // bloomComposer：独立渲染器，先渲染场景（非 bloom 对象涂黑），再做 Bloom
 const bloomRT = new THREE.WebGLRenderTarget(
@@ -147,23 +149,19 @@ finalComposer.addPass(compositePass);
 finalComposer.addPass(new OutputPass());
 
 function selectiveBloomRender() {
-  _darkCache.length = 0;
+  _darkCount = 0;
   scene.traverse((obj) => {
     if (!bloomLayer.test(obj.layers)) {
-      if (obj.isMesh) {
-        _darkCache.push({ obj, material: obj.material });
-        obj.material = darkMaterial;
-      } else if (obj.isSprite) {
-        _darkCache.push({ obj, material: obj.material });
-        obj.material = darkSpriteMat;
-      } else if (obj.isPoints) {
-        _darkCache.push({ obj, material: obj.material });
-        obj.material = darkPointsMat;
+      if (obj.isMesh || obj.isSprite || obj.isPoints) {
+        _darkObjs[_darkCount] = obj;
+        _darkMats[_darkCount] = obj.material;
+        obj.material = obj.isMesh ? darkMaterial : obj.isSprite ? darkSpriteMat : darkPointsMat;
+        _darkCount++;
       }
     }
   });
   bloomComposer.render();
-  for (const d of _darkCache) d.obj.material = d.material;
+  for (let i = 0; i < _darkCount; i++) _darkObjs[i].material = _darkMats[i];
   finalComposer.render();
 }
 

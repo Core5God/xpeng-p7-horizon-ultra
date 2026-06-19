@@ -117,6 +117,7 @@ function start() {
 
 const _z = new THREE.Color(0);
 const _lampLit = new THREE.Color(0xfff4e0);
+const _baseWater = new THREE.Color(); // 预分配：水色混合复用
 function clamp01(t) { return t < 0 ? 0 : t > 1 ? 1 : t; }
 function smooth(t) { return t * t * (3 - 2 * t); }
 
@@ -168,9 +169,9 @@ export function skyCycleUpdate(dt) {
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
   rim.color.copy(sun.color);
   if (G.waterOK && G.water && oceanUniforms) {
-    // 三段式着色随时段插值：深水区跟 preset 水色走，浅滩和远海做偏移
-    const baseWater = new THREE.Color(A._water).lerp(new THREE.Color(B._water), f);
-    oceanUniforms.deepColor.value.copy(baseWater);
+    // 三段式着色随时段插值（零分配：复用 _baseWater）
+    _baseWater.copy(A._water).lerp(B._water, f);
+    oceanUniforms.deepColor.value.copy(_baseWater);
     oceanUniforms.shallowColor.value.copy(baseWater).offsetHSL(0.05, 0.15, 0.20); // 浅滩偏亮偏青
     oceanUniforms.horizonColor.value.copy(baseWater).offsetHSL(-0.02, -0.05, 0.10); // 远海偏灰偏亮
     oceanUniforms.fogColor.value.copy(scene.fog.color);
