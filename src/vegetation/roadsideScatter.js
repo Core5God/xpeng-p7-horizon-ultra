@@ -81,10 +81,9 @@ export function buildRoadsideEcology(opts) {
   const crossFlower = mergeGeometries([flowerGeo, flowerGeo2]);
 
   const flowerMat = new THREE.MeshLambertMaterial({
-    map: wildflowerTexture(),
-    alphaTest: 0.4,
-    side: THREE.DoubleSide,
-    vertexColors: true
+    color: 0xffffff,      // 白色底：instanceColor 提供花色
+    side: THREE.FrontSide  // 单面消除交叉面 z-fighting
+    // 不用 map / alphaTest / vertexColors：纯色面片 + instanceColor
   });
 
   const FLOWER_COUNT = 3500;

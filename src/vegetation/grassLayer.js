@@ -55,9 +55,9 @@ export function buildGrassLayer(opts) {
   const grassGeo = mergeGeometries([bladeA, bladeB, bladeC]);
 
   const grassMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,       // 白色底：不压暗顶点色
-    side: THREE.FrontSide,
-    vertexColors: true      // 颜色完全由顶点色决定
+    color: 0x5a9a48,       // 绿色底：未设 instanceColor 时也显示绿色
+    side: THREE.FrontSide
+    // 不用 vertexColors：instanceColor 由 setColorAt 提供变化
   });
 
   // 风摆 shader 注入
@@ -125,7 +125,11 @@ export function buildGrassLayer(opts) {
 
     const y = m.height - 0.08;
     dummy.position.set(x, y, z);
-    dummy.rotation.y = Math.random() * Math.PI;
+    dummy.rotation.set(
+      (Math.random() - 0.5) * 0.3,  // 微倾斜：消除整齐排列感
+      Math.random() * Math.PI * 2,   // 全 360° 旋转
+      (Math.random() - 0.5) * 0.15
+    );
     const s = 0.5 + Math.random() * 0.7;
     dummy.scale.set(s, s * (0.7 + Math.random() * 0.6), s);
     dummy.updateMatrix();
@@ -157,9 +161,8 @@ export function buildGrassLayer(opts) {
   const tuftGeo = mergeGeometries([tuftA, tuftB, tuftC]);
 
   const tuftMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,       // 白色底
-    side: THREE.FrontSide,
-    vertexColors: true
+    color: 0x4d8a3e,       // 绿色底
+    side: THREE.FrontSide
   });
   tuftMat.onBeforeCompile = grassMat.onBeforeCompile; // 共享风摆
 
