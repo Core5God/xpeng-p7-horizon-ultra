@@ -22,6 +22,14 @@ export const HMI = {
     border: 'rgba(255,255,255,0.12)',
     blur: '18px',
     radius: '28px',
+    // —— cockpit 信息带（OLED/Mini-LED 屏感）专用 glass token，克制不过曝 ——
+    bandBg: 'rgba(12,16,22,0.36)',          // 深灰半透明底
+    bandBorder: 'rgba(255,255,255,0.10)',   // 容器细边
+    bandBlur: '22px',                        // 玻璃模糊
+    bandHairline: 'rgba(255,255,255,0.34)', // 顶沿一条细高光
+    bandRadius: '40px',                      // 上沿大圆角(弧面感)
+    bandGlow: 'rgba(120,170,255,0.10)',     // 极轻科技蓝外发光
+    accent: 'rgba(168,206,255,0.85)',        // 数字科技蓝/青白微光
   },
   text: {
     primary: 'rgba(255,255,255,.88)',
