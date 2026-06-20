@@ -39,6 +39,8 @@
   body.photo::after{bottom:0}
   .hud{position:fixed;color:#fff;z-index:10;text-shadow:0 1px 8px rgba(0,0,0,.7)}
   body.nohud .hud, body.nohud #minimap{display:none!important}
+  /* PR3.2.2: 驾驶态隐藏左下旧小地图（中部 HMI 路线预览取代） */
+  body.drive #minimap{display:none!important}
   /* 驾驶态彻底隐藏品牌/分数/技能/电台/快捷键/模式/漂移（交 hmiDrivingHud 排版） */
   body.drive #title{display:none}
   body.drive #scorechip{display:none}

@@ -1,123 +1,131 @@
-// ---------- HMI Driving HUD (Stage 3.2.1) ----------
-// 电车座舱「环绕曲面屏 cockpit 信息带」：运行时注入结构 + CSS（不在 index.html 里硬堆 markup/样式）。
-// 用 PR3.1 的 HMI design tokens（:root CSS 变量 --hmi-*），含 PR3.2.1 新增 glass band token。
-//   把原本散点漂浮的 左/中/右 信息整合进 一条横向、贴底、低位、轻微弧面 的 cockpit 信息带：
-//   · 左信息区：电量(SOC) + 续航(CLTC) 占位 + 里程(大数字 + KILOMETERS)
-//   · 中状态位：AUTOSTEER 标签 + 状态字（本轮恒 OFF 占位；已移除原中部静态假导航 SVG 弧线）
-//   · 右信息区：时速(大数字 + KILOMETERS PER HOUR + 锁占位) + 档位(D/N/R)
-// 视觉：深灰半透明玻璃底 + backdrop blur + 顶沿细高光 hairline + 上沿大圆角 + 极轻 perspective 弧面，
-//   夜间像一块自发光 OLED 屏，但克制不过曝；数字带极轻科技蓝/青白调微光。
-// 数据接入：updateHmiDrivingHud(speedKmh, distanceM, racePhase, gear) 现有签名继续更新里程/时速/档位。
-//   电量续航本轮静态占位（DOM 写死，不接真实能耗逻辑）。AUTOSTEER 状态恒 OFF。
-// 不做 autosteer 真功能、不接物理、不接键、不动小地图、不做路线绘制、不动世界资产。
-
+// ---------- HMI Driving HUD (Stage 3.2.2) — placeholder, body appended via edits ----------
 import { installHmiTokens } from './hmiTokens.js';
-
 let installed = false;
-let elDistNum = null;
-let elSpeedNum = null;
-let elGear = null;
-let elAutoState = null;
-
+let elDistNum = null, elSpeedNum = null, elGear = null, elAutoState = null;
+let elRouteCanvas = null, routeCtx = null, routeDpr = 1, routeW = 0, routeH = 0;
 const ROOT_ID = 'hmi-driving-hud';
 const STYLE_ID = 'hmi-driving-hud-style';
+const ROUTE_FORWARD_M = 100;
+const ROUTE_HALF_W_M = 30;
 
-const STYLE = `
-  /* HMI 驾驶 cockpit 信息带 — 电车座舱质感：环绕曲面屏 + OLED 屏感克制发光。
-     全部驾驶态可见性由 body.drive 控制，4K 下走 tokens clamp() 自适应。 */
-  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:none;
+const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:none;
     font-family:var(--hmi-font);color:var(--hmi-text-primary);display:none}
   body.drive #${ROOT_ID}{display:block}
-
-  /* —— cockpit 信息带容器：贴底、低位、宽居中、轻微弧面 —— */
+  /* cockpit 信息带：贴底、宽居中、两侧渐隐、高度略降、背景再透 */
   #${ROOT_ID} .hmi-band{position:fixed;left:50%;bottom:0;
-    width:min(1400px,92vw);
-    transform:translateX(-50%) perspective(1400px) rotateX(2.6deg);
+    width:min(1500px,94vw);
+    height:clamp(72px,6.4vw,118px);
+    transform:translateX(-50%) perspective(1500px) rotateX(3.2deg);
     transform-origin:50% 100%;
-    display:flex;align-items:flex-end;justify-content:space-between;
-    gap:clamp(16px,3vw,64px);
-    padding:clamp(16px,2vmin,30px) clamp(28px,4vw,72px) clamp(14px,1.6vmin,26px);
-    background:linear-gradient(180deg,
-      rgba(20,26,34,.10) 0%,
-      var(--hmi-glass-bandBg) 34%,
-      var(--hmi-glass-bandBg) 100%);
-    border:1px solid var(--hmi-glass-bandBorder);
-    border-bottom:none;
+    display:flex;align-items:stretch;
+    padding:clamp(10px,1.4vmin,22px) clamp(36px,5vw,84px) clamp(10px,1.2vmin,18px);
+    background:linear-gradient(180deg,rgba(20,26,34,.06) 0%,var(--hmi-glass-bandBg) 38%,var(--hmi-glass-bandBg) 100%);
     border-radius:var(--hmi-glass-bandRadius) var(--hmi-glass-bandRadius) 0 0;
-    -webkit-backdrop-filter:blur(var(--hmi-glass-bandBlur));
-    backdrop-filter:blur(var(--hmi-glass-bandBlur));
-    box-shadow:0 -14px 60px var(--hmi-glass-bandGlow),
-      0 -2px 30px rgba(0,0,0,.34),
-      inset 0 1px 0 rgba(255,255,255,.05)}
-  /* 顶沿一条细高光 hairline（自发光屏上沿质感） */
-  #${ROOT_ID} .hmi-band::before{content:'';position:absolute;left:6%;right:6%;top:0;height:1px;
+    -webkit-backdrop-filter:blur(var(--hmi-glass-bandBlur)) saturate(118%);
+    backdrop-filter:blur(var(--hmi-glass-bandBlur)) saturate(118%);
+    -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+    box-shadow:0 -10px 50px var(--hmi-glass-bandGlow),0 -2px 22px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.04)}
+  #${ROOT_ID} .hmi-band::before{content:'';position:absolute;left:14%;right:14%;top:0;height:1px;
     background:linear-gradient(90deg,transparent,var(--hmi-glass-bandHairline),transparent);
-    border-radius:2px;pointer-events:none;
-    box-shadow:0 0 8px var(--hmi-glass-bandHairline)}
-
-  /* —— 三组排版：左/中/右 嵌在同一块曲面屏结构 —— */
-  #${ROOT_ID} .hmi-grp{display:flex;flex-direction:column;
-    text-shadow:0 1px 14px rgba(0,0,0,.42)}
-  #${ROOT_ID} .hmi-left{align-items:flex-start;text-align:left;gap:clamp(6px,0.9vmin,14px)}
-  #${ROOT_ID} .hmi-mid{align-items:center;text-align:center;align-self:flex-end;
-    padding-bottom:clamp(2px,0.4vmin,6px)}
-  #${ROOT_ID} .hmi-right{align-items:flex-end;text-align:right}
-
-  /* 大数字 + 标签 公共样式 */
-  #${ROOT_ID} .hmi-num{font-size:calc(var(--hmi-scale-speed) * 0.56);font-weight:200;line-height:1;
-    color:var(--hmi-text-primary);font-variant-numeric:tabular-nums;letter-spacing:.01em;
-    text-shadow:0 0 16px var(--hmi-glass-bandGlow),0 1px 14px rgba(0,0,0,.42)}
-  #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-label);font-weight:500;
-    letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);
-    margin-top:clamp(4px,0.5vmin,9px)}
-
-  /* 左侧：电量 / 续航 占位（次级灰、大写、大字距，克制） */
-  #${ROOT_ID} .hmi-batt{display:flex;flex-direction:column;gap:clamp(3px,0.4vmin,6px);
-    margin-bottom:clamp(2px,0.3vmin,5px)}
-  #${ROOT_ID} .hmi-stat{font-size:var(--hmi-scale-small);font-weight:500;
-    letter-spacing:.2em;text-transform:uppercase;color:var(--hmi-text-secondary);
-    font-variant-numeric:tabular-nums;display:inline-flex;align-items:baseline;gap:.5em}
-  #${ROOT_ID} .hmi-stat .v{color:var(--hmi-glass-accent);font-weight:600;letter-spacing:.04em;
+    pointer-events:none;border-radius:2px;
+    box-shadow:0 0 6px var(--hmi-glass-bandHairline),0 0 14px rgba(170,210,255,.18)}
+  #${ROOT_ID} .hmi-band::after{content:'';position:absolute;left:18%;right:18%;bottom:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--hmi-glass-bandEdge),transparent);
+    pointer-events:none;box-shadow:0 0 8px var(--hmi-glass-bandEdge)}
+  #${ROOT_ID} .hmi-grp{display:flex;flex-direction:column;justify-content:flex-end;text-shadow:0 1px 12px rgba(0,0,0,.40)}
+  #${ROOT_ID} .hmi-left{flex:0 0 30%;align-items:flex-start;text-align:left;gap:clamp(2px,0.4vmin,6px)}
+  #${ROOT_ID} .hmi-mid{flex:1 1 40%;align-items:center;text-align:center;justify-content:flex-end;gap:clamp(3px,0.5vmin,7px);min-width:0}
+  #${ROOT_ID} .hmi-right{flex:0 0 30%;align-items:flex-end;text-align:right;gap:clamp(2px,0.4vmin,5px)}
+  #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
+  #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
+  /* 左：Energy / Range 模块 */
+  #${ROOT_ID} .hmi-energy{display:flex;flex-direction:column;align-items:flex-start;gap:clamp(2px,0.3vmin,5px);width:100%}
+  #${ROOT_ID} .hmi-energy-row{display:flex;align-items:baseline;gap:clamp(10px,1.2vw,22px);flex-wrap:wrap}
+  #${ROOT_ID} .hmi-soc{display:inline-flex;align-items:baseline;gap:.18em;
+    font-size:var(--hmi-scale-socNum);font-weight:200;line-height:1;color:var(--hmi-text-primary);
+    font-variant-numeric:tabular-nums;letter-spacing:.005em;
+    text-shadow:0 0 14px var(--hmi-glass-bandGlow),0 1px 12px rgba(0,0,0,.42)}
+  #${ROOT_ID} .hmi-soc .pct{font-size:.45em;color:var(--hmi-text-secondary);font-weight:300;letter-spacing:.06em;margin-left:.05em}
+  #${ROOT_ID} .hmi-range{display:inline-flex;align-items:baseline;gap:.32em;
+    font-size:var(--hmi-scale-rangeNum);font-weight:300;line-height:1;
+    color:var(--hmi-glass-accent);font-variant-numeric:tabular-nums;letter-spacing:.01em;
     text-shadow:0 0 10px var(--hmi-glass-bandGlow)}
-  #${ROOT_ID} .hmi-stat .u{color:var(--hmi-text-tertiary);font-size:.88em}
-
-  /* 右侧：时速标签内联锁图标 + 档位 */
-  #${ROOT_ID} .hmi-right .hmi-label{display:inline-flex;align-items:center;justify-content:flex-end;gap:.6em}
-  #${ROOT_ID} .hmi-lock{color:var(--hmi-text-tertiary);flex:0 0 auto}
-  #${ROOT_ID} .hmi-gear{font-size:var(--hmi-scale-small);font-weight:500;
-    letter-spacing:.32em;text-transform:uppercase;color:var(--hmi-text-secondary);
-    font-variant-numeric:tabular-nums;margin-top:clamp(3px,0.4vmin,7px)}
-
-  /* 中部状态位：仅 AUTOSTEER 标签 + 状态字（已移除原静态假导航 SVG 弧线） */
-  #${ROOT_ID} .hmi-mid .hmi-label{letter-spacing:.28em;color:var(--hmi-text-secondary);margin-top:0}
-  #${ROOT_ID} .hmi-auto-state{font-size:var(--hmi-scale-label);font-weight:600;
-    letter-spacing:.3em;text-transform:uppercase;color:var(--hmi-text-tertiary);
-    margin-top:clamp(3px,0.4vmin,7px);transition:color var(--hmi-motion-normal)}
-  /* 状态字上方一颗极小指示点（克制屏感，无路线绘制） */
-  #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;
-    background:var(--hmi-text-tertiary);margin-bottom:clamp(6px,0.9vmin,12px);
-    box-shadow:0 0 6px rgba(255,255,255,.18)}
+  #${ROOT_ID} .hmi-range .tag{font-size:.42em;color:var(--hmi-text-tertiary);font-weight:500;letter-spacing:.28em;text-transform:uppercase}
+  #${ROOT_ID} .hmi-range .u{font-size:.42em;color:var(--hmi-text-tertiary);font-weight:500;letter-spacing:.22em;text-transform:uppercase}
+  #${ROOT_ID} .hmi-bar{position:relative;width:min(220px,80%);height:3px;
+    background:rgba(255,255,255,.08);border-radius:2px;margin-top:clamp(2px,0.3vmin,4px)}
+  #${ROOT_ID} .hmi-bar-fill{position:absolute;inset:0;
+    background:linear-gradient(90deg,var(--hmi-glass-accent),rgba(170,220,255,.55));
+    border-radius:2px;box-shadow:0 0 8px rgba(120,180,255,.32)}
+  #${ROOT_ID} .hmi-bar-ticks{position:absolute;inset:0;display:flex;justify-content:space-between;pointer-events:none}
+  #${ROOT_ID} .hmi-bar-ticks span{width:1px;height:100%;background:rgba(8,12,18,.55)}
+  #${ROOT_ID} .hmi-bar-ticks span:first-child,#${ROOT_ID} .hmi-bar-ticks span:last-child{background:transparent}
+  #${ROOT_ID} .hmi-trip{display:inline-flex;align-items:baseline;gap:.45em;
+    font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--hmi-text-secondary);font-variant-numeric:tabular-nums;margin-top:clamp(3px,0.4vmin,6px)}
+  #${ROOT_ID} .hmi-trip .v{color:var(--hmi-text-primary);font-weight:600;letter-spacing:.04em;font-size:1.18em}
+  #${ROOT_ID} .hmi-trip .u{color:var(--hmi-text-tertiary);font-size:.86em}
+  /* 中：Route preview canvas + AUTOSTEER */
+  #${ROOT_ID} .hmi-route-wrap{position:relative;width:100%;flex:1 1 auto;min-height:clamp(28px,3vmin,52px);display:flex;align-items:flex-end;justify-content:center}
+  #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 14%,#000 86%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0%,#000 14%,#000 86%,transparent 100%)}
+  #${ROOT_ID} .hmi-assist{display:flex;align-items:center;gap:.7em;line-height:1}
+  #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;background:var(--hmi-text-tertiary);box-shadow:0 0 5px rgba(255,255,255,.18)}
+  #${ROOT_ID} .hmi-auto-state{font-size:var(--hmi-scale-labelTiny);font-weight:600;letter-spacing:.32em;text-transform:uppercase;color:var(--hmi-text-tertiary);transition:color var(--hmi-motion-normal)}
+  /* 右：Speed + Gear pill */
+  #${ROOT_ID} .hmi-speed{display:flex;align-items:baseline;gap:clamp(6px,0.7vw,14px)}
+  #${ROOT_ID} .hmi-speed-num{font-size:var(--hmi-scale-speedNum);font-weight:200;line-height:1;
+    color:var(--hmi-text-primary);font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+    text-shadow:0 0 18px var(--hmi-glass-bandGlow),0 1px 14px rgba(0,0,0,.42)}
+  #${ROOT_ID} .hmi-speed-side{display:flex;flex-direction:column;align-items:flex-end;gap:clamp(4px,0.6vmin,8px);padding-bottom:clamp(4px,0.6vmin,9px)}
+  #${ROOT_ID} .hmi-speed-label{display:inline-flex;align-items:center;gap:.6em;font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
+  #${ROOT_ID} .hmi-lock{color:var(--hmi-text-tertiary);flex:0 0 auto;opacity:.55}
+  #${ROOT_ID} .hmi-gear{display:inline-flex;align-items:center;justify-content:center;
+    min-width:clamp(28px,2.4vw,42px);padding:.18em .7em;
+    font-size:var(--hmi-scale-labelTiny);font-weight:700;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--hmi-text-primary);background:rgba(120,170,255,.10);
+    border:1px solid rgba(170,210,255,.22);border-radius:999px;
+    box-shadow:0 0 8px rgba(120,170,255,.10),inset 0 0 6px rgba(170,210,255,.06)}
+  #${ROOT_ID} .hmi-gear[data-gear="D"]{color:rgba(190,230,255,.95);border-color:rgba(170,210,255,.34)}
+  #${ROOT_ID} .hmi-gear[data-gear="R"]{color:rgba(255,196,170,.95);border-color:rgba(255,180,140,.34);background:rgba(255,170,120,.08);box-shadow:0 0 8px rgba(255,170,120,.10),inset 0 0 6px rgba(255,170,120,.06)}
+  #${ROOT_ID} .hmi-gear[data-gear="N"]{color:var(--hmi-text-secondary);border-color:rgba(255,255,255,.16);background:rgba(255,255,255,.05)}
 `;
-
 const MARKUP = `
   <div class="hmi-band">
     <div class="hmi-grp hmi-left">
-      <div class="hmi-batt">
-        <div class="hmi-stat"><span class="v">82%</span> BATTERY</div>
-        <div class="hmi-stat">CLTC <span class="v">610</span> <span class="u">KM</span></div>
+      <div class="hmi-energy">
+        <div class="hmi-label dim">ENERGY</div>
+        <div class="hmi-energy-row">
+          <div class="hmi-soc">82<span class="pct">%</span></div>
+          <div class="hmi-range"><span class="tag">CLTC</span>610<span class="u">KM</span></div>
+        </div>
+        <div class="hmi-bar" aria-hidden="true">
+          <div class="hmi-bar-fill" style="width:82%"></div>
+          <div class="hmi-bar-ticks"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+        <div class="hmi-trip">TRIP <span class="v" id="hmiDistNum">0.0</span><span class="u">KM</span></div>
       </div>
-      <div class="hmi-num" id="hmiDistNum">0.0</div>
-      <div class="hmi-label">KILOMETERS</div>
     </div>
     <div class="hmi-grp hmi-mid">
-      <div class="hmi-auto-dot"></div>
-      <div class="hmi-label">AUTOSTEER</div>
-      <div class="hmi-auto-state" id="hmiAutoState">OFF</div>
+      <div class="hmi-route-wrap">
+        <canvas class="hmi-route" id="hmiRouteCanvas" aria-hidden="true"></canvas>
+      </div>
+      <div class="hmi-assist">
+        <div class="hmi-auto-dot"></div>
+        <div class="hmi-label">AUTOSTEER</div>
+        <div class="hmi-auto-state" id="hmiAutoState">OFF</div>
+      </div>
     </div>
     <div class="hmi-grp hmi-right">
-      <div class="hmi-num" id="hmiSpeedNum">0</div>
-      <div class="hmi-label">KILOMETERS PER HOUR<svg class="hmi-lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4.4 7V5.2a3.6 3.6 0 0 1 7.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.3" y="7" width="9.4" height="6.4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></div>
-      <div class="hmi-gear" id="hmiGear">N</div>
+      <div class="hmi-speed">
+        <div class="hmi-speed-num" id="hmiSpeedNum">0</div>
+        <div class="hmi-speed-side">
+          <div class="hmi-speed-label">KILOMETERS PER HOUR<svg class="hmi-lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4.4 7V5.2a3.6 3.6 0 0 1 7.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.3" y="7" width="9.4" height="6.4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></div>
+          <div class="hmi-gear" id="hmiGear" data-gear="N">N</div>
+        </div>
+      </div>
     </div>
   </div>
 `;
@@ -126,8 +134,7 @@ export function installHmiDrivingHud() {
   if (installed) return;
   if (typeof document === 'undefined') return;
   installed = true;
-
-  installHmiTokens(); // 确保 :root --hmi-* 变量就位（含 PR3.2.1 glass band token）
+  installHmiTokens();
 
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -143,17 +150,84 @@ export function installHmiDrivingHud() {
   elSpeedNum = root.querySelector('#hmiSpeedNum');
   elGear = root.querySelector('#hmiGear');
   elAutoState = root.querySelector('#hmiAutoState');
+  elRouteCanvas = root.querySelector('#hmiRouteCanvas');
+  if (elRouteCanvas) {
+    routeCtx = elRouteCanvas.getContext('2d');
+    routeDpr = Math.min(window.devicePixelRatio || 1, 2);
+    resizeRouteCanvas();
+    addEventListener('resize', resizeRouteCanvas);
+  }
 }
 
-// 每帧调用：speedKmh 时速(km/h)、distanceM 里程(米)、racePhase 竞速阶段(占位预留)、
-//   gear 档位字符串(D/N/R，由调用处依据 state.speed 符号算好传入)。
-// 电量/续航本轮静态占位（DOM 写死，不入参、不接能耗逻辑）。autosteer 状态恒为 OFF 占位。
-export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', gear = 'N') {
+function resizeRouteCanvas() {
+  if (!elRouteCanvas) return;
+  const r = elRouteCanvas.getBoundingClientRect();
+  routeW = Math.max(20, Math.floor(r.width));
+  routeH = Math.max(10, Math.floor(r.height));
+  elRouteCanvas.width = Math.floor(routeW * routeDpr);
+  elRouteCanvas.height = Math.floor(routeH * routeDpr);
+  if (routeCtx) routeCtx.setTransform(routeDpr, 0, 0, routeDpr, 0, 0);
+}
+
+function mapPt(rx, rz) {
+  const u = (rx + ROUTE_HALF_W_M) / (2 * ROUTE_HALF_W_M);
+  const v = 1 - Math.max(0, Math.min(1, rz / ROUTE_FORWARD_M));
+  return [u * routeW, v * routeH];
+}
+
+function drawRoutePreview(pts) {
+  if (!routeCtx || !routeW || !routeH) return;
+  const ctx = routeCtx;
+  ctx.clearRect(0, 0, routeW, routeH);
+  if (!pts || pts.length < 2) return;
+  // 底部车位指示三角
+  ctx.save();
+  ctx.fillStyle = 'rgba(220,235,255,0.55)';
+  ctx.shadowColor = 'rgba(170,210,255,0.35)';
+  ctx.shadowBlur = 4;
+  const cx = routeW * 0.5, cy = routeH - 1;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 6);
+  ctx.lineTo(cx - 4, cy);
+  ctx.lineTo(cx + 4, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  const drawCurve = (color, width, blur) => {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.z < -2 || p.z > ROUTE_FORWARD_M + 8) continue;
+      const [px, py] = mapPt(p.x, p.z);
+      if (!started) { ctx.moveTo(px, py); started = true; }
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  };
+  drawCurve('rgba(120,180,255,0.18)', 5, 8);
+  drawCurve('rgba(210,235,255,0.78)', 1.6, 3);
+}
+
+// 每帧调用：speedKmh / distanceM / racePhase / gear / routePts。
+// routePts 由 main.js 基于 samples / nearestRoad 算好。电量/续航静态占位。AUTOSTEER 恒 OFF。
+export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', gear = 'N', routePts = null) {
   if (!installed) return;
   if (elDistNum) elDistNum.textContent = ((distanceM || 0) / 1000).toFixed(1);
   if (elSpeedNum) elSpeedNum.textContent = Math.round(speedKmh || 0);
-  // 档位：由调用处算好传入（D/N/R），与 main.js elGear 同口径。
-  if (elGear) elGear.textContent = gear || 'N';
-  // 状态位占位：本轮恒 OFF（不接物理/键/逻辑）。racePhase 参数预留给后续阶段。
+  if (elGear) {
+    const g = gear || 'N';
+    if (elGear.textContent !== g) elGear.textContent = g;
+    if (elGear.dataset.gear !== g) elGear.dataset.gear = g;
+  }
   if (elAutoState && elAutoState.textContent !== 'OFF') elAutoState.textContent = 'OFF';
+  if (routeCtx) drawRoutePreview(routePts);
 }

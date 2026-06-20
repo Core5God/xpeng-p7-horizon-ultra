@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
-import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms } from './world.js';
+import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms, samples, nearestRoad, NS } from './world.js';
 // [task-20260620-001 回滚] buildRoadJunctionPass 调用已禁用，导入一并注释避免 unused
 // import { buildRoadJunctionPass } from './roadJunctionPass.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
@@ -14,6 +14,48 @@ import { preloadCriticalAssets } from './assetPreload.js';
 import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
 import { installHmiDrivingHud, updateHmiDrivingHud } from './hmiDrivingHud.js';
 import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
+
+// ---------- HMI Route Preview 辅助（读取只读 samples / NS / nearestRoad，不改 world.js）----------
+// 算法：以 state.pos 为输入，找到最近主路 sample index，递增/递减取前方 ~32 个点，
+//   转成车辆相对坐标（减 state.pos / 按 -state.heading 旋转）。
+// 输出 [{x, z}, ...]，环线取模 NS。不动 world.js、不接 autosteer、不做路径规划。
+const _routeOut = [];
+function computeRoutePreview(pos, heading) {
+  if (!samples || !samples.length) return null;
+  let bi = -1;
+  try {
+    const nr = nearestRoad ? nearestRoad(pos.x, pos.z) : null;
+    if (nr && typeof nr.idx === 'number') bi = nr.idx;
+  } catch (e) { bi = -1; }
+  if (bi < 0) {
+    let best = Infinity;
+    for (let i = 0; i < NS; i++) {
+      const s = samples[i];
+      const dx = s.x - pos.x, dz = s.z - pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < best) { best = d2; bi = i; }
+    }
+  }
+  if (bi < 0) return null;
+  const cosH = Math.cos(heading), sinH = Math.sin(heading);
+  // 车辆坐标系：forward = (sin h, cos h)、right = (cos h, -sin h)；lx = right 偏移、lz = forward 距离
+  // 判断 next sample 的 lz 是正 → 递增，否则递减。
+  const nextI = (bi + 1) % NS;
+  const ndx = samples[nextI].x - pos.x, ndz = samples[nextI].z - pos.z;
+  const nlz = ndx * sinH + ndz * cosH;
+  const dirSign = nlz >= 0 ? 1 : -1;
+  _routeOut.length = 0;
+  const COUNT = 32;
+  for (let k = 0; k < COUNT; k++) {
+    const i = ((bi + dirSign * k) % NS + NS) % NS;
+    const s = samples[i];
+    const dx = s.x - pos.x, dz = s.z - pos.z;
+    const lx = dx * cosH - dz * sinH;
+    const lz = dx * sinH + dz * cosH;
+    _routeOut.push({ x: lx, z: lz });
+  }
+  return _routeOut;
+}
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
@@ -109,7 +151,13 @@ function loopBody() {
   updateMinimalDriveHud(G.appState, race.phase, dt);
   // slowroads 式驾驶 HUD：左下里程 / 右下时速+档位 / 底部 autosteer 占位
   const gear = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
-  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear);
+  // 路线预览：基于 world.js 只读 samples 算出车前方一段主路中心线点（车相对系）。
+  // 不改 world.js、不做路径规划、不接 autosteer。只为 HMI 视觉路线预览服务。
+  let routePts = null;
+  if (G.appState === 'drive' && samples && samples.length) {
+    routePts = computeRoutePreview(state.pos, state.heading);
+  }
+  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear, routePts);
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
