@@ -179,14 +179,31 @@ export function installHmiDrivingHud() {
     routeDpr = Math.min(window.devicePixelRatio || 1, 2);
     resizeRouteCanvas();
     addEventListener('resize', resizeRouteCanvas);
+    // 首帧 canvas 布局宽高可能为 0（还未 layout / display:none → block / 父级 3D transform 影响测量），
+    // 用 ResizeObserver 监听容器真正拿到尺寸后重算，避免首屏用错误尺寸画出竖棍。
+    if (typeof ResizeObserver !== 'undefined') {
+      try {
+        const ro = new ResizeObserver(() => resizeRouteCanvas());
+        ro.observe(elRouteCanvas);
+        const wrap = elRouteCanvas.parentElement;
+        if (wrap) ro.observe(wrap);
+      } catch (e) { /* noop */ }
+    }
+    // 延一帧再量一次，确保首屏布局完成后拿到真实宽高（首次 install 时容器可能尚未 layout）。
+    requestAnimationFrame(() => resizeRouteCanvas());
   }
 }
 
 function resizeRouteCanvas() {
   if (!elRouteCanvas) return;
   const r = elRouteCanvas.getBoundingClientRect();
-  routeW = Math.max(20, Math.floor(r.width));
-  routeH = Math.max(10, Math.floor(r.height));
+  // 只有拿到真实布局宽高才初始化；布局为 0（首帧/未显示）时保持 0，
+  // 让 drawRoutePreview 跳过绘制，不画出错误的微型竖棍。
+  const w = Math.floor(r.width);
+  const h = Math.floor(r.height);
+  if (w < 4 || h < 4) { routeW = 0; routeH = 0; return; }
+  routeW = w;
+  routeH = h;
   elRouteCanvas.width = Math.floor(routeW * routeDpr);
   elRouteCanvas.height = Math.floor(routeH * routeDpr);
   if (routeCtx) routeCtx.setTransform(routeDpr, 0, 0, routeDpr, 0, 0);
@@ -221,20 +238,31 @@ function sampleBend(pts) {
 }
 
 function drawRoutePreview(pts) {
+  // 首帧容错：若尚未拿到尺寸（routeW/H=0），先尝试重量一次（此时可能已 layout）。
+  if ((!routeW || !routeH) && elRouteCanvas) resizeRouteCanvas();
   if (!routeCtx || !routeW || !routeH) return;
   const ctx = routeCtx;
   ctx.clearRect(0, 0, routeW, routeH);
 
-  // 1) 目标弯曲量（无数据时视为直行）。
+  // 1) 目标弯曲量（无有效数据时返回 null，不强行当直行）。
   const b = pts ? sampleBend(pts) : null;
-  const targetBend = b ? b.bend : 0;
-  const targetBendMid = b ? b.bendMid : 0;
 
-  // 2) 时间平滑：低通逼近，消除 index/采样抖动（cur = lerp(cur, target, k)）。
-  if (!_curve) _curve = { bend: 0, bendMid: 0 };
-  const k = 0.18;
-  _curve.bend += (targetBend - _curve.bend) * k;
-  _curve.bendMid += (targetBendMid - _curve.bendMid) * k;
+  // 2) 时间平滑：首帧若还没有有效 target 就不画（避免从默认竖线 lerp 过去 → 初始竖棍）。
+  if (!b) {
+    // 已有历史曲线则按历史值画（堆路中断帧不闪）；完全没有则跳过本帧。
+    if (!_curve) return;
+  } else if (!_curve) {
+    // 首个有效帧：直接用真实 target 种子化 _curve（不从竖线默认 lerp）。
+    _curve = { bend: b.bend, bendMid: b.bendMid };
+  } else if (Math.abs(b.bend - _curve.bend) > 0.9 || Math.abs(b.bendMid - _curve.bendMid) > 0.9) {
+    // 跳机位/进驾驶态导致车辆瞬移 → target 大跳变：直接 snap，不慢慢 lerp（否则会看到竖棍→弯钩的滑动）。
+    _curve.bend = b.bend;
+    _curve.bendMid = b.bendMid;
+  } else {
+    const k = 0.18;
+    _curve.bend += (b.bend - _curve.bend) * k;
+    _curve.bendMid += (b.bendMid - _curve.bendMid) * k;
+  }
 
   // 3) 由平滑后的弯曲量构造一条 quadratic bezier 单线（底→顶）。
   //    近端（底/车端）粗、远端（顶/前方）细：透视延伸纵深感。
