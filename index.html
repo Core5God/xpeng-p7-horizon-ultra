@@ -74,6 +74,24 @@
   #minimap{position:fixed;bottom:28px;left:28px;z-index:10;border-radius:50%;background:rgba(15,18,28,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     border:1px solid rgba(255,255,255,.12);box-shadow:0 2px 16px rgba(0,0,0,.25);width:110px!important;height:110px!important;opacity:.7;transition:opacity .3s}
   #minimap:hover{opacity:1}
+  /* ====== slowroads 语言 HUD（极简大写 letter-spaced，4K 自适应） ====== */
+  .srhud{display:none;color:rgba(255,255,255,.78);text-shadow:0 1px 10px rgba(0,0,0,.55);pointer-events:none}
+  body.drive .srhud{display:block}
+  .srnum{font-size:clamp(28px,2.4vmin,64px);font-weight:300;line-height:1;color:#fff;font-variant-numeric:tabular-nums;
+    letter-spacing:.04em;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+  .srlbl{font-size:clamp(10px,0.95vmin,16px);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    color:rgba(255,255,255,.62);margin-top:clamp(5px,0.7vmin,11px)}
+  /* 左下：里程 */
+  #srDist{bottom:clamp(26px,3.2vmin,64px);left:clamp(150px,12vmin,260px);text-align:left}
+  /* 右下：时速 + 锁图标占位 */
+  #srSpeed{bottom:clamp(26px,3.2vmin,64px);right:clamp(40px,4vmin,90px);text-align:right}
+  #srSpeed .srlbl{display:inline-flex;align-items:center;justify-content:flex-end;gap:.6em}
+  .srlock{color:rgba(255,255,255,.34);flex:0 0 auto}
+  /* 底部居中：autosteer 占位 */
+  #srAuto{bottom:clamp(20px,2.4vmin,52px);left:50%;transform:translateX(-50%);text-align:center;display:none}
+  body.drive #srAuto{display:flex;flex-direction:column;align-items:center}
+  #srAuto .srarc{filter:drop-shadow(0 0 8px rgba(255,255,255,.32));opacity:.9}
+  #srAuto .srlbl{margin-top:clamp(2px,0.4vmin,8px);letter-spacing:.28em;color:rgba(255,255,255,.55)}
   /* ====== 菜单（左侧导轨，主机游戏风） ====== */
   .menu{position:fixed;inset:0;z-index:20;display:none;color:#fff}
   .menu.show{display:block}
@@ -81,7 +99,8 @@
   .rail{position:absolute;top:20px;bottom:20px;left:20px;width:500px;padding:42px 38px 32px;overflow-y:auto;
     background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
     border-radius:var(--panel-radius);border:1px solid var(--glass-border);
-    box-shadow:0 24px 80px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 .5px rgba(255,255,255,.05);
+    box-shadow:0 40px 120px rgba(0,0,0,.55),0 8px 40px rgba(0,0,0,.4),0 2px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 .5px rgba(255,255,255,.05);
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 100%);mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 100%);
     animation:railIn .42s cubic-bezier(.2,.9,.25,1) both}
   @keyframes railIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
   .logoblk{margin-bottom:28px}
@@ -99,13 +118,14 @@
   .cta:hover:not(:disabled){transform:var(--hover-lift);background:rgba(255,255,255,.16);border-color:var(--glass-border-hi);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 8px 26px rgba(0,0,0,.32)}
   .cta:active:not(:disabled){transform:scale(.985)}
   .cta:disabled{opacity:.3;cursor:wait}
-  .sec{font-size:11px;font-weight:600;letter-spacing:4px;color:var(--text-tertiary);text-transform:uppercase;margin:28px 0 12px;padding:0}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .sec{font-size:11px;font-weight:600;letter-spacing:.32em;color:var(--text-tertiary);text-transform:uppercase;margin:30px 0 14px;padding:0 0 9px;
+    border-bottom:1px solid rgba(255,255,255,.10)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px}
   .swatch{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.22);cursor:pointer;padding:0;transition:transform var(--fast-ease),box-shadow var(--fast-ease)}
   .swatch:hover{transform:scale(1.12)}
   .swatch.sel{border-color:var(--glass-border-hi);box-shadow:0 0 0 2px rgba(255,255,255,.55),0 2px 8px rgba(0,0,0,.3)}
-  .opt{font-family:inherit;font-size:14px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
-    border-radius:var(--btn-radius-sm);padding:10px 20px;cursor:pointer;letter-spacing:.5px;transition:background var(--fast-ease),border-color var(--fast-ease)}
+  .opt{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
+    border-radius:var(--btn-radius-sm);padding:9px 18px;cursor:pointer;letter-spacing:.06em;line-height:1.5;transition:background var(--fast-ease),border-color var(--fast-ease)}
   .opt.sel{background:rgba(255,255,255,.18);border-color:var(--glass-border-hi);color:#fff}
   .opt:hover{background:rgba(255,255,255,.13)}
   /* —— 角色选择卡 —— */
@@ -149,8 +169,8 @@
   #keytips.dim{opacity:.32}
   #keytips kbd{font-size:10.5px;padding:2px 7px;margin:0 4px 0 12px;border-bottom-width:2px}
   /* —— 战绩 / 成就 —— */
-  #recordsBox{font-size:15px;width:380px}
-  #recordsBox .rrow{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.1);padding:4px 2px}
+  #recordsBox{font-size:14px;width:380px}
+  #recordsBox .rrow{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08);padding:7px 2px}
   #recordsBox .rname{opacity:.88}
   #recordsBox .rval{font-variant-numeric:tabular-nums}
   .achchip{font-size:12.5px;padding:6px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:8px;letter-spacing:.5px;color:#fff}
@@ -256,13 +276,17 @@
   <div id="speedunit">KM/H</div>
   <div id="gear">N</div>
 </div>
+<!-- slowroads 语言 HUD：左下里程 / 右下时速 / 底部 autosteer 占位 -->
+<div class="hud srhud" id="srDist"><div class="srnum" id="srDistNum">0.0</div><div class="srlbl">KILOMETERS</div></div>
+<div class="hud srhud" id="srSpeed"><div class="srnum" id="srSpeedNum">0</div><div class="srlbl">KILOMETERS PER HOUR<svg class="srlock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4.4 7V5.2a3.6 3.6 0 0 1 7.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.3" y="7" width="9.4" height="6.4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></div></div>
+<div class="hud srhud" id="srAuto"><svg class="srarc" viewBox="0 0 40 64" width="34" height="54" aria-hidden="true"><path d="M20 56 C20 40 14 34 22 18 C25 12 24 9 22 7" fill="none" stroke="url(#srArcG)" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="57" r="2.6" fill="#fff"/><defs><linearGradient id="srArcG" x1="0" y1="64" x2="0" y2="0"><stop offset="0" stop-color="rgba(255,255,255,.95)"/><stop offset="1" stop-color="rgba(255,255,255,.15)"/></linearGradient></defs></svg><div class="srlbl" id="srAutoLbl">AUTOSTEER</div></div>
 <div class="hud" id="racebox"><div id="lights"><i></i><i></i><i></i></div><div id="laptime">0:00.00</div><div id="delta"></div><div id="cpinfo"></div><div id="besttime"></div></div>
 <div class="hud" id="driftlive"></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
 <div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>F</kbd>上下车<kbd>B</kbd>电台<kbd>M</kbd>静音<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
 <div class="hud" id="msg"></div>
-<canvas id="minimap" width="110" height="110"></canvas>
+<canvas id="minimap" width="170" height="170"></canvas>
 <div class="hud" id="playlistbar">
   <button id="plPrev" title="上一首">⏮</button>
   <span id="plTrackName">—</span>

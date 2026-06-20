@@ -32,32 +32,23 @@ export function installMinimalDriveHud() {
       transition: opacity 520ms ease !important;
     }
 
+    /* slowroads 重排：驾驶态不再用旧的右下 cluster（speed/gear），
+       改由 #srDist / #srSpeed / #srAuto 接管。cluster 仅作数据载体。 */
+    body.${DRIVE_CLASS} #cluster {
+      display: none !important;
+    }
+
+    /* scorechip / racebox 只在竞速态显示；其他一律强隐（garage/free 也彻底隐） */
+    #scorechip { display: none !important; }
+    #racebox { display: none !important; }
+    body.${DRIVE_CLASS}.${RACING_CLASS} #scorechip,
+    body.${DRIVE_CLASS}.${RACING_CLASS} #racebox {
+      display: block !important;
+    }
+
     /* 进入驾驶态前几秒，键位条做一次极弱的呼吸提示后自动归零，不常驻 */
     body.${DRIVE_CLASS}.${HINT_CLASS} #keytips {
       opacity: .28 !important;
-    }
-
-    body.${DRIVE_CLASS} #cluster {
-      bottom: 26px !important;
-      right: 30px !important;
-      filter: drop-shadow(0 10px 28px rgba(0,0,0,.35));
-    }
-
-    body.${DRIVE_CLASS} #speed {
-      font-size: 64px !important;
-      font-weight: 300 !important;
-      letter-spacing: -2.4px !important;
-      opacity: .88 !important;
-      text-shadow: 0 2px 20px rgba(0,0,0,.34) !important;
-    }
-
-    body.${DRIVE_CLASS} #speedunit {
-      opacity: .38 !important;
-    }
-
-    body.${DRIVE_CLASS} #gear {
-      opacity: .52 !important;
-      letter-spacing: 3px !important;
     }
 
     body.${DRIVE_CLASS} #minimap {
@@ -81,20 +72,6 @@ export function installMinimalDriveHud() {
       font-weight: 500 !important;
       letter-spacing: .5px !important;
       text-shadow: 0 8px 36px rgba(0,0,0,.42) !important;
-    }
-
-    body.${DRIVE_CLASS} #racebox {
-      display: none !important;
-    }
-
-    body.${DRIVE_CLASS}.${RACING_CLASS} #racebox {
-      display: block !important;
-      opacity: .88 !important;
-    }
-
-    body.${DRIVE_CLASS}.${RACING_CLASS} #scorechip {
-      opacity: .55 !important;
-      pointer-events: none !important;
     }
   `;
   document.head.appendChild(style);

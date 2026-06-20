@@ -18,6 +18,9 @@ import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
 let last = performance.now(), frame = 0;
 let fpsAcc = 0, fpsN = 0, autoDropped = false;
 let loopErrCount = 0, slowFrames = 0;
+// slowroads HUD 元素（左下里程 / 右下时速数字）
+const srDistNum = document.getElementById('srDistNum');
+const srSpeedNum = document.getElementById('srSpeedNum');
 function loop() {
   requestAnimationFrame(loop);
   const t0 = performance.now();
@@ -80,6 +83,9 @@ function loopBody() {
     onRoad = r.onRoad; boost = r.boost;
     raceUpdate();
     gameplayUpdate(dt, onRoad);
+    // 本次驾驶累积里程（米）：slowroads 左下 KILOMETERS 读数
+    if (!isFinite(state.distance)) state.distance = 0;
+    state.distance += Math.abs(state.speed) * dt;
     fxUpdate(dt, onRoad, boost);
     if (G.fastdebugLockCam) {
       // FASTDEBUG：保持静态俰视，不让追车相机接管
@@ -141,6 +147,9 @@ function loopBody() {
     elSpeed.textContent = Math.round(kmh);
     if (gArc) gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
+    // slowroads HUD：左下里程 / 右下时速
+    if (srDistNum) srDistNum.textContent = ((state.distance || 0) / 1000).toFixed(1);
+    if (srSpeedNum) srSpeedNum.textContent = Math.round(kmh);
     if (elNitro) elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
     const ff = document.getElementById('flowfill');
     if (ff) ff.style.width = (state.flow*100).toFixed(0) + '%';

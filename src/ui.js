@@ -253,6 +253,7 @@ function startDrive(raceMode) {
   startMusic();
   if (G.musicOn && G.musicMode === 'playlist') startPlaylist();
   showKeytipsFresh();
+  state.distance = 0; // 本次驾驶里程归零（slowroads KILOMETERS）
   G.appState = 'drive';
   document.body.style.cursor = 'none';
   setCharacterVisible(false);   // 关闭车库站立预览
@@ -618,17 +619,33 @@ const elLap = document.getElementById('laptime');
 const elCp = document.getElementById('cpinfo');
 const elBest = document.getElementById('besttime');
 const mm = document.getElementById('minimap').getContext('2d');
-let mmScale, mmOff;
+const MM_C = 85;            // 小地图中心（画布 170×170）
+const MM_R = 80;            // 圆形 clip 半径
+let mmScale;
 {
+  // 跟车小地图：固定缩放，显示车周围一段路网。
+  // 用整条环线跨度推一个合适比例。
   let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
   for (const p of samples) { minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z); }
   const span = Math.max(maxX-minX, maxZ-minZ);
-  mmScale = 146/span;
-  mmOff = {x:(minX+maxX)/2, z:(minZ+maxZ)/2};
+  mmScale = (146/span) * 2.4; // 比整览图放大 2.4×，呈现“跟车局部”观感
 }
-function mmPt(x, z) { return [85 + (x-mmOff.x)*mmScale, 85 + (z-mmOff.z)*mmScale]; }
+// slowroads 跟车投影：世界坐标先减车位、按 -heading 旋转使车头朝上，再缩放并平移到中心。
+function mmPt(x, z) {
+  const dx = (x - state.pos.x) * mmScale;
+  const dz = (z - state.pos.z) * mmScale;
+  const a = -state.heading;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const rx =  dx * ca - dz * sa;
+  const rz =  dx * sa + dz * ca;
+  return [MM_C + rx, MM_C - rz];
+}
 function drawMinimap() {
   mm.clearRect(0,0,170,170);
+  mm.save();
+  // 圆形裁剪，边缘更干净（slowroads 风）
+  mm.beginPath(); mm.arc(MM_C, MM_C, MM_R, 0, Math.PI*2); mm.clip();
+  // 主路环线
   mm.beginPath();
   for (let i = 0; i <= NS; i += 6) {
     const p = samples[i % NS], [px, py] = mmPt(p.x, p.z);
@@ -656,9 +673,10 @@ function drawMinimap() {
     mm.fillStyle = '#76ff03';
     mm.beginPath(); mm.arc(cx, cy, 4.5, 0, Math.PI*2); mm.fill();
   }
-  const [vx, vy] = mmPt(state.pos.x, state.pos.z);
+  mm.restore();
+  // 车始终在中心，三角朝上（车头方向）
   mm.save();
-  mm.translate(vx, vy); mm.rotate(Math.PI - state.heading);
+  mm.translate(MM_C, MM_C);
   mm.fillStyle = '#00e5ff';
   mm.beginPath(); mm.moveTo(0,-6); mm.lineTo(4,5); mm.lineTo(-4,5); mm.closePath(); mm.fill();
   mm.restore();
