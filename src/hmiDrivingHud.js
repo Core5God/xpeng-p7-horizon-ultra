@@ -98,18 +98,15 @@ export function installHmiDrivingHud() {
 }
 
 // 每帧调用：speedKmh 时速(km/h)、distanceM 里程(米)、racePhase 当前竞速阶段(占位预留)、
-//   speedMs 原始带符号车速(m/s,来自 state.speed)用于推出档位 D/N/R。
+// 每帧调用：speedKmh 时速(km/h)、distanceM 里程(米)、racePhase 当前竞速阶段(占位预留)、
+//   gear 档位字符串(D/N/R,由调用处依据 state.speed 符号算好传入)。
 // 本轮 autosteer 状态恒为 OFF 占位，不做真功能。
-export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', speedMs = null) {
+export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', gear = 'N') {
   if (!installed) return;
   if (elDistNum) elDistNum.textContent = ((distanceM || 0) / 1000).toFixed(1);
   if (elSpeedNum) elSpeedNum.textContent = Math.round(speedKmh || 0);
-  // 档位由带符号车速推出（与 main.js elGear 同口径）：倒车 R / 近静止 N / 前进 D。
-  if (elGear) {
-    const v = speedMs == null ? (speedKmh || 0) / 3.6 : speedMs;
-    const gear = v < -0.5 ? 'R' : (Math.abs(v) < 0.5 ? 'N' : 'D');
-    if (elGear.textContent !== gear) elGear.textContent = gear;
-  }
+  // 档位：由调用处算好传入（D/N/R），与 main.js elGear 同口径。
+  if (elGear) elGear.textContent = gear || 'N';
   // 状态位占位：本轮恒 OFF（不接物理/键/逻辑）。racePhase 参数预留给后续阶段。
   if (elAutoState && elAutoState.textContent !== 'OFF') elAutoState.textContent = 'OFF';
 }

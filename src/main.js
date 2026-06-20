@@ -107,8 +107,9 @@ function loopBody() {
   audioUpdate();
   skyCycleUpdate(dt); // 动态天空/天气循环（接管太阳/雾/曝光/反射）
   updateMinimalDriveHud(G.appState, race.phase, dt);
-  // slowroads 式驾驶 HUD：左下里程 / 右下时速 / 底部 autosteer 占位
-  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, state.speed);
+  // slowroads 式驾驶 HUD：左下里程 / 右下时速+档位 / 底部 autosteer 占位
+  const gear = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
+  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear);
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
