@@ -158,6 +158,7 @@ export function installHmiDrivingHud() {
   if (installed) return;
   if (typeof document === 'undefined') return;
   installed = true;
+  _curve = null; // 进驾驶态/首装：清空平滑曲线，让首个有效帧 snap 而非从竖线 lerp。
   installHmiTokens();
 
   const style = document.createElement('style');
