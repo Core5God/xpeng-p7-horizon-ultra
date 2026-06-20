@@ -67,7 +67,7 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
   #${ROOT_ID} .hmi-trip .v{color:var(--hmi-text-primary);font-weight:600;letter-spacing:.04em;font-size:1.18em}
   #${ROOT_ID} .hmi-trip .u{color:var(--hmi-text-tertiary);font-size:.86em}
   /* 中：Route preview canvas + AUTOSTEER */
-  #${ROOT_ID} .hmi-route-wrap{position:relative;width:100%;flex:1 1 auto;min-height:clamp(28px,3vmin,52px);display:flex;align-items:flex-end;justify-content:center}
+  #${ROOT_ID} .hmi-route-wrap{position:relative;width:100%;flex:1 1 auto;min-height:clamp(54px,6vmin,96px);display:flex;align-items:flex-end;justify-content:center}
   #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%;
     -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 14%,#000 86%,transparent 100%);
     mask-image:linear-gradient(90deg,transparent 0%,#000 14%,#000 86%,transparent 100%)}
@@ -193,28 +193,33 @@ function drawRoutePreview(pts) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
-  const drawCurve = (color, width, blur) => {
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = blur;
+  // 主线：细而锐利的冷白偏青导航线，不起外发光；末端（远端） alpha 渐弱。
+  // 先收集可见点（带屏幕坐标与归一化进度）。
+  const scr = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (p.z < -2 || p.z > ROUTE_FORWARD_M + 8) continue;
+    const [px, py] = mapPt(p.x, p.z);
+    const t = Math.max(0, Math.min(1, p.z / ROUTE_FORWARD_M)); // 0 近 → 1 远
+    scr.push({ px, py, t });
+  }
+  if (scr.length < 2) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 1.6;
+  // 逐段绘制，远端 alpha 渐弱（克制）；不用 shadow，保持锐利。
+  for (let i = 1; i < scr.length; i++) {
+    const a = scr[i - 1], b = scr[i];
+    const tMid = (a.t + b.t) * 0.5;
+    const alpha = 0.92 * (1 - 0.55 * tMid); // 近端~0.92 → 远端~0.41
+    ctx.strokeStyle = `rgba(206,238,255,${alpha.toFixed(3)})`;
     ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      if (p.z < -2 || p.z > ROUTE_FORWARD_M + 8) continue;
-      const [px, py] = mapPt(p.x, p.z);
-      if (!started) { ctx.moveTo(px, py); started = true; }
-      else ctx.lineTo(px, py);
-    }
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
     ctx.stroke();
-    ctx.restore();
-  };
-  drawCurve('rgba(120,180,255,0.18)', 5, 8);
-  drawCurve('rgba(210,235,255,0.78)', 1.6, 3);
+  }
+  ctx.restore();
 }
 
 // 每帧调用：speedKmh / distanceM / racePhase / gear / routePts。

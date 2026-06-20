@@ -38,7 +38,8 @@ function computeRoutePreview(pos, heading) {
   }
   if (bi < 0) return null;
   const cosH = Math.cos(heading), sinH = Math.sin(heading);
-  // 车辆坐标系：forward = (sin h, cos h)、right = (cos h, -sin h)；lx = right 偏移、lz = forward 距离
+  // 车辆坐标系（约定见 vehicle.js:328）：forward = (sin h, cos h)、LEFT = (cos h, -sin h) ⇒ RIGHT = (-cos h, sin h)。
+  // lx = RIGHT 偏移（右为正，配合 HUD mapPt 右映射）、lz = forward 距离。
   // 判断 next sample 的 lz 是正 → 递增，否则递减。
   const nextI = (bi + 1) % NS;
   const ndx = samples[nextI].x - pos.x, ndz = samples[nextI].z - pos.z;
@@ -50,7 +51,7 @@ function computeRoutePreview(pos, heading) {
     const i = ((bi + dirSign * k) % NS + NS) % NS;
     const s = samples[i];
     const dx = s.x - pos.x, dz = s.z - pos.z;
-    const lx = dx * cosH - dz * sinH;
+    const lx = dz * sinH - dx * cosH; // RIGHT 投影（右为正）
     const lz = dx * sinH + dz * cosH;
     _routeOut.push({ x: lx, z: lz });
   }
