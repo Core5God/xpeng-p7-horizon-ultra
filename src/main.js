@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms } from './world.js';
-import { buildRoadJunctionPass } from './roadJunctionPass.js';
+// [task-20260620-001 回滚] buildRoadJunctionPass 调用已禁用，导入一并注释避免 unused
+// import { buildRoadJunctionPass } from './roadJunctionPass.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
 import { buildCharacter, characterUpdate, characterCamera, characterPreviewUpdate, charState } from './character.js';
 import { buildSkyCycle, skyCycleUpdate, setTimeScale, getTimeScale } from './skycycle.js';
@@ -205,7 +206,8 @@ addEventListener('keydown', (e) => {
     }));
     await stage('构建岛屿地形…', 24, buildTerrain);
     await stage('铺设海岸公路…', 45, buildRoad);
-    await stage('修补公路分叉…', 48, buildRoadJunctionPass);
+    // [task-20260620-001 回滚] 禁用路口缝合 pass，回滚到完整可玩道路
+    // await stage('修补公路分叉…', 48, buildRoadJunctionPass);
     await stage('生成程序化森林…', 68, buildScenery);
     await stage('布置灯塔与环境…', 76, buildEnv);
     await stage('搭建海滩建筑与道具…', 88, buildProps);

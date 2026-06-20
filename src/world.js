@@ -855,10 +855,8 @@ function buildRoad() {
     m.receiveShadow = true;
     return m;
   }
-  // 主路两段弧的端点（在路口前后各退 GAP 截断，留出缝合面缺口）
-  const ARC1_S = (BRANCH_A + GAP) % NS, ARC1_E = (BRANCH_B - GAP + NS) % NS;
-  const ARC2_S = (BRANCH_B + GAP) % NS, ARC2_E = (BRANCH_A - GAP + NS) % NS;
-  // 每条带（路面/路肩/线）都按两段弧生成，跳过两个路口缺口
+  // [task-20260620-001 回滚] 主路 5 条带恢复全环生成（不传起止索引），
+  // 不再按 ARC1/ARC2 两段弧切断 —— 道路不再在路口断开。
   for (const [o1, o2, yl, mt] of [
     [-HALF_W, HALF_W, 0.05, roadMat],
     [-HALF_W-1.1, -HALF_W, 0.03, shoulderMat],
@@ -866,8 +864,7 @@ function buildRoad() {
     [-HALF_W+0.45, -HALF_W+0.62, 0.07, lineMat],
     [HALF_W-0.62, HALF_W-0.45, 0.07, lineMat],
   ]) {
-    scene.add(ribbon(o1, o2, yl, mt, ARC1_S, ARC1_E));
-    scene.add(ribbon(o1, o2, yl, mt, ARC2_S, ARC2_E));
+    scene.add(ribbon(o1, o2, yl, mt));
   }
   // 路口缺口判定：i 是否落在某个 Y 路口的 ±GAP 范围内（用于虚线跳过）
   const inJunctionGap = (i) => {
@@ -937,13 +934,9 @@ function buildRoad() {
       return GAP_B;
     }
   }
-  // 主路两个断头 index（已退 GAP，GAP 在上方主路段定义=6）
-  const _mAe1 = (BRANCH_A - GAP + NS) % NS, _mAe2 = (BRANCH_A + GAP) % NS;
-  const _mBe1 = (BRANCH_B - GAP + NS) % NS, _mBe2 = (BRANCH_B + GAP) % NS;
-  // A 端（无 hairpin）：动态判据自然得 6 = 原 GAP_B，A 截断保持现状。
-  // B 端（有 hairpin）：动态判据退到 ~236（比原 254 再退 ~18 点），hairpin 不再绘制。
-  const B_S = dynBranchCut(_mAe1, _mAe2, 'start'); // 支线保留区间起点 index
-  const B_E = dynBranchCut(_mBe1, _mBe2, 'end');   // 支线保留区间末点 index
+  // [task-20260620-001 回滚] 取消支路端头动态截断：B_S/B_E 及主路断头辅助索引
+  // (_mAe1/_mAe2/_mBe1/_mBe2) 仅服务于截断/patch，回滚后变为未使用，故一并删除。
+  // junctionHubMainOnly / dynBranchCut 为 function declaration（不算 unused），保留定义。
   function branchRibbon(off1, off2, yLift, mat, sIdx, eIdx) {
     const s = (sIdx === undefined) ? 0 : sIdx;
     const e = (eIdx === undefined) ? NBL - 1 : eIdx;
@@ -968,9 +961,10 @@ function buildRoad() {
   // 支线路面铺在主路面之下（0.045 < 主路 0.05）：汇入口重叠处由更宽的主路覆盖，
   // 消除"窄支线贴片盖在主路上"造成的衔接错位/闪烁；车道线仍高于两条路面以保持可见。
   // 两端各退 GAP_B 截断，断头由程序化缝合面接住。
-  scene.add(branchRibbon(-B_HALF, B_HALF, 0.045, roadMat, B_S, B_E));
-  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.065, lineMat, B_S, B_E));
-  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.065, lineMat, B_S, B_E));
+  // [task-20260620-001 回滚] 3 条 branchRibbon 恢复全程生成（不传 B_S/B_E，默认 0..NBL-1）：
+  scene.add(branchRibbon(-B_HALF, B_HALF, 0.045, roadMat));
+  scene.add(branchRibbon(-B_HALF + 0.4, -B_HALF + 0.55, 0.065, lineMat));
+  scene.add(branchRibbon(B_HALF - 0.55, B_HALF - 0.4, 0.065, lineMat));
 
   // —— 路口铺面（junction apron）：支线汇入主路处，两条直纹路面以夹角相交会留下
   // 一块没有沥青覆盖的楔形缺口（露出地形 + 边线交叉穿模）。这里用"主路边沿 + 支线边沿"
@@ -1188,10 +1182,11 @@ function buildRoad() {
     // 返回 hub 中心与几何统计供 handoff 验证
     return { cx, cy, cz, hubR, hubPts: HUB_PTS, armSectionPts: arms.length * SEC_ROWS * 2, verts: verts.length / 3, tris: idx.length / 3 };
   }
+  // [task-20260620-001 回滚] 禁用 buildJunctionPatch（函数定义保留，仅不调用）：
   // 路口 A：主路断头 = BRANCH_A±GAP；支线断头 = bSamples[B_S]（起点端）
-  buildJunctionPatch((BRANCH_A - GAP + NS) % NS, (BRANCH_A + GAP) % NS, B_S);
+  // buildJunctionPatch((BRANCH_A - GAP + NS) % NS, (BRANCH_A + GAP) % NS, B_S);
   // 路口 B：主路断头 = BRANCH_B±GAP；支线断头 = bSamples[B_E]（末端）
-  buildJunctionPatch((BRANCH_B - GAP + NS) % NS, (BRANCH_B + GAP) % NS, B_E);
+  // buildJunctionPatch((BRANCH_B - GAP + NS) % NS, (BRANCH_B + GAP) % NS, B_E);
 
   const pylonM = new THREE.MeshStandardMaterial({color:0x8d8d94, roughness:0.8});
   const bRailM = new THREE.MeshStandardMaterial({color:0xd8d8de, roughness:0.5, metalness:0.5});
