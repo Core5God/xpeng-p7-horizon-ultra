@@ -17,6 +17,9 @@ export function installMinimalDriveHud() {
   const style = document.createElement('style');
   style.id = 'p0-minimal-driving-hud';
   style.textContent = `
+    /* 驾驶态极简：屏幕只保留 速度 / 档位 / 小地图 / 临时提示(showMsg)。
+       其余常驻 HUD（品牌、得分、技能弹字、播放列表、键位条、模式、漂移实时）
+       默认全部隐藏，不常驻占屏。竞速 racebox 仅 race 模式显示。 */
     body.${DRIVE_CLASS} #title,
     body.${DRIVE_CLASS} #scorechip,
     body.${DRIVE_CLASS} #skillstack,
@@ -29,8 +32,9 @@ export function installMinimalDriveHud() {
       transition: opacity 520ms ease !important;
     }
 
+    /* 进入驾驶态前几秒，键位条做一次极弱的呼吸提示后自动归零，不常驻 */
     body.${DRIVE_CLASS}.${HINT_CLASS} #keytips {
-      opacity: .42 !important;
+      opacity: .28 !important;
     }
 
     body.${DRIVE_CLASS} #cluster {
@@ -47,9 +51,13 @@ export function installMinimalDriveHud() {
       text-shadow: 0 2px 20px rgba(0,0,0,.34) !important;
     }
 
-    body.${DRIVE_CLASS} #speedunit,
-    body.${DRIVE_CLASS} #gear {
+    body.${DRIVE_CLASS} #speedunit {
       opacity: .38 !important;
+    }
+
+    body.${DRIVE_CLASS} #gear {
+      opacity: .52 !important;
+      letter-spacing: 3px !important;
     }
 
     body.${DRIVE_CLASS} #minimap {
@@ -101,8 +109,8 @@ export function updateMinimalDriveHud(appState, racePhase, dt = 0) {
   document.body.classList.toggle(RACING_CLASS, !!isRacing);
 
   if (isDrive && lastMode !== 'drive') {
-    // 刚进入驾驶态时给 5 秒提示，随后自动安静。
-    hintTimer = 5.0;
+    // 刚进入驾驶态给一次短暂提示，随后自动安静。
+    hintTimer = 3.5;
   }
   lastMode = appState;
 

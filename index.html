@@ -11,21 +11,24 @@
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --cy:#19d3ff;--or:#ff7a18;
-    /* Apple HIG glass tokens */
-    --glass-blur:22px;
-    --glass-alpha:0.22;
-    --glass-bg:rgba(15,18,28,var(--glass-alpha));
-    --glass-border:rgba(255,255,255,.18);
-    --glass-border-hi:rgba(255,255,255,.32);
-    --panel-radius:24px;
+    --cy:#aebdd4;--or:#c69a6a;
+    /* Apple HIG glass tokens — 高端电车中控 / 系统面板质感 */
+    --glass-blur:30px;
+    --glass-alpha:0.46;
+    --glass-bg:rgba(18,21,28,var(--glass-alpha));
+    --glass-bg-2:rgba(28,32,40,.38);
+    --glass-border:rgba(255,255,255,.14);
+    --glass-border-hi:rgba(255,255,255,.30);
+    --panel-radius:26px;
     --panel-radius-sm:16px;
-    --btn-radius:14px;
+    --btn-radius:15px;
+    --btn-radius-sm:12px;
     --hover-lift:translateY(-1px);
-    --fast-ease:140ms cubic-bezier(.2,.8,.2,1);
-    --text-primary:rgba(255,255,255,.95);
-    --text-secondary:rgba(255,255,255,.65);
-    --text-tertiary:rgba(255,255,255,.42);
+    --fast-ease:160ms cubic-bezier(.2,.8,.2,1);
+    --text-primary:rgba(255,255,255,.94);
+    --text-secondary:rgba(255,255,255,.62);
+    --text-tertiary:rgba(255,255,255,.40);
+    --accent:rgba(235,240,248,.92);
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;overflow:hidden;background:#000;font-family:'Rajdhani','Noto Sans SC','PingFang SC',sans-serif;user-select:none}
@@ -74,37 +77,37 @@
   /* ====== 菜单（左侧导轨，主机游戏风） ====== */
   .menu{position:fixed;inset:0;z-index:20;display:none;color:#fff}
   .menu.show{display:block}
-  .menu::before{content:'';position:absolute;inset:0;background:linear-gradient(100deg,rgba(2,6,15,.55) 0%,rgba(2,6,15,.30) 40%,transparent 65%)}
-  .rail{position:absolute;top:20px;bottom:20px;left:20px;width:500px;padding:40px 36px 30px;overflow-y:auto;
-    background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.4);
+  .menu::before{content:'';position:absolute;inset:0;background:radial-gradient(120% 100% at 0% 0%,rgba(4,7,13,.62) 0%,rgba(4,7,13,.34) 42%,rgba(4,7,13,.12) 100%)}
+  .rail{position:absolute;top:20px;bottom:20px;left:20px;width:500px;padding:42px 38px 32px;overflow-y:auto;
+    background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
     border-radius:var(--panel-radius);border:1px solid var(--glass-border);
-    box-shadow:0 8px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);
-    animation:railIn .4s cubic-bezier(.2,.9,.25,1) both}
-  @keyframes railIn{from{opacity:0;transform:translateX(-50px)}to{opacity:1;transform:none}}
+    box-shadow:0 24px 80px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 .5px rgba(255,255,255,.05);
+    animation:railIn .42s cubic-bezier(.2,.9,.25,1) both}
+  @keyframes railIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
   .logoblk{margin-bottom:28px}
-  .xlogo{font-size:13px;font-weight:500;letter-spacing:8px;color:var(--cy);margin-bottom:6px}
-  .rail h1{font-size:42px;margin:0;font-weight:700;letter-spacing:0;line-height:1.05}
-  .rail .sub{font-size:12px;letter-spacing:4px;opacity:.5;margin-top:8px}
-  .cta{display:block;width:100%;margin:0 0 12px;padding:16px 24px;border:none;border-radius:var(--btn-radius);cursor:pointer;color:#fff;text-align:left;
-    background:linear-gradient(135deg,rgba(0,132,224,.85),rgba(111,59,255,.75));
-    transition:transform var(--fast-ease),filter var(--fast-ease),box-shadow var(--fast-ease);
-    box-shadow:0 4px 20px rgba(40,90,255,.25)}
-  .cta.cta2{background:linear-gradient(135deg,rgba(255,109,0,.85),rgba(213,0,0,.75));box-shadow:0 4px 20px rgba(255,80,20,.2)}
-  .cta.ghost{background:rgba(255,255,255,.08);box-shadow:none;border:1px solid var(--glass-border)}
-  .cta>span{display:block;font-size:20px;font-weight:600;letter-spacing:2px;line-height:1.2}
-  .cta>em{display:block;font-style:normal;font-size:12px;letter-spacing:2px;opacity:.6;margin-top:4px}
-  .cta:hover:not(:disabled){transform:var(--hover-lift);filter:brightness(1.12);box-shadow:0 6px 28px rgba(40,90,255,.35)}
-  .cta:active:not(:disabled){transform:scale(.98)}
+  .xlogo{font-size:13px;font-weight:500;letter-spacing:8px;color:var(--text-secondary);margin-bottom:6px}
+  .rail h1{font-size:42px;margin:0;font-weight:600;letter-spacing:-.5px;line-height:1.05;color:var(--text-primary)}
+  .rail .sub{font-size:12px;letter-spacing:4px;opacity:.45;margin-top:8px}
+  .cta{display:block;width:100%;margin:0 0 12px;padding:16px 24px;border:1px solid var(--glass-border);border-radius:var(--btn-radius);cursor:pointer;color:var(--text-primary);text-align:left;
+    background:rgba(255,255,255,.10);
+    transition:transform var(--fast-ease),background var(--fast-ease),border-color var(--fast-ease),box-shadow var(--fast-ease);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 1px 6px rgba(0,0,0,.18)}
+  .cta.cta2{background:rgba(255,255,255,.07)}
+  .cta.ghost{background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .cta>span{display:block;font-size:20px;font-weight:600;letter-spacing:.5px;line-height:1.2}
+  .cta>em{display:block;font-style:normal;font-size:12px;letter-spacing:2px;opacity:.5;margin-top:4px}
+  .cta:hover:not(:disabled){transform:var(--hover-lift);background:rgba(255,255,255,.16);border-color:var(--glass-border-hi);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 8px 26px rgba(0,0,0,.32)}
+  .cta:active:not(:disabled){transform:scale(.985)}
   .cta:disabled{opacity:.3;cursor:wait}
   .sec{font-size:11px;font-weight:600;letter-spacing:4px;color:var(--text-tertiary);text-transform:uppercase;margin:28px 0 12px;padding:0}
   .row{display:flex;gap:10px;flex-wrap:wrap}
   .swatch{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.22);cursor:pointer;padding:0;transition:transform var(--fast-ease),box-shadow var(--fast-ease)}
   .swatch:hover{transform:scale(1.12)}
-  .swatch.sel{border-color:var(--cy);box-shadow:0 0 14px rgba(25,211,255,.6)}
-  .opt{font-family:inherit;font-size:14px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.07);border:1px solid var(--glass-border);
-    border-radius:var(--btn-radius-sm);padding:10px 20px;cursor:pointer;letter-spacing:.5px;transition:background var(--fast-ease)}
-  .opt.sel{background:rgba(0,150,230,.35);border-color:var(--cy)}
-  .opt:hover{background:rgba(255,255,255,.15)}
+  .swatch.sel{border-color:var(--glass-border-hi);box-shadow:0 0 0 2px rgba(255,255,255,.55),0 2px 8px rgba(0,0,0,.3)}
+  .opt{font-family:inherit;font-size:14px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
+    border-radius:var(--btn-radius-sm);padding:10px 20px;cursor:pointer;letter-spacing:.5px;transition:background var(--fast-ease),border-color var(--fast-ease)}
+  .opt.sel{background:rgba(255,255,255,.18);border-color:var(--glass-border-hi);color:#fff}
+  .opt:hover{background:rgba(255,255,255,.13)}
   /* —— 角色选择卡 —— */
   .charrow{gap:12px}
   .charcard{font-family:inherit;min-width:140px;color:#fff;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
@@ -112,10 +115,10 @@
     transition:background var(--fast-ease),box-shadow var(--fast-ease),transform var(--fast-ease)}
   .charcard>b{display:block;font-size:18px;font-weight:600;letter-spacing:1px;line-height:1.2}
   .charcard>i{display:block;font-style:normal;font-size:11px;letter-spacing:1px;opacity:.55;margin-top:3px}
-  .charcard:hover{background:rgba(255,255,255,.14);transform:var(--hover-lift)}
-  .charcard.sel{background:rgba(0,150,230,.3);border-color:var(--cy);box-shadow:0 0 14px rgba(25,211,255,.4)}
+  .charcard:hover{background:rgba(255,255,255,.13);transform:var(--hover-lift)}
+  .charcard.sel{background:rgba(255,255,255,.18);border-color:var(--glass-border-hi);box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
   #loadbar{height:4px;width:100%;background:rgba(255,255,255,.1);margin-top:24px;overflow:hidden;border-radius:2px}
-  #loadfill{height:100%;width:0%;background:linear-gradient(90deg,#00e5ff,#7c4dff);transition:width .3s;border-radius:2px}
+  #loadfill{height:100%;width:0%;background:rgba(255,255,255,.7);transition:width .3s;border-radius:2px}
   #loadtext{font-size:12px;opacity:.55;margin-top:8px;letter-spacing:.5px}
   .hintbar{position:absolute;bottom:20px;right:24px;display:flex;align-items:center;font-size:13px;color:rgba(255,255,255,.8);flex-wrap:wrap;max-width:62vw;justify-content:flex-end;row-gap:8px}
   kbd{font-family:inherit;font-size:12.5px;font-weight:700;letter-spacing:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-bottom-width:3px;border-radius:5px;padding:4px 10px;margin:0 7px 0 16px}
@@ -166,7 +169,7 @@
     border:1px solid var(--glass-border);border-radius:var(--btn-radius);
     background:rgba(15,18,28,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
     color:var(--text-primary);cursor:pointer;transition:background var(--fast-ease),transform var(--fast-ease)}
-  #photobar button:hover{background:rgba(0,150,230,.4);transform:var(--hover-lift)}
+  #photobar button:hover{background:rgba(255,255,255,.16);transform:var(--hover-lift)}
   /* —— 启动画面（脚本下载阶段即可见） —— */
   #boot{position:fixed;inset:0;z-index:99;background:radial-gradient(ellipse at 50% 42%,#101626,#04060c);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:'Rajdhani','Noto Sans SC',sans-serif}
   #boot .blogo{font-size:15px;font-weight:600;letter-spacing:12px;color:#19d3ff;animation:bpulse 1.6s ease-in-out infinite}
@@ -203,8 +206,8 @@
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:2px;text-align:center;transition:all .12s;cursor:default}
   .rw-item .rw-i{font-size:20px;line-height:1}
-  .rw-item.sel{background:rgba(25,211,255,.22);border-color:var(--cy);color:#fff;
-    box-shadow:0 0 24px rgba(25,211,255,.35)}
+  .rw-item.sel{background:rgba(255,255,255,.20);border-color:var(--glass-border-hi);color:#fff;
+    box-shadow:0 2px 14px rgba(0,0,0,.3)}
   .rw-top{transform:translateY(-100px)}
   .rw-top.sel{transform:translateY(-100px) scale(1.12)}
   .rw-right{transform:translateX(100px)}
