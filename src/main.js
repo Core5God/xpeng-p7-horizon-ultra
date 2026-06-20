@@ -12,15 +12,13 @@ import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, startDrive, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 import { preloadCriticalAssets } from './assetPreload.js';
 import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
+import { installHmiDrivingHud, updateHmiDrivingHud } from './hmiDrivingHud.js';
 import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
 let fpsAcc = 0, fpsN = 0, autoDropped = false;
 let loopErrCount = 0, slowFrames = 0;
-// slowroads HUD 元素（左下里程 / 右下时速数字）
-const srDistNum = document.getElementById('srDistNum');
-const srSpeedNum = document.getElementById('srSpeedNum');
 function loop() {
   requestAnimationFrame(loop);
   const t0 = performance.now();
@@ -109,6 +107,8 @@ function loopBody() {
   audioUpdate();
   skyCycleUpdate(dt); // 动态天空/天气循环（接管太阳/雾/曝光/反射）
   updateMinimalDriveHud(G.appState, race.phase, dt);
+  // slowroads 式驾驶 HUD：左下里程 / 右下时速 / 底部 autosteer 占位
+  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase);
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
@@ -147,9 +147,6 @@ function loopBody() {
     elSpeed.textContent = Math.round(kmh);
     if (gArc) gArc.style.strokeDashoffset = gLen * (1 - Math.min(kmh/280, 1));
     elGear.textContent = state.speed < -0.5 ? 'R' : (Math.abs(state.speed) < 0.5 ? 'N' : 'D');
-    // slowroads HUD：左下里程 / 右下时速
-    if (srDistNum) srDistNum.textContent = ((state.distance || 0) / 1000).toFixed(1);
-    if (srSpeedNum) srSpeedNum.textContent = Math.round(kmh);
     if (elNitro) elNitro.style.width = (state.nitro*100).toFixed(0) + '%';
     const ff = document.getElementById('flowfill');
     if (ff) ff.style.width = (state.flow*100).toFixed(0) + '%';
@@ -273,6 +270,7 @@ addEventListener('keydown', (e) => {
     await new Promise(r => requestAnimationFrame(r));
     initUI();
     installMinimalDriveHud();
+    installHmiDrivingHud();
     installViewpointJump();
     initFX();
     settleCarPose();
