@@ -12,6 +12,7 @@ import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, startDrive, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
 import { preloadCriticalAssets } from './assetPreload.js';
 import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
+import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
@@ -168,6 +169,50 @@ function loopBody() {
   }
 }
 
+// ---------- 视觉验收点跳转（task-20260620-003）----------
+// 让 VIK 在浏览器内一键跳到第 N 个固定机位截图，不改任何视觉/几何，仅摆相机+车+TOD。
+// 触发：URL ?vp=N（1~8），或运行时按数字键 1~8。
+function jumpToViewpoint(id) {
+  const vp = getViewpoint(id);
+  if (!vp) { console.warn('[viewpoint] 无此验收点 id=', id); return; }
+  try {
+    if (G.appState !== 'drive') { try { startDrive(false); } catch (e) {} }
+    // 关闭动态天气，让静态 TOD preset 可复现
+    G.weatherOn = false;
+    applyTod(vp.tod);
+    // 摆车（贴地）
+    state.pos.set(vp.carPos.x, vp.carPos.y, vp.carPos.z);
+    state.vx = 0; state.vz = 0; state.speed = 0; state.vyAir = 0;
+    // 车头朝向 lookAt 水平方向
+    const hx = vp.lookAt.x - vp.carPos.x, hz = vp.lookAt.z - vp.carPos.z;
+    state.heading = Math.atan2(hx, hz);
+    settleCarPose();
+    // 摆相机并锁定（不让追车相机接管），方便静态对比截图
+    camera.position.set(vp.camPos.x, vp.camPos.y, vp.camPos.z);
+    camera.lookAt(vp.lookAt.x, vp.lookAt.y, vp.lookAt.z);
+    camera.updateProjectionMatrix();
+    G.fastdebugLockCam = true;
+    showMsg('验收点 #' + vp.id + ' · ' + vp.label + ' · ' + vp.tod + ' — ' + vp.focus, 4000, 20);
+    console.log('[viewpoint] jumped to', vp.id, vp.name, vp);
+  } catch (e) { console.warn('[viewpoint] jump failed:', e); }
+}
+function installViewpointJump() {
+  // URL ?vp=N 自动跳转
+  try {
+    const q = new URLSearchParams(location.search);
+    const vpq = q.get('vp');
+    if (vpq) setTimeout(() => jumpToViewpoint(vpq), 300);
+  } catch (e) {}
+  // 数字键 1~8 跳转
+  addEventListener('keydown', (e) => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key >= '1' && e.key <= '8') jumpToViewpoint(e.key);
+  });
+  // 暴露给截图脚本 / 控制台
+  window.__jumpToViewpoint = jumpToViewpoint;
+  window.__VIEWPOINTS = VIEWPOINTS;
+}
+
 addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
@@ -219,6 +264,7 @@ addEventListener('keydown', (e) => {
     await new Promise(r => requestAnimationFrame(r));
     initUI();
     installMinimalDriveHud();
+    installViewpointJump();
     initFX();
     settleCarPose();
     applyTod(G.curTod);
