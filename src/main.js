@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
-import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms, samples, nearestRoad, NS } from './world.js';
+import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms, samples, nearestRoad, NS, HALF_W } from './world.js';
 // [task-20260620-001 回滚] buildRoadJunctionPass 调用已禁用，导入一并注释避免 unused
 // import { buildRoadJunctionPass } from './roadJunctionPass.js';
 import { state, physics, updateChaseCamera, setGlassSeeThru, settleCarPose, coastVehicle, updateCarReflection } from './vehicle.js';
@@ -158,7 +158,7 @@ function loopBody() {
   if (G.appState === 'drive' && samples && samples.length) {
     routePts = computeRoutePreview(state.pos, state.heading);
   }
-  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear, routePts);
+  updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear, routePts, HALF_W);
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标

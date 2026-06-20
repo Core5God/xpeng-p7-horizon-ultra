@@ -1,7 +1,7 @@
 // ---------- HMI Design Tokens (Stage 3.1 → 3.2.2) ----------
 // 统一的 HMI 视觉语言基线：字体 / 字号(clamp 自适应,4K 不碎) / 玻璃 / 文本层级 / 动效。
-// PR3.2.2 对 cockpit band 做信息结构与质感微调：两侧渐隐、左侧 Energy/Range
-//   放大成主信息（细能量条占位）、中间路线预览 + AUTOSTEER、右侧速度档位强化层级。
+// HMI Recovery (20260620)：拆掉整块厚黑底栏，改成「左/中/右 三个独立信息岛 + 一条贴底细弧光」。
+//   背景接近无底（仅极淡薄玻璃），整体轻/透/薄/安静，让车与路重新成为主角。
 
 export const HMI = {
   font: {
@@ -13,24 +13,24 @@ export const HMI = {
     small: 'clamp(10px,0.48vw,14px)',
     label: 'clamp(9px,0.42vw,12px)',
     speed: 'clamp(48px,4.2vw,118px)',
-    socNum: 'clamp(34px,3.0vw,72px)',
-    rangeNum: 'clamp(22px,1.7vw,42px)',
-    speedNum: 'clamp(54px,4.6vw,128px)',
-    labelTiny: 'clamp(9px,0.46vw,12px)',
+    socNum: 'clamp(30px,2.7vw,60px)',
+    rangeNum: 'clamp(16px,1.25vw,28px)',
+    speedNum: 'clamp(46px,4.0vw,104px)',
+    labelTiny: 'clamp(9px,0.44vw,11px)',
   },
   glass: {
     bg: 'rgba(10,14,18,0.32)',
     border: 'rgba(255,255,255,0.12)',
     blur: '18px',
     radius: '28px',
-    bandBg: 'rgba(10,14,20,0.22)',
-    bandBorder: 'rgba(255,255,255,0.08)',
-    bandBlur: '20px',
-    bandHairline: 'rgba(220,235,255,0.32)',
-    bandRadius: '40px',
-    bandGlow: 'rgba(120,170,255,0.10)',
-    bandEdge: 'rgba(120,180,255,0.32)',
-    accent: 'rgba(168,206,255,0.85)',
+    // 信息岛极淡薄玻璃（透明度 ≤0.12）；接近无底。
+    islandBg: 'rgba(14,20,30,0.10)',
+    islandBlur: '7px',
+    islandBorder: 'rgba(180,215,255,0.10)',
+    // 贴底曲面弧光（cockpit screen edge）—唯一的「屏感」载体。
+    arcLine: 'rgba(196,228,255,0.55)',
+    arcGlow: 'rgba(130,185,255,0.30)',
+    accent: 'rgba(168,206,255,0.92)',
     accentSoft: 'rgba(168,206,255,0.42)',
   },
   text: {
