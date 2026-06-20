@@ -1,10 +1,10 @@
-// ---------- HMI Driving HUD (slowroads align 20260620) ----------
-// 贴近 slowroads 极简：四角裸字浮在画面（无玻璃底），中部一条带柔光的单条弯钩光线。
-//   - 无整块容器、无玻璃底；底部一条极淡贴底弧光作座舱基线。
-//   - 左：82% / BATTERY / 极细单横线 / 610 CLTC KM（无血条、无分段）。
-//   - 中：slowroads 式单条弯钩光线（直行垂直、转弯成钩），时间平滑稳定 + AUTOSTEER OFF。
-//   - 右：时速大字 + KM/H + 档位 pill（裸字无玻璃底）。
-//   只改 UI/HMI；不接 autosteer 真功能；电量/续航静态占位。
+// ---------- HMI Driving HUD (perspective curved-screen 20260620) ----------
+// 曲面座舱 HMI：左右两侧内容做透视斜切（rotateY），像环绕屏的两翼向中间环抱。
+//   - dock 居中有最大宽度，左右信息整体往中间收（不贴屏幕边缘，4K 不拉太开）。
+//   - 左右块绕内侧竖轴 rotateY 卷向观察者 → 曲面屏质感来源；中部基本正对。
+//   - 自适应用稳健 clamp/vmin，保证 1080 / 1440 / 2160 三档完整可见不裁切不溢出。
+//   - 中部路线：单条弯钩柔光线，近端粗、远端细的透视渐变收窄，营造往前延伸纵深感。
+//   - 底部贴底弧光保留为座舱基线。只改 UI/HMI；不接 autosteer 真功能；电量/续航静态占位。
 import { installHmiTokens } from './hmiTokens.js';
 let installed = false;
 let elSpeedNum = null, elGear = null, elAutoState = null;
@@ -19,29 +19,38 @@ const STYLE = `
     font-family:var(--hmi-font);color:var(--hmi-text-primary);display:none}
   body.drive #${ROOT_ID}{display:block}
 
-  /* 底部 UI 容器：纯定位层，无任何背景/阴影。总高度 ≤ 12vh。 */
-  #${ROOT_ID} .hmi-dock{position:fixed;left:0;right:0;bottom:0;
-    height:min(12vh,132px);min-height:84px;
-    display:flex;align-items:flex-end;justify-content:space-between;
-    padding:0 clamp(20px,3.4vw,60px) clamp(14px,1.8vh,26px);
-    box-sizing:border-box}
+  /* 底部 UI 容器：居中有最大宽度，左右信息往中间收。透视舰在 dock 上给左右块做 3D rotateY。
+     高度用 vmin 防止 4K 下过高、窄屏下过矮；最大宽 width:min(1500px,84vw)。 */
+  #${ROOT_ID} .hmi-dock{position:fixed;left:50%;bottom:0;transform:translateX(-50%);
+    width:min(1500px,84vw);
+    height:clamp(96px,13vmin,156px);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:clamp(12px,2vw,46px);
+    padding:0 clamp(8px,1.4vw,26px) clamp(14px,2vh,28px);
+    box-sizing:border-box;
+    perspective:clamp(900px,90vw,1280px);perspective-origin:50% 60%}
 
-  /* 贴底曲面弧光：唯一的「屏感」载体。SVG 占满 dock 宽度，贴最底。 */
+  /* 贴底曲面弧光：座舱屏边质感。SVG 跨屏宽贴最底（保留全宽，让弧光包住居中 dock）。 */
   #${ROOT_ID} .hmi-arc{position:fixed;left:0;right:0;bottom:0;
-    width:100%;height:min(12vh,132px);pointer-events:none;
+    width:100%;height:clamp(96px,13vmin,156px);pointer-events:none;
     overflow:visible}
   #${ROOT_ID} .hmi-arc svg{display:block;width:100%;height:100%}
 
-  /* 信息岛通用：slowroads 风——四角裸字，无玻璃底，只靠位置/字距与极轻 text-shadow 保证可读。 */
+  /* 信息岛通用：裸字浮在画面，靠位置/字距与极轻 text-shadow 保证可读。 */
   #${ROOT_ID} .hmi-island{position:relative;display:flex;flex-direction:column;
     padding:clamp(4px,0.6vh,10px) clamp(6px,0.8vw,14px);
-    text-shadow:0 1px 12px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.45)}
-  /* 玻璃底已去除（slowroads 裸字浮在画面），.glass 仅保留为空钩子。 */
+    text-shadow:0 1px 12px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.45);
+    transform-style:preserve-3d;will-change:transform}
+  /* 玻璃底已去除，.glass 仅保留为空钩子。 */
   #${ROOT_ID} .hmi-island.glass{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;border:none;box-shadow:none}
-  #${ROOT_ID} .hmi-left{align-items:flex-start;text-align:left;flex:0 0 auto;min-width:0;white-space:nowrap}
-  #${ROOT_ID} .hmi-mid{align-items:center;text-align:center;flex:1 1 auto;min-width:0;
-    max-width:min(38vw,460px);margin:0 clamp(10px,2vw,40px)}
-  #${ROOT_ID} .hmi-right{align-items:flex-end;text-align:right;flex:0 0 auto;min-width:0;white-space:nowrap}
+  /* 左块：绕内侧（右缘）竖轴 rotateY 正角 → 左缘朝里卷，曲面左翼。 */
+  #${ROOT_ID} .hmi-left{align-items:flex-start;text-align:left;flex:0 0 auto;min-width:0;white-space:nowrap;
+    transform-origin:right center;transform:rotateY(24deg)}
+  #${ROOT_ID} .hmi-mid{align-items:center;text-align:center;flex:0 1 auto;min-width:0;
+    max-width:min(34vw,420px);margin:0 clamp(8px,1.6vw,32px);
+    transform-origin:center center;transform:rotateY(0deg)}
+  /* 右块：绕内侧（左缘）竖轴 rotateY 负角 → 右缘朝里卷，曲面右翼（与左对称）。 */
+  #${ROOT_ID} .hmi-right{align-items:flex-end;text-align:right;flex:0 0 auto;min-width:0;white-space:nowrap;
+    transform-origin:left center;transform:rotateY(-24deg)}
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.24em;
     text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
@@ -66,8 +75,8 @@ const STYLE = `
 
   /* 中：slowroads 式单条弯钩光线 + AUTOSTEER。线小巧，宽约占屏 5-8%。 */
   #${ROOT_ID} .hmi-route-wrap{position:relative;
-    width:clamp(38px,6vw,76px);
-    height:clamp(40px,6.5vh,76px);display:flex;align-items:flex-end;justify-content:center}
+    width:clamp(42px,6.5vw,84px);
+    height:clamp(52px,9vmin,104px);display:flex;align-items:flex-end;justify-content:center}
   #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%}
   #${ROOT_ID} .hmi-assist{display:flex;align-items:center;justify-content:center;gap:.6em;line-height:1;margin-top:clamp(2px,0.4vh,6px)}
   #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;background:var(--hmi-text-tertiary);box-shadow:0 0 5px rgba(255,255,255,.18)}
@@ -183,8 +192,8 @@ function resizeRouteCanvas() {
   if (routeCtx) routeCtx.setTransform(routeDpr, 0, 0, routeDpr, 0, 0);
 }
 
-// slowroads 式单条「弯钩」光线：取车前方一段中心线，投影成一条有粗度、圆头、带柔光的单线。
-//   直行 → 接近垂直短线；转弯 → 向转弯方向弯成弧/钩，弯得越急钩越明显。
+// slowroads 式单条「弯钩」光线 + 透视延伸：取车前方一段中心线，投影成一条近粗远细、圆头、带柔光的单线。
+//   直行 → 接近垂直短线；转弯 → 向转弯方向弯成弧/钩。近端（底/车端）粗、远端（顶/前方）细，像真往前延伸的路。
 //   位置：画布底部正中、AUTOSTEER 正上方，小巧。不再画左右两条路缘。
 let _curve = null; // 时间平滑后的曲线控制点（屏幕坐标），逐帧 lerp 逼近 target
 
@@ -228,43 +237,67 @@ function drawRoutePreview(pts) {
   _curve.bendMid += (targetBendMid - _curve.bendMid) * k;
 
   // 3) 由平滑后的弯曲量构造一条 quadratic bezier 单线（底→顶）。
-  //    线小巧：高度占画布约 84%，水平摆幅按 bend 缩放。
+  //    近端（底/车端）粗、远端（顶/前方）细：透视延伸纵深感。
   const cx = routeW * 0.5;
   const yBottom = routeH - 2;
-  const lineH = routeH * 0.84;
-  const yTop = yBottom - lineH;
+  const lineH = routeH * 0.92;
   // 横向摆幅基准：以画布宽的一部分为满偏（钩越急、偏越大）。
-  const sway = routeW * 0.30;
-  const xTop = cx + _curve.bend * sway;
-  // 控制点用中段弯曲量，做出「钩」的内凹/外凸感。
-  const yCtrl = yBottom - lineH * 0.55;
-  const xCtrl = cx + _curve.bendMid * sway * 0.9;
+  const sway = routeW * 0.32;
   // 长度随转向幅度略变：弯急时略短（更聚成钩）。
   const reach = 1 - Math.min(0.18, Math.abs(_curve.bend) * 0.14);
   const yTopR = yBottom - lineH * reach;
   const xTopR = cx + _curve.bend * sway * reach;
+  // 控制点用中段弯曲量，做出「钩」的内凹/外凸感。
+  const yCtrl = yBottom - lineH * 0.55;
+  const xCtrl = cx + _curve.bendMid * sway * 0.9;
+
+  // 贝塞尔取点：t=0 在车端（底），t=1 在远端（顶）。沿曲线分段画，
+  // 每段 lineWidth 从底到顶递减 → 近粗远细的透视收窄。
+  const SEG = 22;
+  const pt = (t) => {
+    const it = 1 - t;
+    const x = it * it * cx + 2 * it * t * xCtrl + t * t * xTopR;
+    const y = it * it * yBottom + 2 * it * t * yCtrl + t * t * yTopR;
+    return { x, y };
+  };
+  // 宽度曲线：近端（t=0）粗 wNear、远端（t=1）细 wFar。随画布尺寸缩放。
+  const wNear = Math.max(6, routeW * 0.20);
+  const wFar = Math.max(1.4, routeW * 0.045);
+  const widthAt = (t) => wNear + (wFar - wNear) * Math.pow(t, 0.82);
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // 柔光底层：更宽更淡的同色 glow（柔光晕，不是硬边）。
-  ctx.beginPath();
-  ctx.moveTo(cx, yBottom);
-  ctx.quadraticCurveTo(xCtrl, yCtrl, xTopR, yTopR);
-  ctx.strokeStyle = 'rgba(206,232,255,0.22)';
-  ctx.lineWidth = 16;
+  // 柔光底层：更宽更淡的同色 glow（同样近粗远细）。
   ctx.shadowColor = 'rgba(180,215,255,0.55)';
-  ctx.shadowBlur = 14;
-  ctx.stroke();
-  // 主线：冷白、有粗度、圆头、半透明亮但不刺眼。
-  ctx.beginPath();
-  ctx.moveTo(cx, yBottom);
-  ctx.quadraticCurveTo(xCtrl, yCtrl, xTopR, yTopR);
-  ctx.strokeStyle = 'rgba(232,244,255,0.92)';
-  ctx.lineWidth = 7;
+  ctx.shadowBlur = 13;
+  for (let i = 0; i < SEG; i++) {
+    const t0 = i / SEG, t1 = (i + 1) / SEG;
+    const a = pt(t0), bb = pt(t1);
+    const tm = (t0 + t1) * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(bb.x, bb.y);
+    ctx.strokeStyle = 'rgba(206,232,255,0.20)';
+    ctx.lineWidth = widthAt(tm) * 2.0;
+    ctx.stroke();
+  }
+  // 主线：冷白、近粗远细、圆头、半透明亮但不刺眼。
   ctx.shadowColor = 'rgba(190,222,255,0.65)';
-  ctx.shadowBlur = 8;
-  ctx.stroke();
+  ctx.shadowBlur = 7;
+  for (let i = 0; i < SEG; i++) {
+    const t0 = i / SEG, t1 = (i + 1) / SEG;
+    const a = pt(t0), bb = pt(t1);
+    const tm = (t0 + t1) * 0.5;
+    // 远端逐渐变淡，进一步强化向前延伸消失感。
+    const alpha = 0.92 - 0.34 * Math.pow(tm, 1.3);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(bb.x, bb.y);
+    ctx.strokeStyle = `rgba(232,244,255,${alpha.toFixed(3)})`;
+    ctx.lineWidth = widthAt(tm);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
