@@ -33,9 +33,9 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
     background:linear-gradient(90deg,transparent,var(--hmi-glass-bandEdge),transparent);
     pointer-events:none;box-shadow:0 0 8px var(--hmi-glass-bandEdge)}
   #${ROOT_ID} .hmi-grp{display:flex;flex-direction:column;justify-content:flex-end;text-shadow:0 1px 12px rgba(0,0,0,.40)}
-  #${ROOT_ID} .hmi-left{flex:0 0 30%;align-items:flex-start;text-align:left;gap:clamp(2px,0.4vmin,6px);min-width:0}
-  #${ROOT_ID} .hmi-mid{flex:1 1 38%;align-items:center;text-align:center;justify-content:flex-end;gap:clamp(3px,0.5vmin,7px);min-width:0}
-  #${ROOT_ID} .hmi-right{flex:0 0 31%;align-items:flex-end;text-align:right;gap:clamp(2px,0.4vmin,5px);min-width:0}
+  #${ROOT_ID} .hmi-left{flex:0 1 auto;align-items:flex-start;text-align:left;gap:clamp(2px,0.4vmin,6px);min-width:0;white-space:nowrap}
+  #${ROOT_ID} .hmi-mid{flex:1 1 auto;align-items:center;text-align:center;justify-content:flex-end;gap:clamp(3px,0.5vmin,7px);min-width:0;overflow:hidden}
+  #${ROOT_ID} .hmi-right{flex:0 1 auto;align-items:flex-end;text-align:right;gap:clamp(2px,0.4vmin,5px);min-width:0;white-space:nowrap}
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
   /* 左：Energy / Range 模块 */
