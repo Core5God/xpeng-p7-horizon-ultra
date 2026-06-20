@@ -31,7 +31,8 @@ const STYLE = `
     display:flex;align-items:flex-end;justify-content:space-between;gap:clamp(12px,2vw,46px);
     padding:0 clamp(8px,1.4vw,26px) clamp(14px,2vh,28px);
     box-sizing:border-box;
-    perspective:clamp(900px,90vw,1280px);perspective-origin:50% 60%}
+    /* 透视收紧（900→700~900）让左右两翼卷曲/拱形更明显的座舱曲面感。 */
+    perspective:clamp(700px,62vw,900px);perspective-origin:50% 64%}
 
   /* 信息岛通用：裸字浮在画面，靠位置/字距与极轻 text-shadow 保证可读。 */
   #${ROOT_ID} .hmi-island{position:relative;display:flex;flex-direction:column;
@@ -42,14 +43,14 @@ const STYLE = `
   #${ROOT_ID} .hmi-island.glass{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;border:none;box-shadow:none}
   /* 左块：绕内侧（右缘）竖轴 rotateY 正角 → 左缘朝里卷，曲面左翼。垂直上抬（下拱弧两端高）。 */
   #${ROOT_ID} .hmi-left{align-items:flex-start;text-align:left;flex:0 0 auto;min-width:0;white-space:nowrap;
-    transform-origin:right center;transform:translateY(-26%) rotateY(24deg)}
+    transform-origin:right center;transform:translateY(-66%) rotateY(38deg)}
   /* 中块：下拱弧最低点，不上抬。 */
   #${ROOT_ID} .hmi-mid{align-items:center;text-align:center;flex:0 1 auto;min-width:0;
-    max-width:min(34vw,420px);margin:0 clamp(8px,1.6vw,32px);
+    max-width:min(38vw,480px);margin:0 clamp(8px,1.6vw,32px);
     transform-origin:center center;transform:translateY(0) rotateY(0deg)}
   /* 右块：绕内侧（左缘）竖轴 rotateY 负角 → 右缘朝里卷，曲面右翼（与左对称）。垂直上抬。 */
   #${ROOT_ID} .hmi-right{align-items:flex-end;text-align:right;flex:0 0 auto;min-width:0;white-space:nowrap;
-    transform-origin:left center;transform:translateY(-26%) rotateY(-24deg)}
+    transform-origin:left center;transform:translateY(-66%) rotateY(-38deg)}
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.24em;
     text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
@@ -75,9 +76,11 @@ const STYLE = `
   /* 中：slowroads 式真实路线预览（按前方道路点折线） + AUTOSTEER。需足够高才能读出弯道。 */
   /* 中：slowroads 式真实路线预览 + AUTOSTEER。直接画前方道路点折线，需足够高才能看出弯道。 */
   #${ROOT_ID} .hmi-route-wrap{position:relative;
-    width:clamp(56px,8vw,108px);
-    height:clamp(64px,11vmin,128px);display:flex;align-items:flex-end;justify-content:center}
-  #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%}
+    /* 加宽 + 明确 overflow:visible，保证大弯曲线不被容器裁切。 */
+    width:clamp(88px,12vw,168px);
+    height:clamp(64px,11vmin,128px);display:flex;align-items:flex-end;justify-content:center;
+    overflow:visible}
+  #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%;overflow:visible}
   #${ROOT_ID} .hmi-assist{display:flex;align-items:center;justify-content:center;gap:.6em;line-height:1;margin-top:clamp(2px,0.4vh,6px)}
   #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;background:var(--hmi-text-tertiary);box-shadow:0 0 5px rgba(255,255,255,.18)}
   #${ROOT_ID} .hmi-auto-state{font-size:var(--hmi-scale-labelTiny);font-weight:600;letter-spacing:.30em;text-transform:uppercase;color:var(--hmi-text-tertiary);transition:color var(--hmi-motion-normal)}
@@ -251,20 +254,37 @@ function drawRoutePreview(pts) {
   if (!fwd || fwd.length < 2) return;
 
   // 2) 投影：z(前向米) → 纵向（近端底、远端顶，远端非线性压缩近大远小）；x(横向米) → 横向偏移。
+  //   车位点固定锦定在画布底部正中 (cx, yBottom)：不随 sp[0] 横向漂移。
+  //   路线近端起点也对齐到该固定底点 → 把所有点的横向减去首点横向(x0)，
+  //   这样近端均为 (cx,yBottom)，远端按真实道路弯——车点永远不动，路在它前方弯。
   const cx = routeW * 0.5;
   const yBottom = routeH - 2;     // 车端（近）在底
   const yTop = routeH * 0.05;     // 远端可达到的最高位置
   const usableH = yBottom - yTop;
   const zMax = ROUTE_FORWARD_M;   // 投影归一化用的最大前向距离
-  // 横向比例：把「横向米」按可视半宽映射到画布宽的一部分（克制，避免甩出画布）。
-  const xScale = (routeW * 0.46) / Math.max(3, ROUTE_HALF_W_M * 2.2);
+  const x0 = fwd[0].x;            // 首点横向 → 整体平移到中心，车点锦定底部正中
+  // 横向比例：先用克制基准值，再根据本帧最弯极值自适应压缩进画布。
+  const xScaleBase = (routeW * 0.46) / Math.max(3, ROUTE_HALF_W_M * 2.2);
+  // 可用半宽（留 dot 余量）：曲线最大横向偏移不超过这个像素半宽。
+  const halfAvail = routeW * 0.5 - Math.max(4, routeW * 0.06);
+  // 远端透视收窄因子（与 project 一致）：(1 - 0.18*zNorm)。
+  const persp = (p) => 1 - 0.18 * Math.min(1, p.z / zMax);
+  // 先算这批点在 base 比例下的最大绝对横向偏移（含透视收窄）。
+  let maxAbs = 0;
+  for (let i = 0; i < fwd.length; i++) {
+    const off = Math.abs((fwd[i].x - x0) * xScaleBase * persp(fwd[i]));
+    if (off > maxAbs) maxAbs = off;
+  }
+  // 自适应：若最弯点超出可视半宽，等比压缩 xScale 让它刚好落进画布（大弯不被截断、不甩出）。
+  const fit = maxAbs > halfAvail ? (halfAvail / maxAbs) : 1;
+  const xScale = xScaleBase * fit;
   // 远端纵向压缩：zNorm^0.62 让近段占更多纵向像素（近大远远小）。
   const project = (p) => {
     const zNorm = Math.min(1, p.z / zMax);
     const yt = Math.pow(zNorm, 0.62);            // 0(底)→1(顶)
     const y = yBottom - usableH * yt;
-    // 横向偏移随距离略收（远端透视收窄）：乘 (1 - 0.18*zNorm)。
-    const x = cx + p.x * xScale * (1 - 0.18 * zNorm);
+    // 横向偏移相对首点平移到中心；随距离略收（远端透视收窄）。
+    const x = cx + (p.x - x0) * xScale * (1 - 0.18 * zNorm);
     return { x, y, zNorm };
   };
   const sp = fwd.map(project);
@@ -307,15 +327,16 @@ function drawRoutePreview(pts) {
   }
   ctx.restore();
 
-  // 3) 车辆位置点：底部近端一个小空心描边圆（中间挖空），路线从此处往前延伸。
-  const car = sp[0];
+  // 3) 车辆位置点：固定锦定在画布底部正中 (cx, yBottom)，永不漂移。
+  //   不用 sp[0]（会随道路弯曲/采样横向漂移）；路线从此固定点往前延伸。
   ctx.save();
   const rDot = Math.max(3.2, routeW * 0.05);
+  const carX = cx, carY = yBottom;
   ctx.shadowColor = 'rgba(190,222,255,0.6)';
   ctx.shadowBlur = 6;
   // 描边环
   ctx.beginPath();
-  ctx.arc(car.x, car.y, rDot, 0, Math.PI * 2);
+  ctx.arc(carX, carY, rDot, 0, Math.PI * 2);
   ctx.lineWidth = Math.max(1.6, rDot * 0.42);
   ctx.strokeStyle = 'rgba(232,244,255,0.95)';
   ctx.stroke();
@@ -323,7 +344,7 @@ function drawRoutePreview(pts) {
   ctx.shadowBlur = 0;
   ctx.globalCompositeOperation = 'destination-out';
   ctx.beginPath();
-  ctx.arc(car.x, car.y, Math.max(1, rDot - ctx.lineWidth * 0.62), 0, Math.PI * 2);
+  ctx.arc(carX, carY, Math.max(1, rDot - ctx.lineWidth * 0.62), 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
