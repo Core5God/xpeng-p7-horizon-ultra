@@ -142,7 +142,7 @@ export function installHmiDrivingHud() {
   if (installed) return;
   if (typeof document === 'undefined') return;
   installed = true;
-  _smooth = null; _seeded = false; // 进驾驶态/首装：清空平滑点数组，让首个有效帧 snap 而非从竖线 lerp。
+  _smooth = null; _seeded = false; _scaleSmooth = null; // 进驾驶态/首装：清空平滑点数组与缩放平滑值，让首个有效帧 snap 而非从竖线/默认值 lerp。
   installHmiTokens();
 
   const style = document.createElement('style');
@@ -203,6 +203,7 @@ function resizeRouteCanvas() {
 //   底部加车辆位置点：小空心描边圆，路线从此点往前延伸（slowroads 那样）。
 let _smooth = null;   // 平滑后的车体相对点数组 [{x,z}]（与原始点一一对应）
 let _seeded = false;  // 是否已用首个有效帧种子化（首帧 snap，不从竖线 lerp）
+let _scaleSmooth = null; // 自适应缩放因子(fit)的低通平滑值；首帧 snap，避免线宽/弧度逐帧忽大忽小跳
 
 // 收集前向有效点（z≥0 且在可视距离内），按 z 升序（computeRoutePreview 已天然有序）。
 function collectForward(pts) {
@@ -233,7 +234,8 @@ function smoothPoints(target) {
     _smooth = target.map((p) => ({ x: p.x, z: p.z }));
     return _smooth;
   }
-  const k = 0.20;
+  // k 偏低更稳（跳动明显减少）；大跳变已在上面直接 snap，这里只做日常平顺跟随。
+  const k = 0.12;
   for (let i = 0; i < target.length; i++) {
     _smooth[i].x += (target[i].x - _smooth[i].x) * k;
     _smooth[i].z += (target[i].z - _smooth[i].z) * k;
@@ -276,7 +278,11 @@ function drawRoutePreview(pts) {
     if (off > maxAbs) maxAbs = off;
   }
   // 自适应：若最弯点超出可视半宽，等比压缩 xScale 让它刚好落进画布（大弯不被截断、不甩出）。
-  const fit = maxAbs > halfAvail ? (halfAvail / maxAbs) : 1;
+  const targetFit = maxAbs > halfAvail ? (halfAvail / maxAbs) : 1;
+  // 对 fit 做时间低通平滑：避免每帧重算让线宽/弧度逐帧跳。首帧直接 snap（不从 1 慢收）。
+  if (_scaleSmooth == null) _scaleSmooth = targetFit;
+  else _scaleSmooth += (targetFit - _scaleSmooth) * 0.12;
+  const fit = _scaleSmooth;
   const xScale = xScaleBase * fit;
   // 远端纵向压缩：zNorm^0.62 让近段占更多纵向像素（近大远远小）。
   const project = (p) => {

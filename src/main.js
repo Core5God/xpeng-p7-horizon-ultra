@@ -20,6 +20,9 @@ import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
 //   转成车辆相对坐标（减 state.pos / 按 -state.heading 旋转）。
 // 输出 [{x, z}, ...]，环线取模 NS。不动 world.js、不接 autosteer、不做路径规划。
 const _routeOut = [];
+// 最近点 index 迟滞：缓存上一帧起点 index，避免 nearest 在两个采样点间反复横跳导致路线整体抖。
+// 只有当新候选点比「沿用上一帧 index」明显更近（距离差超过 HYST_M）时才切换，否则沿用，保证起点逐帧连续。
+let _prevBi = -1;
 function computeRoutePreview(pos, heading) {
   if (!samples || !samples.length) return null;
   let bi = -1;
@@ -36,7 +39,23 @@ function computeRoutePreview(pos, heading) {
       if (d2 < best) { best = d2; bi = i; }
     }
   }
-  if (bi < 0) return null;
+  if (bi < 0) { _prevBi = -1; return null; }
+  // —— 起点 index 迟滞 ——
+  // 若上一帧 index 仍有效且与新候选相距很近（环线意义上 ≤ 2 个采样格），
+  // 则比较两者到车的真实距离：只有新候选明显更近（差 > HYST_M 米）才切换，否则沿用上一帧 index。
+  // 这样起点不会在相邻采样点之间来回横跳，路线整体逐帧连续。
+  if (_prevBi >= 0 && _prevBi < NS) {
+    let gap = Math.abs(bi - _prevBi);
+    gap = Math.min(gap, NS - gap); // 环线最短间隔
+    if (gap <= 2) {
+      const HYST_M = 1.2; // 迟滞阈值（米）：新点需比旧点近这么多才切换
+      const sp0 = samples[_prevBi], sp1 = samples[bi];
+      const dPrev = Math.hypot(sp0.x - pos.x, sp0.z - pos.z);
+      const dNew = Math.hypot(sp1.x - pos.x, sp1.z - pos.z);
+      if (dPrev - dNew <= HYST_M) bi = _prevBi; // 没明显更近 → 沿用旧 index
+    }
+  }
+  _prevBi = bi;
   const cosH = Math.cos(heading), sinH = Math.sin(heading);
   // 车辆坐标系（约定见 vehicle.js:328）：forward = (sin h, cos h)、LEFT = (cos h, -sin h) ⇒ RIGHT = (-cos h, sin h)。
   // lx = RIGHT 偏移（右为正，配合 HUD mapPt 右映射）、lz = forward 距离。
