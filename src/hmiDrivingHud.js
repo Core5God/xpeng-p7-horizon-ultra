@@ -3,7 +3,7 @@
 // 用 PR3.1 的 HMI design tokens（:root CSS 变量 --hmi-*）。
 //   · 左下角：大数字 里程 + 小字 KILOMETERS
 //   · 底部中心：弧形 Road Preview 发光占位 + 下方小字 AUTOSTEER + 状态字（本轮恒 OFF 占位）
-//   · 右下角：大数字 时速 + 小字 KILOMETERS PER HOUR + 置灰锁图标（限速/锁速占位，不接逻辑）
+//   · 右下角：大数字 时速 + 小字 KILOMETERS PER HOUR + 档位(D/N/R) + 置灰锁图标（限速/锁速占位，不接逻辑）
 // 数据接入：迁移自原 index.html 内联 srhud（#srDist/#srSpeed/#srAuto）。
 // 本模块负责 注入 DOM + 每帧 update(speedKmh, distanceM, racePhase)。
 // 不做 autosteer 真功能、不接物理、不接键、不动小地图、不动世界资产。
@@ -13,6 +13,7 @@ import { installHmiTokens } from './hmiTokens.js';
 let installed = false;
 let elDistNum = null;
 let elSpeedNum = null;
+let elGear = null;
 let elAutoState = null;
 
 const ROOT_ID = 'hmi-driving-hud';
@@ -37,11 +38,14 @@ const STYLE = `
   #${ROOT_ID} .hmi-dist{bottom:clamp(26px,3.2vmin,64px);left:clamp(150px,12vmin,260px);
     align-items:flex-start;text-align:left}
 
-  /* 右下：时速 + 锁图标占位 */
+  /* 右下：时速 + 档位 + 锁图标占位 */
   #${ROOT_ID} .hmi-speed{bottom:clamp(26px,3.2vmin,64px);right:clamp(40px,4vmin,90px);
     align-items:flex-end;text-align:right}
   #${ROOT_ID} .hmi-speed .hmi-label{display:inline-flex;align-items:center;justify-content:flex-end;gap:.6em}
   #${ROOT_ID} .hmi-lock{color:var(--hmi-text-tertiary);flex:0 0 auto}
+  #${ROOT_ID} .hmi-gear{font-size:var(--hmi-scale-small);font-weight:500;
+    letter-spacing:.32em;text-transform:uppercase;color:var(--hmi-text-secondary);
+    font-variant-numeric:tabular-nums;margin-top:clamp(3px,0.4vmin,7px)}
 
   /* 底部居中：弧形 Road Preview 占位 + AUTOSTEER 状态位 */
   #${ROOT_ID} .hmi-auto{bottom:clamp(20px,2.4vmin,52px);left:50%;transform:translateX(-50%);
@@ -61,6 +65,7 @@ const MARKUP = `
   <div class="hmi-slot hmi-speed">
     <div class="hmi-num" id="hmiSpeedNum">0</div>
     <div class="hmi-label">KILOMETERS PER HOUR<svg class="hmi-lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4.4 7V5.2a3.6 3.6 0 0 1 7.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.3" y="7" width="9.4" height="6.4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></div>
+    <div class="hmi-gear" id="hmiGear">N</div>
   </div>
   <div class="hmi-slot hmi-auto">
     <svg class="hmi-arc" viewBox="0 0 40 64" width="38" height="60" aria-hidden="true"><path d="M20 56 C20 40 14 34 22 18 C25 12 24 9 22 7" fill="none" stroke="url(#hmiArcG)" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="57" r="2.6" fill="#fff"/><defs><linearGradient id="hmiArcG" x1="0" y1="64" x2="0" y2="0"><stop offset="0" stop-color="rgba(255,255,255,.95)"/><stop offset="1" stop-color="rgba(255,255,255,.15)"/></linearGradient></defs></svg>
@@ -88,15 +93,23 @@ export function installHmiDrivingHud() {
 
   elDistNum = root.querySelector('#hmiDistNum');
   elSpeedNum = root.querySelector('#hmiSpeedNum');
+  elGear = root.querySelector('#hmiGear');
   elAutoState = root.querySelector('#hmiAutoState');
 }
 
-// 每帧调用：speedKmh 时速(km/h)、distanceM 里程(米)、racePhase 当前竞速阶段(占位预留)。
+// 每帧调用：speedKmh 时速(km/h)、distanceM 里程(米)、racePhase 当前竞速阶段(占位预留)、
+//   speedMs 原始带符号车速(m/s,来自 state.speed)用于推出档位 D/N/R。
 // 本轮 autosteer 状态恒为 OFF 占位，不做真功能。
-export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free') {
+export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', speedMs = null) {
   if (!installed) return;
   if (elDistNum) elDistNum.textContent = ((distanceM || 0) / 1000).toFixed(1);
   if (elSpeedNum) elSpeedNum.textContent = Math.round(speedKmh || 0);
+  // 档位由带符号车速推出（与 main.js elGear 同口径）：倒车 R / 近静止 N / 前进 D。
+  if (elGear) {
+    const v = speedMs == null ? (speedKmh || 0) / 3.6 : speedMs;
+    const gear = v < -0.5 ? 'R' : (Math.abs(v) < 0.5 ? 'N' : 'D');
+    if (elGear.textContent !== gear) elGear.textContent = gear;
+  }
   // 状态位占位：本轮恒 OFF（不接物理/键/逻辑）。racePhase 参数预留给后续阶段。
   if (elAutoState && elAutoState.textContent !== 'OFF') elAutoState.textContent = 'OFF';
 }
