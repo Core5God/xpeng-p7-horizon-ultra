@@ -18,13 +18,12 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
     transform:translateX(-50%) perspective(1500px) rotateX(3.2deg);
     transform-origin:50% 100%;
     display:flex;align-items:stretch;
-    padding:clamp(10px,1.4vmin,22px) clamp(36px,5vw,84px) clamp(10px,1.2vmin,18px);
+    padding:clamp(10px,1.4vmin,22px) clamp(18px,2.4vw,40px) clamp(10px,1.2vmin,18px);
     background:linear-gradient(180deg,rgba(20,26,34,.06) 0%,var(--hmi-glass-bandBg) 38%,var(--hmi-glass-bandBg) 100%);
     border-radius:var(--hmi-glass-bandRadius) var(--hmi-glass-bandRadius) 0 0;
     -webkit-backdrop-filter:blur(var(--hmi-glass-bandBlur)) saturate(118%);
     backdrop-filter:blur(var(--hmi-glass-bandBlur)) saturate(118%);
-    -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
-    mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+    /* 不再对整个 band 加 mask（会裁切两端文字）；边缘虚化靠圆角 + 阴影。 */
     box-shadow:0 -10px 50px var(--hmi-glass-bandGlow),0 -2px 22px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.04)}
   #${ROOT_ID} .hmi-band::before{content:'';position:absolute;left:14%;right:14%;top:0;height:1px;
     background:linear-gradient(90deg,transparent,var(--hmi-glass-bandHairline),transparent);
@@ -34,9 +33,9 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
     background:linear-gradient(90deg,transparent,var(--hmi-glass-bandEdge),transparent);
     pointer-events:none;box-shadow:0 0 8px var(--hmi-glass-bandEdge)}
   #${ROOT_ID} .hmi-grp{display:flex;flex-direction:column;justify-content:flex-end;text-shadow:0 1px 12px rgba(0,0,0,.40)}
-  #${ROOT_ID} .hmi-left{flex:0 0 30%;align-items:flex-start;text-align:left;gap:clamp(2px,0.4vmin,6px)}
-  #${ROOT_ID} .hmi-mid{flex:1 1 40%;align-items:center;text-align:center;justify-content:flex-end;gap:clamp(3px,0.5vmin,7px);min-width:0}
-  #${ROOT_ID} .hmi-right{flex:0 0 30%;align-items:flex-end;text-align:right;gap:clamp(2px,0.4vmin,5px)}
+  #${ROOT_ID} .hmi-left{flex:0 0 30%;align-items:flex-start;text-align:left;gap:clamp(2px,0.4vmin,6px);min-width:0}
+  #${ROOT_ID} .hmi-mid{flex:1 1 38%;align-items:center;text-align:center;justify-content:flex-end;gap:clamp(3px,0.5vmin,7px);min-width:0}
+  #${ROOT_ID} .hmi-right{flex:0 0 31%;align-items:flex-end;text-align:right;gap:clamp(2px,0.4vmin,5px);min-width:0}
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
   /* 左：Energy / Range 模块 */
@@ -63,7 +62,7 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
   #${ROOT_ID} .hmi-bar-ticks span:first-child,#${ROOT_ID} .hmi-bar-ticks span:last-child{background:transparent}
   #${ROOT_ID} .hmi-trip{display:inline-flex;align-items:baseline;gap:.45em;
     font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
-    color:var(--hmi-text-secondary);font-variant-numeric:tabular-nums;margin-top:clamp(3px,0.4vmin,6px)}
+    color:var(--hmi-text-secondary);font-variant-numeric:tabular-nums;margin-top:clamp(3px,0.4vmin,6px);white-space:nowrap}
   #${ROOT_ID} .hmi-trip .v{color:var(--hmi-text-primary);font-weight:600;letter-spacing:.04em;font-size:1.18em}
   #${ROOT_ID} .hmi-trip .u{color:var(--hmi-text-tertiary);font-size:.86em}
   /* 中：Route preview canvas + AUTOSTEER */
@@ -80,7 +79,7 @@ const STYLE = `  #${ROOT_ID}{position:fixed;inset:0;z-index:11;pointer-events:no
     color:var(--hmi-text-primary);font-variant-numeric:tabular-nums;letter-spacing:-.01em;
     text-shadow:0 0 18px var(--hmi-glass-bandGlow),0 1px 14px rgba(0,0,0,.42)}
   #${ROOT_ID} .hmi-speed-side{display:flex;flex-direction:column;align-items:flex-end;gap:clamp(4px,0.6vmin,8px);padding-bottom:clamp(4px,0.6vmin,9px)}
-  #${ROOT_ID} .hmi-speed-label{display:inline-flex;align-items:center;gap:.6em;font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
+  #${ROOT_ID} .hmi-speed-label{display:inline-flex;align-items:center;gap:.6em;font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1;white-space:nowrap}
   #${ROOT_ID} .hmi-lock{color:var(--hmi-text-tertiary);flex:0 0 auto;opacity:.55}
   #${ROOT_ID} .hmi-gear{display:inline-flex;align-items:center;justify-content:center;
     min-width:clamp(28px,2.4vw,42px);padding:.18em .7em;
