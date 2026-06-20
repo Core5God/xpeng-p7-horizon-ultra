@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "shot": "node scripts/headless-shot.mjs"
   },
   "dependencies": {
     "three": "0.169.0"
   },
   "devDependencies": {
     "vite": "^5.4.0",
-    "@dgreenheck/ez-tree": "1.1.0"
+    "@dgreenheck/ez-tree": "1.1.0",
+    "playwright": "^1.61.0"
   }
 }
