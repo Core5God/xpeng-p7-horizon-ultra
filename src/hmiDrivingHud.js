@@ -2,9 +2,12 @@
 // 曲面座舱 HMI：左右两侧内容做透视斜切（rotateY），像环绕屏的两翼向中间环抱。
 //   - dock 居中有最大宽度，左右信息整体往中间收（不贴屏幕边缘，4K 不拉太开）。
 //   - 左右块绕内侧竖轴 rotateY 卷向观察者 → 曲面屏质感来源；中部基本正对。
+//   - 左中右三块垂直位置沿一条「下凹弧线」排布（两端高、中间低）→ 下拱曲面座舱感。
 //   - 自适应用稳健 clamp/vmin，保证 1080 / 1440 / 2160 三档完整可见不裁切不溢出。
-//   - 中部路线：单条弯钩柔光线，近端粗、远端细的透视渐变收窄，营造往前延伸纵深感。
-//   - 底部贴底弧光保留为座舱基线。只改 UI/HMI；不接 autosteer 真功能；电量/续航静态占位。
+//   - 中部路线：直接用 main.js 传入的真实前方道路点数组投影成折线/平滑曲线，
+//     前方真有弯就真的弯；近端粗、远端细+渐弱的透视收窄；底部加车辆位置空心圆点。
+//   - 已移除底部独立弧光（多余）；曲面感改由左右信息下拱排布表达。
+//     只改 UI/HMI；不接 autosteer 真功能；电量/续航静态占位。
 import { installHmiTokens } from './hmiTokens.js';
 let installed = false;
 let elSpeedNum = null, elGear = null, elAutoState = null;
@@ -20,20 +23,15 @@ const STYLE = `
   body.drive #${ROOT_ID}{display:block}
 
   /* 底部 UI 容器：居中有最大宽度，左右信息往中间收。透视舰在 dock 上给左右块做 3D rotateY。
-     高度用 vmin 防止 4K 下过高、窄屏下过矮；最大宽 width:min(1500px,84vw)。 */
+     高度用 vmin 防止 4K 下过高、窄屏下过矮；最大宽 width:min(1500px,84vw)。
+     align-items:flex-end 为基准，再由各块 translateY 拗出下拱弧（两端高、中间低）。 */
   #${ROOT_ID} .hmi-dock{position:fixed;left:50%;bottom:0;transform:translateX(-50%);
     width:min(1500px,84vw);
-    height:clamp(96px,13vmin,156px);
+    height:clamp(112px,15vmin,184px);
     display:flex;align-items:flex-end;justify-content:space-between;gap:clamp(12px,2vw,46px);
     padding:0 clamp(8px,1.4vw,26px) clamp(14px,2vh,28px);
     box-sizing:border-box;
     perspective:clamp(900px,90vw,1280px);perspective-origin:50% 60%}
-
-  /* 贴底曲面弧光：座舱屏边质感。SVG 跨屏宽贴最底（保留全宽，让弧光包住居中 dock）。 */
-  #${ROOT_ID} .hmi-arc{position:fixed;left:0;right:0;bottom:0;
-    width:100%;height:clamp(96px,13vmin,156px);pointer-events:none;
-    overflow:visible}
-  #${ROOT_ID} .hmi-arc svg{display:block;width:100%;height:100%}
 
   /* 信息岛通用：裸字浮在画面，靠位置/字距与极轻 text-shadow 保证可读。 */
   #${ROOT_ID} .hmi-island{position:relative;display:flex;flex-direction:column;
@@ -42,15 +40,16 @@ const STYLE = `
     transform-style:preserve-3d;will-change:transform}
   /* 玻璃底已去除，.glass 仅保留为空钩子。 */
   #${ROOT_ID} .hmi-island.glass{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;border:none;box-shadow:none}
-  /* 左块：绕内侧（右缘）竖轴 rotateY 正角 → 左缘朝里卷，曲面左翼。 */
+  /* 左块：绕内侧（右缘）竖轴 rotateY 正角 → 左缘朝里卷，曲面左翼。垂直上抬（下拱弧两端高）。 */
   #${ROOT_ID} .hmi-left{align-items:flex-start;text-align:left;flex:0 0 auto;min-width:0;white-space:nowrap;
-    transform-origin:right center;transform:rotateY(24deg)}
+    transform-origin:right center;transform:translateY(-26%) rotateY(24deg)}
+  /* 中块：下拱弧最低点，不上抬。 */
   #${ROOT_ID} .hmi-mid{align-items:center;text-align:center;flex:0 1 auto;min-width:0;
     max-width:min(34vw,420px);margin:0 clamp(8px,1.6vw,32px);
-    transform-origin:center center;transform:rotateY(0deg)}
-  /* 右块：绕内侧（左缘）竖轴 rotateY 负角 → 右缘朝里卷，曲面右翼（与左对称）。 */
+    transform-origin:center center;transform:translateY(0) rotateY(0deg)}
+  /* 右块：绕内侧（左缘）竖轴 rotateY 负角 → 右缘朝里卷，曲面右翼（与左对称）。垂直上抬。 */
   #${ROOT_ID} .hmi-right{align-items:flex-end;text-align:right;flex:0 0 auto;min-width:0;white-space:nowrap;
-    transform-origin:left center;transform:rotateY(-24deg)}
+    transform-origin:left center;transform:translateY(-26%) rotateY(-24deg)}
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.24em;
     text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
@@ -73,10 +72,11 @@ const STYLE = `
   #${ROOT_ID} .hmi-range .tag{font-size:.5em;color:var(--hmi-text-tertiary);font-weight:600;letter-spacing:.24em;text-transform:uppercase}
   #${ROOT_ID} .hmi-range .u{font-size:.5em;color:var(--hmi-text-tertiary);font-weight:600;letter-spacing:.2em;text-transform:uppercase}
 
-  /* 中：slowroads 式单条弯钩光线 + AUTOSTEER。线小巧，宽约占屏 5-8%。 */
+  /* 中：slowroads 式真实路线预览（按前方道路点折线） + AUTOSTEER。需足够高才能读出弯道。 */
+  /* 中：slowroads 式真实路线预览 + AUTOSTEER。直接画前方道路点折线，需足够高才能看出弯道。 */
   #${ROOT_ID} .hmi-route-wrap{position:relative;
-    width:clamp(42px,6.5vw,84px);
-    height:clamp(52px,9vmin,104px);display:flex;align-items:flex-end;justify-content:center}
+    width:clamp(56px,8vw,108px);
+    height:clamp(64px,11vmin,128px);display:flex;align-items:flex-end;justify-content:center}
   #${ROOT_ID} .hmi-route{display:block;width:100%;height:100%}
   #${ROOT_ID} .hmi-assist{display:flex;align-items:center;justify-content:center;gap:.6em;line-height:1;margin-top:clamp(2px,0.4vh,6px)}
   #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;background:var(--hmi-text-tertiary);box-shadow:0 0 5px rgba(255,255,255,.18)}
@@ -104,25 +104,6 @@ const STYLE = `
 const SOC = 82;
 
 const MARKUP = `
-  <div class="hmi-arc">
-    <svg viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="hmiArcGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stop-color="rgba(196,228,255,0)"/>
-          <stop offset="0.18" stop-color="rgba(196,228,255,0.55)"/>
-          <stop offset="0.5" stop-color="rgba(220,240,255,0.62)"/>
-          <stop offset="0.82" stop-color="rgba(196,228,255,0.55)"/>
-          <stop offset="1" stop-color="rgba(196,228,255,0)"/>
-        </linearGradient>
-        <filter id="hmiArcBlur" x="-5%" y="-50%" width="110%" height="300%">
-          <feGaussianBlur stdDeviation="2.2"/>
-        </filter>
-      </defs>
-      <!-- 曲面座舱基线：更淡更细，不抢；先一条极淡柔光垫底，再一条发丝锐线。 -->
-      <path d="M0,86 Q500,112 1000,86" fill="none" stroke="rgba(130,185,255,0.16)" stroke-width="3" filter="url(#hmiArcBlur)" opacity="0.8"/>
-      <path d="M0,86 Q500,112 1000,86" fill="none" stroke="url(#hmiArcGrad)" stroke-width="0.9" opacity="0.7"/>
-    </svg>
-  </div>
   <div class="hmi-dock">
     <div class="hmi-island hmi-left">
       <div class="hmi-energy">
@@ -158,7 +139,7 @@ export function installHmiDrivingHud() {
   if (installed) return;
   if (typeof document === 'undefined') return;
   installed = true;
-  _curve = null; // 进驾驶态/首装：清空平滑曲线，让首个有效帧 snap 而非从竖线 lerp。
+  _smooth = null; _seeded = false; // 进驾驶态/首装：清空平滑点数组，让首个有效帧 snap 而非从竖线 lerp。
   installHmiTokens();
 
   const style = document.createElement('style');
@@ -210,32 +191,51 @@ function resizeRouteCanvas() {
   if (routeCtx) routeCtx.setTransform(routeDpr, 0, 0, routeDpr, 0, 0);
 }
 
-// slowroads 式单条「弯钩」光线 + 透视延伸：取车前方一段中心线，投影成一条近粗远细、圆头、带柔光的单线。
-//   直行 → 接近垂直短线；转弯 → 向转弯方向弯成弧/钩。近端（底/车端）粗、远端（顶/前方）细，像真往前延伸的路。
-//   位置：画布底部正中、AUTOSTEER 正上方，小巧。不再画左右两条路缘。
-let _curve = null; // 时间平滑后的曲线控制点（屏幕坐标），逐帧 lerp 逼近 target
+// slowroads 式真实路线预览：直接用 main.js 传入的「车前方道路中心线点数组」投影成屏幕折线/平滑曲线。
+//   每点 {x: 右为正(米), z: 前向距离(米)}，前向 0~120m。z → 屏幕纵向（近端在底、远端在顶，
+//   非线性压缩远端制造近大远小）；x → 屏幕横向偏移（按比例）。前方真有弯就真的弯，直道才直。
+//   线型沿用 slowroads：单条、近粗(~7-9px)远细(~2px) taper、圆头、冷白柔光、远端 alpha 渐弱。
+//   时间平滑作用到「每个投影点」（对点数组整体低通），不再压成 bend 标量。
+//   首屏不画竖棍：首个有效帧直接 snap（_seeded），无有效数据则跳过本帧。
+//   底部加车辆位置点：小空心描边圆，路线从此点往前延伸（slowroads 那样）。
+let _smooth = null;   // 平滑后的车体相对点数组 [{x,z}]（与原始点一一对应）
+let _seeded = false;  // 是否已用首个有效帧种子化（首帧 snap，不从竖线 lerp）
 
-// 把「车前方某段中心线」抽成 3 个特征点：近(底)/中/远(顶)，用其右偏移 x 决定弯钩方向与幅度。
-//   返回 {bend, reach}：bend = 归一化横向弯曲量（右为正），reach = 线条向上延伸比例。
-function sampleBend(pts) {
-  // 收集前向有效中心点（z>0），按 z 升序已天然有序。
+// 收集前向有效点（z≥0 且在可视距离内），按 z 升序（computeRoutePreview 已天然有序）。
+function collectForward(pts) {
+  if (!pts || !pts.length) return null;
   const fwd = [];
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    if (p.z < 0 || p.z > ROUTE_FORWARD_M + 6) continue;
-    fwd.push(p);
+    if (!p) continue;
+    if (p.z < -1 || p.z > ROUTE_FORWARD_M + 12) continue;
+    fwd.push({ x: p.x, z: Math.max(0, p.z) });
   }
   if (fwd.length < 2) return null;
-  // 远端参考点：取约 ROUTE_FORWARD_M 处（或最后一个）。用它相对前方距离的横向偏移定义弯钩。
-  const far = fwd[fwd.length - 1];
-  const mid = fwd[Math.floor((fwd.length - 1) * 0.5)];
-  // bend = 远端横向偏移 / 前向距离 → 越大越弯；夹紧到合理范围。
-  const denom = Math.max(8, far.z);
-  let bend = far.x / denom;            // 右为正
-  let bendMid = mid.x / Math.max(6, mid.z);
-  bend = Math.max(-1.4, Math.min(1.4, bend));
-  bendMid = Math.max(-1.4, Math.min(1.4, bendMid));
-  return { bend, bendMid };
+  return fwd;
+}
+
+// 时间平滑：把 target 点数组逐点 lerp 进 _smooth。点数变化或大跳变（瞬移/跳机位）直接 snap。
+function smoothPoints(target) {
+  if (!target) return _smooth; // 无新数据：沿用历史（中断帧不闪）
+  if (!_smooth || _smooth.length !== target.length || !_seeded) {
+    // 首个有效帧 / 点数变化：直接种子化，不从旧曲线慢慢 lerp（避免竖棍→曲线的滑动）。
+    _smooth = target.map((p) => ({ x: p.x, z: p.z }));
+    _seeded = true;
+    return _smooth;
+  }
+  // 大跳变检测：远端横向偏移突变 → snap。
+  const li = target.length - 1;
+  if (Math.abs(target[li].x - _smooth[li].x) > 6 || Math.abs(target[li].z - _smooth[li].z) > 18) {
+    _smooth = target.map((p) => ({ x: p.x, z: p.z }));
+    return _smooth;
+  }
+  const k = 0.20;
+  for (let i = 0; i < target.length; i++) {
+    _smooth[i].x += (target[i].x - _smooth[i].x) * k;
+    _smooth[i].z += (target[i].z - _smooth[i].z) * k;
+  }
+  return _smooth;
 }
 
 function drawRoutePreview(pts) {
@@ -245,88 +245,86 @@ function drawRoutePreview(pts) {
   const ctx = routeCtx;
   ctx.clearRect(0, 0, routeW, routeH);
 
-  // 1) 目标弯曲量（无有效数据时返回 null，不强行当直行）。
-  const b = pts ? sampleBend(pts) : null;
+  // 1) 取真实前方点 + 时间平滑（逐点低通）。无有效数据且无历史则跳过（不画竖棍）。
+  const target = collectForward(pts);
+  const fwd = smoothPoints(target);
+  if (!fwd || fwd.length < 2) return;
 
-  // 2) 时间平滑：首帧若还没有有效 target 就不画（避免从默认竖线 lerp 过去 → 初始竖棍）。
-  if (!b) {
-    // 已有历史曲线则按历史值画（堆路中断帧不闪）；完全没有则跳过本帧。
-    if (!_curve) return;
-  } else if (!_curve) {
-    // 首个有效帧：直接用真实 target 种子化 _curve（不从竖线默认 lerp）。
-    _curve = { bend: b.bend, bendMid: b.bendMid };
-  } else if (Math.abs(b.bend - _curve.bend) > 0.9 || Math.abs(b.bendMid - _curve.bendMid) > 0.9) {
-    // 跳机位/进驾驶态导致车辆瞬移 → target 大跳变：直接 snap，不慢慢 lerp（否则会看到竖棍→弯钩的滑动）。
-    _curve.bend = b.bend;
-    _curve.bendMid = b.bendMid;
-  } else {
-    const k = 0.18;
-    _curve.bend += (b.bend - _curve.bend) * k;
-    _curve.bendMid += (b.bendMid - _curve.bendMid) * k;
-  }
-
-  // 3) 由平滑后的弯曲量构造一条 quadratic bezier 单线（底→顶）。
-  //    近端（底/车端）粗、远端（顶/前方）细：透视延伸纵深感。
+  // 2) 投影：z(前向米) → 纵向（近端底、远端顶，远端非线性压缩近大远小）；x(横向米) → 横向偏移。
   const cx = routeW * 0.5;
-  const yBottom = routeH - 2;
-  const lineH = routeH * 0.92;
-  // 横向摆幅基准：以画布宽的一部分为满偏（钩越急、偏越大）。
-  const sway = routeW * 0.32;
-  // 长度随转向幅度略变：弯急时略短（更聚成钩）。
-  const reach = 1 - Math.min(0.18, Math.abs(_curve.bend) * 0.14);
-  const yTopR = yBottom - lineH * reach;
-  const xTopR = cx + _curve.bend * sway * reach;
-  // 控制点用中段弯曲量，做出「钩」的内凹/外凸感。
-  const yCtrl = yBottom - lineH * 0.55;
-  const xCtrl = cx + _curve.bendMid * sway * 0.9;
-
-  // 贝塞尔取点：t=0 在车端（底），t=1 在远端（顶）。沿曲线分段画，
-  // 每段 lineWidth 从底到顶递减 → 近粗远细的透视收窄。
-  const SEG = 22;
-  const pt = (t) => {
-    const it = 1 - t;
-    const x = it * it * cx + 2 * it * t * xCtrl + t * t * xTopR;
-    const y = it * it * yBottom + 2 * it * t * yCtrl + t * t * yTopR;
-    return { x, y };
+  const yBottom = routeH - 2;     // 车端（近）在底
+  const yTop = routeH * 0.05;     // 远端可达到的最高位置
+  const usableH = yBottom - yTop;
+  const zMax = ROUTE_FORWARD_M;   // 投影归一化用的最大前向距离
+  // 横向比例：把「横向米」按可视半宽映射到画布宽的一部分（克制，避免甩出画布）。
+  const xScale = (routeW * 0.46) / Math.max(3, ROUTE_HALF_W_M * 2.2);
+  // 远端纵向压缩：zNorm^0.62 让近段占更多纵向像素（近大远远小）。
+  const project = (p) => {
+    const zNorm = Math.min(1, p.z / zMax);
+    const yt = Math.pow(zNorm, 0.62);            // 0(底)→1(顶)
+    const y = yBottom - usableH * yt;
+    // 横向偏移随距离略收（远端透视收窄）：乘 (1 - 0.18*zNorm)。
+    const x = cx + p.x * xScale * (1 - 0.18 * zNorm);
+    return { x, y, zNorm };
   };
-  // 宽度曲线：近端（t=0）粗 wNear、远端（t=1）细 wFar。随画布尺寸缩放。
-  const wNear = Math.max(6, routeW * 0.20);
-  const wFar = Math.max(1.4, routeW * 0.045);
-  const widthAt = (t) => wNear + (wFar - wNear) * Math.pow(t, 0.82);
+  const sp = fwd.map(project);
 
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // 柔光底层：更宽更淡的同色 glow（同样近粗远细）。
-  ctx.shadowColor = 'rgba(180,215,255,0.55)';
-  ctx.shadowBlur = 13;
-  for (let i = 0; i < SEG; i++) {
-    const t0 = i / SEG, t1 = (i + 1) / SEG;
-    const a = pt(t0), bb = pt(t1);
-    const tm = (t0 + t1) * 0.5;
+
+  // 宽度：近端粗 wNear、远端细 wFar，按距离 taper。随画布尺寸缩放（目标近~7-9px、远~2px）。
+  const wNear = Math.max(7, routeW * 0.085);
+  const wFar = Math.max(2, routeW * 0.022);
+  const widthAt = (zNorm) => wNear + (wFar - wNear) * Math.pow(zNorm, 0.85);
+
+  // 柔光底层：更宽更淡的同色 glow。
+  ctx.shadowColor = 'rgba(180,215,255,0.5)';
+  ctx.shadowBlur = 12;
+  for (let i = 0; i < sp.length - 1; i++) {
+    const a = sp[i], b = sp[i + 1];
+    const zm = (a.zNorm + b.zNorm) * 0.5;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
-    ctx.lineTo(bb.x, bb.y);
-    ctx.strokeStyle = 'rgba(206,232,255,0.20)';
-    ctx.lineWidth = widthAt(tm) * 2.0;
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = 'rgba(206,232,255,0.18)';
+    ctx.lineWidth = widthAt(zm) * 1.9;
     ctx.stroke();
   }
-  // 主线：冷白、近粗远细、圆头、半透明亮但不刺眼。
-  ctx.shadowColor = 'rgba(190,222,255,0.65)';
-  ctx.shadowBlur = 7;
-  for (let i = 0; i < SEG; i++) {
-    const t0 = i / SEG, t1 = (i + 1) / SEG;
-    const a = pt(t0), bb = pt(t1);
-    const tm = (t0 + t1) * 0.5;
-    // 远端逐渐变淡，进一步强化向前延伸消失感。
-    const alpha = 0.92 - 0.34 * Math.pow(tm, 1.3);
+  // 主线：冷白、近粗远细、圆头、远端 alpha 渐弱。
+  ctx.shadowColor = 'rgba(190,222,255,0.62)';
+  ctx.shadowBlur = 6;
+  for (let i = 0; i < sp.length - 1; i++) {
+    const a = sp[i], b = sp[i + 1];
+    const zm = (a.zNorm + b.zNorm) * 0.5;
+    const alpha = 0.94 - 0.46 * Math.pow(zm, 1.25); // 远端渐弱
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
-    ctx.lineTo(bb.x, bb.y);
+    ctx.lineTo(b.x, b.y);
     ctx.strokeStyle = `rgba(232,244,255,${alpha.toFixed(3)})`;
-    ctx.lineWidth = widthAt(tm);
+    ctx.lineWidth = widthAt(zm);
     ctx.stroke();
   }
+  ctx.restore();
+
+  // 3) 车辆位置点：底部近端一个小空心描边圆（中间挖空），路线从此处往前延伸。
+  const car = sp[0];
+  ctx.save();
+  const rDot = Math.max(3.2, routeW * 0.05);
+  ctx.shadowColor = 'rgba(190,222,255,0.6)';
+  ctx.shadowBlur = 6;
+  // 描边环
+  ctx.beginPath();
+  ctx.arc(car.x, car.y, rDot, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(1.6, rDot * 0.42);
+  ctx.strokeStyle = 'rgba(232,244,255,0.95)';
+  ctx.stroke();
+  // 中心挖空（清掉环内，露出背景）
+  ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.arc(car.x, car.y, Math.max(1, rDot - ctx.lineWidth * 0.62), 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
