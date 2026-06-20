@@ -45,15 +45,41 @@ function computeRoutePreview(pos, heading) {
   const ndx = samples[nextI].x - pos.x, ndz = samples[nextI].z - pos.z;
   const nlz = ndx * sinH + ndz * cosH;
   const dirSign = nlz >= 0 ? 1 : -1;
+  // 按固定弧长间隔取点（不再按 sample index 直接跳），让点分布稳定、不随 index 跳变抖动。
+  // 沿主路方向累积真实弧长，每跨过 STEP_M 记一个中心点；取到 FORWARD_M 为止。
   _routeOut.length = 0;
-  const COUNT = 32;
-  for (let k = 0; k < COUNT; k++) {
-    const i = ((bi + dirSign * k) % NS + NS) % NS;
-    const s = samples[i];
-    const dx = s.x - pos.x, dz = s.z - pos.z;
-    const lx = dz * sinH - dx * cosH; // RIGHT 投影（右为正）
-    const lz = dx * sinH + dz * cosH;
-    _routeOut.push({ x: lx, z: lz });
+  const STEP_M = 6;        // 固定取点间隔（米）
+  const FORWARD_M = 120;   // 前向总距离（米）
+  const COUNT = Math.floor(FORWARD_M / STEP_M) + 1;
+  let acc = 0;             // 已累积弧长
+  let nextMark = 0;        // 下一个记点弧长阈值
+  // 先把车体处（acc=0）这个点放进去，保证近端贴车。
+  {
+    const s0 = samples[bi];
+    const dx = s0.x - pos.x, dz = s0.z - pos.z;
+    _routeOut.push({ x: dz * sinH - dx * cosH, z: dx * sinH + dz * cosH });
+    nextMark = STEP_M;
+  }
+  // 沿路径前进，逐段累积弧长，按固定间隔插值取点。
+  let guard = NS; // 防止环线死循环
+  let idx = bi;
+  while (_routeOut.length < COUNT && guard-- > 0) {
+    const ni = ((idx + dirSign) % NS + NS) % NS;
+    const a = samples[idx], b = samples[ni];
+    const segLen = Math.hypot(b.x - a.x, b.z - a.z);
+    if (segLen > 1e-4) {
+      // 当前段覆盖 [acc, acc+segLen]，记下落在该段内的所有固定弧长标记点。
+      while (nextMark <= acc + segLen && _routeOut.length < COUNT) {
+        const f = (nextMark - acc) / segLen;
+        const sx = a.x + (b.x - a.x) * f;
+        const sz = a.z + (b.z - a.z) * f;
+        const dx = sx - pos.x, dz = sz - pos.z;
+        _routeOut.push({ x: dz * sinH - dx * cosH, z: dx * sinH + dz * cosH });
+        nextMark += STEP_M;
+      }
+      acc += segLen;
+    }
+    idx = ni;
   }
   return _routeOut;
 }
