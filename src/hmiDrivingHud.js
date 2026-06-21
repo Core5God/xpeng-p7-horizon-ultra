@@ -96,12 +96,13 @@ const STYLE = `
   #${ROOT_ID} .hmi-auto-dot{width:5px;height:5px;border-radius:50%;background:var(--hmi-text-tertiary);box-shadow:0 0 5px rgba(255,255,255,.18)}
   #${ROOT_ID} .hmi-auto-state{font-size:var(--hmi-scale-labelTiny);font-weight:600;letter-spacing:.30em;text-transform:uppercase;color:var(--hmi-text-tertiary);transition:color var(--hmi-motion-normal)}
 
-  /* 右：Speed + Gear pill */
-  #${ROOT_ID} .hmi-speed{display:flex;align-items:baseline;gap:clamp(6px,0.7vw,14px);justify-content:flex-end}
+  /* 右：Speed + Gear pill。数字加大后(20260621)：speed-side 拉开两标签间距与底部内边距，
+     让 KM/H + 挡位 D 在更高的大数字旁顺基线均衡排布，不贴顶/不碎。 */
+  #${ROOT_ID} .hmi-speed{display:flex;align-items:baseline;gap:clamp(8px,0.9vw,18px);justify-content:flex-end}
   #${ROOT_ID} .hmi-speed-num{font-size:var(--hmi-scale-speedNum);font-weight:200;line-height:.92;
     color:var(--hmi-text-primary);font-variant-numeric:tabular-nums;letter-spacing:-.01em;
     text-shadow:0 0 16px var(--hmi-glass-arcGlow),0 1px 14px rgba(0,0,0,.42)}
-  #${ROOT_ID} .hmi-speed-side{display:flex;flex-direction:column;align-items:flex-end;gap:clamp(4px,0.7vh,9px);padding-bottom:clamp(3px,0.5vh,8px)}
+  #${ROOT_ID} .hmi-speed-side{display:flex;flex-direction:column;align-items:flex-end;gap:clamp(7px,1.0vh,15px);padding-bottom:clamp(5px,0.8vh,12px)}
   #${ROOT_ID} .hmi-speed-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1;white-space:nowrap}
   #${ROOT_ID} .hmi-gear{display:inline-flex;align-items:center;justify-content:center;
     min-width:clamp(26px,2.2vw,38px);padding:.16em .66em;

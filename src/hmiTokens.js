@@ -15,7 +15,10 @@ export const HMI = {
     speed: 'clamp(48px,4.2vw,118px)',
     socNum: 'clamp(30px,2.7vw,60px)',
     rangeNum: 'clamp(16px,1.25vw,28px)',
-    speedNum: 'clamp(46px,4.0vw,104px)',
+    // 右侧车速数字（视觉平衡 20260621）：原 clamp(46,4.0vw,104) 整体偏矮，比左侧电量块(SOC+BATTERY+横线+续航 四行堆叠)矮一截。
+    // 按需求方「右侧数字大一点，高度和左侧一致」放大到 clamp(78,6.6vw,150)，使右块单行大数字的视觉高度≈左块四行堆叠高度，左右对称。
+    // 三档自检：1080p≈117px / 1440p≈138px / 2160p 封顶 150px，均落在 dock height clamp(112,15vmin,184) 内，不裁切不溢出。
+    speedNum: 'clamp(78px,6.6vw,150px)',
     labelTiny: 'clamp(9px,0.44vw,11px)',
   },
   glass: {
