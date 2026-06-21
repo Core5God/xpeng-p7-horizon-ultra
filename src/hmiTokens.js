@@ -15,13 +15,14 @@ export const HMI = {
     speed: 'clamp(48px,4.2vw,118px)',
     socNum: 'clamp(30px,2.7vw,60px)',
     rangeNum: 'clamp(16px,1.25vw,28px)',
-    // 右侧车速数字（透视等高校准 20260621 / task-006）：上一轮放大到 clamp(78,6.6vw,150) 后，
-    // 在 headless 实测中右侧 .hmi-speed-num 透视投影高度=143.7px，而左侧电量大数字 .hmi-soc(98) 投影仅 70.7px，
-    // 比值高达 2.03×——明显过大（根因：左右块各带 rotateY ±38deg 透视斜切，靠原始字号比拉太开就会失衡）。
-    // 校准目标：右侧车速「89」透视后表观高度 ≈ 左侧电量「98」的 1.0~1.3 倍（车速是主信息可略大，但不能两倍多）。
-    // 调回 clamp(44,3.8vw,84)：headless getBoundingClientRect 实测 4 档分辨率比值稳定在 1.08~1.12×（详见交付文档），
-    // 与左侧大数字基本等高、仅微大一档；KM/H 与挡位 D 仍贴基线 nowrap 不裁切。
-    speedNum: 'clamp(44px,3.8vw,84px)',
+    // 右侧车速数字（透视「整块」等高校准 20260621 / task-006 rev）：
+    // 验收口径修正——需求方标注截图要求「左整块 vs 右整块」内容包络高度大致相等、左右对称，而非只比两个大数字。
+    // 左块 .hmi-left 是三行堆叠(96% / BATTERY / 714 CLTC KM)，右块 .hmi-right 是单行大数字+旁侧两行小字(KM/H + D)；
+    // 两侧均带 rotateY(±38deg) 透视斜切。headless(SwiftShader) 注入 HUD DOM + getBoundingClientRect 量整块容器透视投影高度：
+    //   上一轮 clamp(78,6.6vw,150)：右整块/左整块=1.26×（右偏高）；中间试过 clamp(44,3.8vw,84)：0.83×（右偏矮，反向超调）。
+    //   调到 clamp(58,5.1vw,112)：三档分辨率(1080/1440/2160) 右/左整块高度比稳定 1.02~1.03×（目标 0.95~1.10，贴近 1.0）。
+    //   详见交付文档。KM/H 与挡位 D 仍 nowrap 贴基线不超框不裁。左侧 soc/range 不动。
+    speedNum: 'clamp(58px,5.1vw,112px)',
     labelTiny: 'clamp(9px,0.44vw,11px)',
   },
   glass: {
