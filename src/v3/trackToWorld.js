@@ -1,0 +1,164 @@
+// Horizon V3 — Track-to-World (grey-box) PR1
+// task-20260621-V3-PR1
+//
+// 读 Track JSON → 等弧长重采样 → 生成：
+//   1. 灰模路面 ribbon（纯灰模材质，不贴图）
+//   2. 地形高度场（跟着路面起伏：山谷下凹 / 山顶隆起 / 海边压低）
+//   3. 沿弧长 chunk 边界数据（供 PR3 流式，本棒只存边界、不卸载）
+// 同时输出可供车辆采样的中心线（环线、等弧长），让车能开完整一圈。
+
+import * as THREE from 'three';
+import { normalizeTrack } from './trackSchema.js';
+import { sampleClosedSpline, resampleByArc, arcLengths } from './trackSpline.js';
+
+export function buildTrackWorld(rawTrack) {
+  const track = normalizeTrack(rawTrack);
+  const cps = track.controlPoints;
+  if (cps.length < 3) throw new Error('Track 需要至少 3 个控制点');
+
+  // 1) 密集样条 → 等弧长重采样中心线
+  const dense = sampleClosedSpline(cps, 28);
+  const stepM = 4;
+  const center = resampleByArc(dense, stepM); // [{x,y,z,roadWidth,bankDeg,s}]
+  const N = center.length;
+  const total = arcLengths(center).total;
+
+  // 切线/法线（环线）
+  for (let i = 0; i < N; i++) {
+    const a = center[i], b = center[(i + 1) % N];
+    let tx = b.x - a.x, tz = b.z - a.z;
+    const len = Math.hypot(tx, tz) || 1;
+    a.tx = tx / len; a.tz = tz / len;
+    a.nx = -a.tz; a.nz = a.tx; // 左法线
+  }
+
+  // 2) 灰模路面 ribbon 几何
+  const ribbon = buildRibbonGeometry(center);
+
+  // 3) 地形高度场（灰模）：基于到路面的距离与路面 y 做平滑下凹/隆起
+  const terrain = buildTerrain(center, track.settings.terrainFollowRadius);
+
+  // 4) chunk 边界（沿弧长按 chunkLength 切）
+  const chunks = buildChunks(center, total, track.settings.chunkLength);
+
+  return { track, center, total, ribbon, terrain, chunks };
+}
+
+function buildRibbonGeometry(center) {
+  const N = center.length;
+  const positions = [];
+  const indices = [];
+  const normals = [];
+  for (let i = 0; i < N; i++) {
+    const c = center[i];
+    const hw = c.roadWidth / 2;
+    // banking：绕切线倾斜，简单用法线方向抬高一侧
+    const bank = (c.bankDeg || 0) * Math.PI / 180;
+    const dy = Math.sin(bank) * hw;
+    const lx = c.x + c.nx * hw, lz = c.z + c.nz * hw, ly = c.y + dy + 0.15;
+    const rx = c.x - c.nx * hw, rz = c.z - c.nz * hw, ry = c.y - dy + 0.15;
+    positions.push(lx, ly, lz, rx, ry, rz);
+    normals.push(0, 1, 0, 0, 1, 0);
+  }
+  for (let i = 0; i < N; i++) {
+    const a = i * 2, b = ((i + 1) % N) * 2;
+    indices.push(a, a + 1, b);
+    indices.push(b, a + 1, b + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x6a6f78, roughness: 0.95, metalness: 0.0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'v3-road-ribbon';
+  return mesh;
+}
+
+// 地形高度采样器（灰模）：路面附近跟随路 y，远处回落到基准海拔。
+// 海边段（路 y 很低）压低周边形成海面；山顶（路 y 高）周边隆起。
+function buildTerrain(center, followR) {
+  // 建一个粗网格 plane，按到最近中心点距离混合路面 y 与基准。
+  // 为了 headless 自检轻量，网格分辨率适中。
+  const N = center.length;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const c of center) {
+    minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+    minZ = Math.min(minZ, c.z); maxZ = Math.max(maxZ, c.z);
+  }
+  const pad = followR * 2 + 200;
+  minX -= pad; maxX += pad; minZ -= pad; maxZ += pad;
+  const SEG = 96;
+  const geo = new THREE.PlaneGeometry(maxX - minX, maxZ - minZ, SEG, SEG);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+  const baseY = -8; // 基准海拔（海平面以下一点的灰模地基）
+  // 简单空间哈希加速最近点查询
+  const sampleNearest = makeNearestFn(center);
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + cx;
+    const wz = pos.getZ(i) + cz;
+    const { d, y } = sampleNearest(wx, wz);
+    // 距离 ≤ followR：贴路面 y；之外平滑回落到基准（含海边压低）
+    const t = Math.min(1, d / followR);
+    const k = t * t * (3 - 2 * t); // smoothstep
+    const h = y * (1 - k) + baseY * k;
+    pos.setY(i, h - 0.4); // 路面略高于地形避免 z-fight
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5258, roughness: 1.0, metalness: 0.0, flatShading: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'v3-terrain';
+  mesh.userData.offset = { cx, cz };
+  return mesh;
+}
+
+function makeNearestFn(center) {
+  const cell = 50;
+  const grid = new Map();
+  const key = (gx, gz) => gx + ',' + gz;
+  center.forEach((c, i) => {
+    const gx = Math.floor(c.x / cell), gz = Math.floor(c.z / cell);
+    const k = key(gx, gz);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(i);
+  });
+  return (wx, wz) => {
+    const gx = Math.floor(wx / cell), gz = Math.floor(wz / cell);
+    let best = Infinity, bestY = 0;
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        const arr = grid.get(key(gx + dx, gz + dz));
+        if (!arr) continue;
+        for (const i of arr) {
+          const c = center[i];
+          const dd = Math.hypot(c.x - wx, c.z - wz);
+          if (dd < best) { best = dd; bestY = c.y; }
+        }
+      }
+    }
+    if (best === Infinity) {
+      // 退化：全量扫描（边缘格）
+      for (const c of center) {
+        const dd = Math.hypot(c.x - wx, c.z - wz);
+        if (dd < best) { best = dd; bestY = c.y; }
+      }
+    }
+    return { d: best, y: bestY };
+  };
+}
+
+function buildChunks(center, total, chunkLength) {
+  const count = Math.max(1, Math.round(total / chunkLength));
+  const chunks = [];
+  for (let k = 0; k < count; k++) {
+    const sStart = (k / count) * total;
+    const sEnd = ((k + 1) / count) * total;
+    const idx = [];
+    center.forEach((c, i) => { if (c.s >= sStart && c.s < sEnd) idx.push(i); });
+    chunks.push({ index: k, sStart, sEnd, sampleIdx: idx });
+  }
+  return chunks;
+}

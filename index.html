@@ -423,6 +423,17 @@
   <button id="btnPhotoExit">退出（P）</button>
 </div>
 
-<script type="module" src="/src/main.js"></script>
+<script type="module">
+  // Horizon V3 路由（task-20260621-V3-PR1）：
+  // ?edit=1 → V3 赛道编辑器；?v3=1 → V3 灰模环线运行时；否则走 V2。
+  const q = new URLSearchParams(location.search);
+  if (q.get('edit') === '1') {
+    import('/src/v3/editorBoot.js').then((m) => m.launchEditor());
+  } else if (q.get('v3') === '1') {
+    import('/src/v3/v3main.js').then((m) => m.launchV3());
+  } else {
+    import('/src/main.js');
+  }
+</script>
 </body>
 </html>

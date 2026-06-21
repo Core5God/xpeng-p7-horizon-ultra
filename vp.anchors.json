@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "3.0.0-pr1",
+  "note": "VP 锚点定义（PR1）。坐标来源：track.main.json 控制点 vpAnchor + 语义标签 + 全环包围盒推断（见 src/v3/v3viewpoints.js resolveViewpoints）。?vp=0/1/5 运行时按此规则解析，不写死坐标。",
+  "anchors": {
+    "VP0": { "label": "俯视全环", "kind": "overview", "source": "全环包围盒中心正上方俯视" },
+    "VP1": { "label": "起点基地", "kind": "ground", "source": "controlPoint vpAnchor=VP1 / tag=start (#0)" },
+    "VP5": { "label": "山顶俯瞰", "kind": "highground", "source": "controlPoint vpAnchor=VP5 / tag=summit (#7)" }
+  }
+}

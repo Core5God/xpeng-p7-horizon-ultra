@@ -1,0 +1,343 @@
+{
+  "schemaVersion": "3.0.0-pr1",
+  "author": "Core5God",
+  "updatedAt": "2026-06-21T11:00:08.806Z",
+  "sourceTrackRevision": 1,
+  "controlPoints": [
+    {
+      "id": "cp_mqnodecm_1",
+      "pos": {
+        "x": 0,
+        "y": 2,
+        "z": 0
+      },
+      "roadWidth": 16,
+      "bankDeg": 0,
+      "tags": [
+        "start"
+      ],
+      "vpAnchor": "VP1"
+    },
+    {
+      "id": "cp_mqnodecm_2",
+      "pos": {
+        "x": 600,
+        "y": 6,
+        "z": -200
+      },
+      "roadWidth": 14,
+      "bankDeg": 0,
+      "tags": [],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_3",
+      "pos": {
+        "x": 1200,
+        "y": -28,
+        "z": -300
+      },
+      "roadWidth": 13,
+      "bankDeg": 0,
+      "tags": [
+        "valley"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_4",
+      "pos": {
+        "x": 1700,
+        "y": -34,
+        "z": -100
+      },
+      "roadWidth": 12,
+      "bankDeg": 0,
+      "tags": [
+        "valley",
+        "no_airborne"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_5",
+      "pos": {
+        "x": 2000,
+        "y": 40,
+        "z": 300
+      },
+      "roadWidth": 11,
+      "bankDeg": 8,
+      "tags": [
+        "hairpin"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_6",
+      "pos": {
+        "x": 1850,
+        "y": 120,
+        "z": 750
+      },
+      "roadWidth": 10,
+      "bankDeg": 14,
+      "tags": [
+        "hairpin",
+        "downhill_drop"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_7",
+      "pos": {
+        "x": 1500,
+        "y": 210,
+        "z": 950
+      },
+      "roadWidth": 10,
+      "bankDeg": 10,
+      "tags": [],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_8",
+      "pos": {
+        "x": 1000,
+        "y": 290,
+        "z": 1050
+      },
+      "roadWidth": 12,
+      "bankDeg": 0,
+      "tags": [
+        "summit",
+        "crest"
+      ],
+      "vpAnchor": "VP5"
+    },
+    {
+      "id": "cp_mqnodecm_9",
+      "pos": {
+        "x": 450,
+        "y": 300,
+        "z": 1000
+      },
+      "roadWidth": 12,
+      "bankDeg": 0,
+      "tags": [
+        "summit",
+        "crest",
+        "jump_test"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_10",
+      "pos": {
+        "x": -50,
+        "y": 180,
+        "z": 850
+      },
+      "roadWidth": 12,
+      "bankDeg": 0,
+      "tags": [
+        "downhill_drop"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_11",
+      "pos": {
+        "x": -450,
+        "y": 60,
+        "z": 600
+      },
+      "roadWidth": 13,
+      "bankDeg": 0,
+      "tags": [
+        "cave"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_12",
+      "pos": {
+        "x": -700,
+        "y": 10,
+        "z": 300
+      },
+      "roadWidth": 13,
+      "bankDeg": 0,
+      "tags": [
+        "tunnel",
+        "no_airborne"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_13",
+      "pos": {
+        "x": -900,
+        "y": -6,
+        "z": -50
+      },
+      "roadWidth": 14,
+      "bankDeg": 0,
+      "tags": [
+        "coast_sunrise"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_14",
+      "pos": {
+        "x": -850,
+        "y": -8,
+        "z": -450
+      },
+      "roadWidth": 15,
+      "bankDeg": 0,
+      "tags": [
+        "coast_sunrise"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_15",
+      "pos": {
+        "x": -500,
+        "y": -4,
+        "z": -750
+      },
+      "roadWidth": 15,
+      "bankDeg": 0,
+      "tags": [
+        "harbor_sunset",
+        "bridge_bump"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_16",
+      "pos": {
+        "x": -50,
+        "y": 0,
+        "z": -850
+      },
+      "roadWidth": 16,
+      "bankDeg": 0,
+      "tags": [
+        "harbor_sunset",
+        "bridge"
+      ],
+      "vpAnchor": null
+    },
+    {
+      "id": "cp_mqnodecm_17",
+      "pos": {
+        "x": -300,
+        "y": 2,
+        "z": -400
+      },
+      "roadWidth": 16,
+      "bankDeg": 0,
+      "tags": [
+        "no_airborne"
+      ],
+      "vpAnchor": null
+    }
+  ],
+  "segments": [
+    {
+      "from": "cp_mqnodecm_1",
+      "to": "cp_mqnodecm_2",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_2",
+      "to": "cp_mqnodecm_3",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_3",
+      "to": "cp_mqnodecm_4",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_4",
+      "to": "cp_mqnodecm_5",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_5",
+      "to": "cp_mqnodecm_6",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_6",
+      "to": "cp_mqnodecm_7",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_7",
+      "to": "cp_mqnodecm_8",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_8",
+      "to": "cp_mqnodecm_9",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_9",
+      "to": "cp_mqnodecm_10",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_10",
+      "to": "cp_mqnodecm_11",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_11",
+      "to": "cp_mqnodecm_12",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_12",
+      "to": "cp_mqnodecm_13",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_13",
+      "to": "cp_mqnodecm_14",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_14",
+      "to": "cp_mqnodecm_15",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_15",
+      "to": "cp_mqnodecm_16",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_16",
+      "to": "cp_mqnodecm_17",
+      "kind": "road"
+    },
+    {
+      "from": "cp_mqnodecm_17",
+      "to": "cp_mqnodecm_1",
+      "kind": "road"
+    }
+  ],
+  "settings": {
+    "chunkLength": 200,
+    "viewAheadChunks": 6,
+    "viewBehindChunks": 2,
+    "terrainFollowRadius": 60
+  }
+}
