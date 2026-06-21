@@ -192,55 +192,82 @@
   #playlistbar button:hover{opacity:1}
   #plTrackName{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);max-width:170px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.4px}
-  /* —— 正在播放 玻璃卡片（B 唤出，极简 Apple 玻璃 · 顶部左角，避开底部 HMI 能量/时速/导航线）—— */
-  #radioPanel{position:fixed;top:20px;left:22px;z-index:36;width:288px;
-    background:rgba(20,26,36,.42);backdrop-filter:blur(26px) saturate(1.4);
-    -webkit-backdrop-filter:blur(26px) saturate(1.4);
-    border:1px solid var(--glass-border);border-radius:20px;
-    box-shadow:0 10px 38px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.10);
-    padding:14px 16px 12px;color:#eaf1fb;
-    opacity:0;transform:translateY(-10px) scale(.97);pointer-events:none;
-    transition:opacity .26s ease,transform .26s cubic-bezier(.2,.8,.2,1)}
-  #radioPanel.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
-  .rp-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
-  .rp-mode{font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
-    color:rgba(190,222,255,.92);background:rgba(120,170,255,.12);
-    border:1px solid rgba(170,210,255,.26);border-radius:999px;padding:3px 10px;
-    box-shadow:0 0 8px rgba(120,170,255,.10),inset 0 0 6px rgba(170,210,255,.06)}
-  .rp-state{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:.14em;
-    color:rgba(208,234,255,.7);display:flex;align-items:center;gap:5px}
-  .rp-state .rp-dot{width:6px;height:6px;border-radius:50%;background:rgba(160,205,255,.85);
-    box-shadow:0 0 7px rgba(160,205,255,.6)}
-  .rp-state.off{color:rgba(255,255,255,.4)}
-  .rp-state.off .rp-dot{background:rgba(255,255,255,.3);box-shadow:none}
-  .rp-now{display:flex;align-items:center;gap:10px;margin-bottom:13px}
-  .rp-art{width:42px;height:42px;border-radius:11px;flex:0 0 auto;
-    background:linear-gradient(135deg,rgba(150,195,255,.22),rgba(120,150,210,.10));
-    border:1px solid rgba(180,215,255,.20);display:flex;align-items:center;justify-content:center;
-    font-size:21px;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
-  .rp-track{min-width:0}
-  .rp-name{font-size:14.5px;font-weight:600;letter-spacing:.2px;color:#f3f8ff;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rp-sub{font-size:11px;font-weight:500;color:rgba(208,234,255,.55);margin-top:2px;letter-spacing:.4px}
-  .rp-ctrl{display:flex;align-items:center;gap:7px}
-  .rp-btn{flex:1;font-family:inherit;cursor:pointer;color:rgba(234,241,251,.82);
-    background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:12px;
-    padding:8px 0;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;
-    transition:background .15s,border-color .15s,transform .12s,color .15s}
-  .rp-btn:hover{background:rgba(255,255,255,.11);border-color:var(--glass-border-hi);color:#fff;transform:translateY(-1px)}
-  .rp-btn.rp-key{position:relative}
-  .rp-btn .rp-kc{position:absolute;top:-6px;right:-3px;font-size:8.5px;font-weight:700;
-    letter-spacing:.04em;color:rgba(190,222,255,.8);background:rgba(20,28,42,.85);
-    border:1px solid rgba(170,210,255,.28);border-radius:5px;padding:1px 3px;pointer-events:none}
-  .rp-btn.rp-play{flex:1.25;color:rgba(190,230,255,.95);background:rgba(120,170,255,.12);
-    border-color:rgba(170,210,255,.3)}
-  .rp-btn.rp-shuffle.on{color:rgba(190,230,255,.98);background:rgba(120,170,255,.16);
-    border-color:rgba(170,210,255,.4)}
-  .rp-foot{margin-top:10px;font-size:9.5px;letter-spacing:.1em;color:rgba(208,234,255,.4);
-    text-align:center}
-  .rp-foot kbd{font:inherit;font-size:9px;color:rgba(190,222,255,.7);
-    background:rgba(255,255,255,.06);border:1px solid var(--glass-border);border-radius:4px;
-    padding:1px 4px;margin:0 1px}
+  /* —— 电台径向轮盘（长按 B 唤出 · 拨方向选 · 松手选中 · 极简 Apple 玻璃）—— */
+  /* 瞬时手势：不占用 WASD/方向键的驾驶语义；居中靠下，松手即消失，不挡画面。 */
+  #radioWheel{position:fixed;left:50%;bottom:16%;transform:translate(-50%,12px) scale(.92);
+    z-index:44;width:248px;height:248px;pointer-events:none;
+    opacity:0;transition:opacity .18s ease,transform .22s cubic-bezier(.2,.85,.25,1)}
+  #radioWheel.show{opacity:1;transform:translate(-50%,0) scale(1)}
+  .rw-disc{position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(circle at 50% 38%,rgba(34,42,56,.30),rgba(16,20,30,.46));
+    backdrop-filter:blur(22px) saturate(1.35);-webkit-backdrop-filter:blur(22px) saturate(1.35);
+    border:1px solid var(--glass-border);
+    box-shadow:0 14px 44px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.10)}
+  /* 中心枢纽：显示当前模式 / 曲名（轮盘唤出时才展示曲名） */
+  .rw-hub{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:108px;height:108px;
+    border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:6px;
+    background:radial-gradient(circle at 50% 40%,rgba(120,170,255,.10),rgba(20,26,38,.30));
+    border:1px solid rgba(170,210,255,.18);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 0 14px rgba(120,170,255,.06)}
+  .rw-mode{font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    color:rgba(190,222,255,.9)}
+  .rw-name{font-size:12px;font-weight:600;color:#f2f7ff;line-height:1.25;margin-top:3px;
+    max-width:88px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .rw-state{font-size:8.5px;font-weight:600;letter-spacing:.12em;color:rgba(160,205,255,.7);margin-top:3px}
+  /* 四个方向扇区（上/右/下/左） */
+  .rw-seg{position:absolute;width:56px;height:56px;border-radius:16px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    background:rgba(255,255,255,.045);border:1px solid var(--glass-border);
+    color:rgba(226,238,255,.74);
+    transition:transform .14s cubic-bezier(.2,.8,.2,1),background .14s,border-color .14s,color .14s,box-shadow .14s}
+  .rw-seg .rw-ic{font-size:19px;line-height:1}
+  .rw-seg .rw-lb{font-size:8.5px;font-weight:600;letter-spacing:.04em;color:rgba(190,222,255,.6)}
+  .rw-seg[data-dir=up]{left:50%;top:10px;transform:translateX(-50%)}
+  .rw-seg[data-dir=right]{right:10px;top:50%;transform:translateY(-50%)}
+  .rw-seg[data-dir=down]{left:50%;bottom:10px;transform:translateX(-50%)}
+  .rw-seg[data-dir=left]{left:10px;top:50%;transform:translateY(-50%)}
+  /* 当前将选中扇区：高亮放大 + 冷白光晕 */
+  .rw-seg.active{background:rgba(120,170,255,.20);border-color:rgba(180,215,255,.55);
+    color:#f3f9ff;box-shadow:0 0 18px rgba(120,170,255,.30),inset 0 1px 0 rgba(255,255,255,.16)}
+  .rw-seg.active .rw-lb{color:rgba(214,236,255,.95)}
+  .rw-seg[data-dir=up].active{transform:translateX(-50%) scale(1.16)}
+  .rw-seg[data-dir=down].active{transform:translateX(-50%) scale(1.16)}
+  .rw-seg[data-dir=left].active{transform:translateY(-50%) scale(1.16)}
+  .rw-seg[data-dir=right].active{transform:translateY(-50%) scale(1.16)}
+  /* 方向指针：从中心指向当前拨动方向 */
+  .rw-ptr{position:absolute;left:50%;top:50%;width:3px;height:46px;border-radius:3px;
+    transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(0deg) scaleY(0);
+    background:linear-gradient(to top,rgba(120,170,255,0),rgba(180,215,255,.85));
+    box-shadow:0 0 8px rgba(150,200,255,.5);opacity:0;
+    transition:transform .1s ease,opacity .12s}
+  #radioWheel.aim .rw-ptr{opacity:1}
+  /* —— 常驻「正在播放」信息卡（仅展示，不抢驾驶键）—— */
+  /* 驾驶态下按顶部左角展示当前模式/曲名/播放态；快速切歌交给长按 B 轮盘。 */
+  #radioInfo{position:fixed;top:18px;left:22px;z-index:18;display:none;align-items:center;gap:9px;
+    background:rgba(20,26,36,.40);backdrop-filter:blur(18px) saturate(1.3);
+    -webkit-backdrop-filter:blur(18px) saturate(1.3);
+    border:1px solid var(--glass-border);border-radius:14px;padding:7px 13px 7px 9px;
+    box-shadow:0 8px 26px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.08);
+    color:#eaf1fb;max-width:280px;pointer-events:none}
+  body.drive #radioInfo{display:flex}
+  .ri-art{width:30px;height:30px;border-radius:9px;flex:0 0 auto;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,rgba(150,195,255,.20),rgba(120,150,210,.08));
+    border:1px solid rgba(180,215,255,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+  .ri-txt{min-width:0;display:flex;flex-direction:column;gap:1px}
+  .ri-name{font-size:12.5px;font-weight:600;color:#f2f7ff;letter-spacing:.2px;
+    max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ri-sub{font-size:9px;font-weight:600;letter-spacing:.14em;color:rgba(160,205,255,.62);
+    display:flex;align-items:center;gap:5px}
+  .ri-sub .ri-dot{width:5px;height:5px;border-radius:50%;background:rgba(160,205,255,.85);
+    box-shadow:0 0 6px rgba(160,205,255,.55)}
+  .ri-sub.off .ri-dot{background:rgba(255,255,255,.3);box-shadow:none}
+  .ri-hint{margin-left:4px;font-size:8.5px;font-weight:600;letter-spacing:.06em;
+    color:rgba(190,222,255,.5)}
+  .ri-hint kbd{font:inherit;font-size:8.5px;color:rgba(200,228,255,.78);
+    background:rgba(255,255,255,.07);border:1px solid var(--glass-border);border-radius:4px;padding:1px 4px}
 </style>
 </head>
 <body class="nohud">
@@ -287,7 +314,7 @@
 <div class="hud" id="driftlive"></div>
 <div class="hud" id="scorechip"><div class="slabel">SCORE 得分</div><div><span id="scoreval">0</span><span id="combox">×1</span></div></div>
 <div id="skillstack"></div>
-<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>F</kbd>上下车<kbd>B</kbd>电台<kbd>M</kbd>静音<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
+<div class="hud" id="keytips"><kbd>SHIFT</kbd>性能模式<kbd>SPACE</kbd>漂移<kbd>C</kbd>视角<kbd>V</kbd>车漆<kbd>F</kbd>上下车<kbd>长按B</kbd>拨轮切歌<kbd>M</kbd>静音<kbd>R</kbd>竞速<kbd>P</kbd>照片<kbd>T</kbd>复位<kbd>ESC</kbd>菜单<kbd>H</kbd>隐藏提示</div>
 <div class="hud" id="msg"></div>
 <canvas id="minimap" width="170" height="170"></canvas>
 <div class="hud" id="playlistbar">
@@ -296,26 +323,28 @@
   <button id="plNext" title="下一首">⏭</button>
   <button id="plShuffle" title="随机播放">🔀</button>
 </div>
-<div id="radioPanel">
-  <div class="rp-head">
-    <span class="rp-mode" id="rpMode">歌单</span>
-    <span class="rp-state" id="rpState"><span class="rp-dot"></span><span id="rpStateTxt">播放中</span></span>
+<!-- 电台径向轮盘：长按 B 唤出，拨方向选，松手选中（瞬时手势，不占驾驶键） -->
+<div id="radioWheel">
+  <div class="rw-disc"></div>
+  <div class="rw-ptr" id="rwPtr"></div>
+  <div class="rw-seg" data-dir="up" id="rwUp"><span class="rw-ic">✕</span><span class="rw-lb">关闭</span></div>
+  <div class="rw-seg" data-dir="right" id="rwRight"><span class="rw-ic">⏭</span><span class="rw-lb">下一首</span></div>
+  <div class="rw-seg" data-dir="down" id="rwDown"><span class="rw-ic">⏯</span><span class="rw-lb">播/停</span></div>
+  <div class="rw-seg" data-dir="left" id="rwLeft"><span class="rw-ic">⏮</span><span class="rw-lb">上一首</span></div>
+  <div class="rw-hub">
+    <div class="rw-mode" id="rwMode">歌单</div>
+    <div class="rw-name" id="rwName">—</div>
+    <div class="rw-state" id="rwState">NOW PLAYING</div>
   </div>
-  <div class="rp-now">
-    <div class="rp-art" id="rpArt">🎵</div>
-    <div class="rp-track">
-      <div class="rp-name" id="rpName">—</div>
-      <div class="rp-sub" id="rpSub">NOW PLAYING</div>
-    </div>
+</div>
+<!-- 常驻「正在播放」信息卡（仅驾驶态展示 · 无键盘控制 · 快速切歌请长按 B） -->
+<div id="radioInfo">
+  <div class="ri-art" id="riArt">🎵</div>
+  <div class="ri-txt">
+    <div class="ri-name" id="riName">—</div>
+    <div class="ri-sub" id="riSub"><span class="ri-dot"></span><span id="riSubTxt">NOW PLAYING</span></div>
   </div>
-  <div class="rp-ctrl">
-    <div class="rp-btn rp-key" id="rpPrev" title="上一首"><span class="rp-kc">←</span>⏮</div>
-    <div class="rp-btn rp-key rp-play" id="rpPlay" title="播放 / 关闭"><span class="rp-kc">↓</span>⏻</div>
-    <div class="rp-btn rp-key" id="rpNext" title="下一首"><span class="rp-kc">→</span>⏭</div>
-    <div class="rp-btn rp-key" id="rpMode2" title="切换模式（歌单 ↔ 电台）"><span class="rp-kc">↑</span>🔄</div>
-    <div class="rp-btn rp-key rp-shuffle" id="rpShuffle" title="随机播放"><span class="rp-kc">S</span>🔀</div>
-  </div>
-  <div class="rp-foot"><kbd>← →</kbd> 切歌 · <kbd>↑</kbd> 模式 · <kbd>↓</kbd> 播/停 · <kbd>B</kbd>/<kbd>Esc</kbd> 收起</div>
+  <div class="ri-hint">长按 <kbd>B</kbd> 拨选</div>
 </div>
 
 <!-- 车库 / 主菜单 -->
