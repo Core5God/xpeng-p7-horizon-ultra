@@ -323,14 +323,42 @@ function jumpToViewpoint(id) {
     console.log('[viewpoint] jumped to', vp.id, vp.name, vp);
   } catch (e) { console.warn('[viewpoint] jump failed:', e); }
 }
-function installViewpointJump() {
-  // URL ?vp=N 自动跳转
+// 读取 URL ?vp=N（1~8）；无则返回 null。boot 流程据此决定是否跳过车库直接进 drive。
+function getUrlViewpointId() {
   try {
-    const q = new URLSearchParams(location.search);
-    const vpq = q.get('vp');
-    if (vpq) setTimeout(() => jumpToViewpoint(vpq), 300);
+    const vpq = new URLSearchParams(location.search).get('vp');
+    if (vpq && getViewpoint(vpq)) return vpq;
   } catch (e) {}
-  // 数字键 1~8 跳转
+  return null;
+}
+
+// 等待世界 / drive 就绪（samples 已生成），再执行回调；有上限不无限轮询。
+function whenWorldReady(cb, { maxTries = 120, interval = 50 } = {}) {
+  let tries = 0;
+  const tick = () => {
+    const ready = samples && samples.length > 0;
+    if (ready || tries >= maxTries) {
+      if (!ready) console.warn('[viewpoint] world not ready after wait, applying anyway');
+      cb();
+      return;
+    }
+    tries++;
+    setTimeout(tick, interval);
+  };
+  tick();
+}
+
+// 线上 ?vp=N 入口：跳过车库菜单，等世界就绪后先 startDrive 再 jumpToViewpoint。
+// 顺序很关键：先 startDrive(false) 进 drive，再 apply VP，避免被 startDrive 的默认出生点覆盖。
+function enterViewpointFromUrl(vpq) {
+  whenWorldReady(() => {
+    try { startDrive(false); } catch (e) { console.warn('[viewpoint] startDrive failed:', e); }
+    jumpToViewpoint(vpq);
+  });
+}
+
+function installViewpointJump() {
+  // 数字键 1~8 跳转（运行时随时可用）
   addEventListener('keydown', (e) => {
     if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key >= '1' && e.key <= '8') jumpToViewpoint(e.key);
@@ -397,10 +425,17 @@ addEventListener('keydown', (e) => {
     settleCarPose();
     applyTod(G.curTod);
     setQuality(G.hiQuality);
-    enterGarage();
+    // 线上 ?vp=N（N=1~8，无需 fastdebug）：跳过车库菜单，世界就绪后自动进 drive 并应用该验收点。
+    const urlVp = getUrlViewpointId();
+    if (urlVp) {
+      enterViewpointFromUrl(urlVp);
+    } else {
+      enterGarage();
+    }
     loop();
     // FASTDEBUG：自动跳过车库菜单直接进驾驶，并把相机放到路面上方俰视，方便无头直接截到 3D 路面
-    if (FASTDEBUG) {
+    // 注意：若 URL 已带 ?vp=N，则由 enterViewpointFromUrl 负责机位，不再用俯视相机覆盖。
+    if (FASTDEBUG && !urlVp) {
       try {
         startDrive(false);
         // 把相机抬到车辆（起始位于路面）正上方俰视，看得到地形/路
