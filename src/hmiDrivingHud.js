@@ -5,12 +5,13 @@
 //   - 左中右三块垂直位置沿一条「下凹弧线」排布（两端高、中间低）→ 下拱曲面座舱感。
 //   - 自适应用稳健 clamp/vmin，保证 1080 / 1440 / 2160 三档完整可见不裁切不溢出。
 //   - 中部路线：直接用 main.js 传入的真实前方道路点数组投影成折线/平滑曲线，
-//     前方真有弯就真的弯；近端粗、远端细+渐弱的透视收窄；底部加车辆位置空心圆点。
+//     前方真有弯就真的弯；近端粗、远端细+渐弱的透视收窄；车端用镜空白色端头干净收口。
 //   - 已移除底部独立弧光（多余）；曲面感改由左右信息下拱排布表达。
-//     只改 UI/HMI；不接 autosteer 真功能；电量/续航静态占位。
+//     只改 UI/HMI；不接 autosteer 真功能；电量/续航为动态模型（从 100% 随行驶距离缓降至 82% 附近）。
 import { installHmiTokens } from './hmiTokens.js';
 let installed = false;
 let elSpeedNum = null, elGear = null, elAutoState = null;
+let elSocNum = null, elTickFill = null, elRangeNum = null;
 let elRouteCanvas = null, routeCtx = null, routeDpr = 1, routeW = 0, routeH = 0;
 const ROOT_ID = 'hmi-driving-hud';
 const STYLE_ID = 'hmi-driving-hud-style';
@@ -104,16 +105,49 @@ const STYLE = `
 `;
 
 // slowroads 做减法：去掉分段能量条，只保留 SOC 与续航的克制细字层级。
-const SOC = 82;
+// 动态电量模型（问题3）：从 SOC_FULL(100%) 起步，随行驶距离/时间缓慢消耗，
+// 平滑下探至 SOC_FLOOR(82%) 附近后继续极慢下降（克制，不做花哨动画）。
+// 续航 = RANGE_FULL_KM * SOC%（满电 CLTC 基准），取整显示。
+const SOC_FULL = 100;        // 起步电量（%）
+const SOC_FLOOR = 82;        // 主要消耗后的目标平台（%）
+const RANGE_FULL_KM = 744;   // 满电(100%)续航基准；82% → 610km（610/0.82≈744）
+// 主消耗段：在 PHASE1_M 米内由 100% 平滑降到接近 82%；之后进入极缓慢续降段。
+const SOC_PHASE1_M = 4200;   // 第一阶段消耗里程（米）
+const SOC_TAU_M = 1100;      // 指数平滑里程常数（越大越缓）
+const SOC_SLOW_PER_M = 0.0008; // 平台后每米继续下降的 SOC（极缓）
+let _socShown = SOC_FULL;    // 当前显示 SOC（数值低通，避免跳字）
+let _socInited = false;
+
+// 由行驶距离推导 SOC（%）。前段指数逼近 floor，过 PHASE1 后线性极缓续降。
+function socFromDistance(distanceM) {
+  const d = Math.max(0, distanceM || 0);
+  // 指数衰减：SOC = FLOOR + (FULL-FLOOR)*e^{-d/TAU}，d→∞ 趋近 FLOOR。
+  let soc = SOC_FLOOR + (SOC_FULL - SOC_FLOOR) * Math.exp(-d / SOC_TAU_M);
+  // 过了主消耗段，再叠加极缓慢线性续降（可低于 82%）。
+  if (d > SOC_PHASE1_M) soc -= (d - SOC_PHASE1_M) * SOC_SLOW_PER_M;
+  return Math.max(0, Math.min(SOC_FULL, soc));
+}
+
+// 更新左侧能量显示：SOC 数字 + tickline 宽度 + 续航 KM（=基准*SOC%）。
+function updateEnergy(distanceM) {
+  const target = socFromDistance(distanceM);
+  if (!_socInited) { _socShown = target; _socInited = true; }
+  else _socShown += (target - _socShown) * 0.06; // 数值低通，平滑不跳
+  const socInt = Math.round(_socShown);
+  if (elSocNum && elSocNum.textContent !== String(socInt)) elSocNum.textContent = socInt;
+  if (elTickFill) elTickFill.style.width = _socShown.toFixed(1) + '%';
+  const rangeKm = Math.round(RANGE_FULL_KM * (_socShown / 100));
+  if (elRangeNum && elRangeNum.textContent !== String(rangeKm)) elRangeNum.textContent = rangeKm;
+}
 
 const MARKUP = `
   <div class="hmi-dock">
     <div class="hmi-island hmi-left">
       <div class="hmi-energy">
-        <div class="hmi-soc">${SOC}<span class="pct">%</span></div>
+        <div class="hmi-soc"><span id="hmiSocNum">${SOC_FULL}</span><span class="pct">%</span></div>
         <div class="hmi-label dim">BATTERY</div>
-        <div class="hmi-tickline" aria-hidden="true"><span style="width:${SOC}%"></span></div>
-        <div class="hmi-range">610<span class="tag">CLTC</span><span class="u">KM</span></div>
+        <div class="hmi-tickline" aria-hidden="true"><span id="hmiTickFill" style="width:${SOC_FULL}%"></span></div>
+        <div class="hmi-range"><span id="hmiRangeNum">${RANGE_FULL_KM}</span><span class="tag">CLTC</span><span class="u">KM</span></div>
       </div>
     </div>
     <div class="hmi-island hmi-mid">
@@ -142,7 +176,7 @@ export function installHmiDrivingHud() {
   if (installed) return;
   if (typeof document === 'undefined') return;
   installed = true;
-  _smooth = null; _seeded = false; _scaleSmooth = null; // 进驾驶态/首装：清空平滑点数组与缩放平滑值，让首个有效帧 snap 而非从竖线/默认值 lerp。
+  _smooth = null; _seeded = false; _scaleSmooth = null; _nearAnchor = null; _socInited = false; _socShown = SOC_FULL; // 进驾驶态/首装：清空平滑点/缩放/近端锚定与电量状态，让首个有效帧 snap。
   installHmiTokens();
 
   const style = document.createElement('style');
@@ -158,6 +192,9 @@ export function installHmiDrivingHud() {
   elSpeedNum = root.querySelector('#hmiSpeedNum');
   elGear = root.querySelector('#hmiGear');
   elAutoState = root.querySelector('#hmiAutoState');
+  elSocNum = root.querySelector('#hmiSocNum');
+  elTickFill = root.querySelector('#hmiTickFill');
+  elRangeNum = root.querySelector('#hmiRangeNum');
   elRouteCanvas = root.querySelector('#hmiRouteCanvas');
   if (elRouteCanvas) {
     routeCtx = elRouteCanvas.getContext('2d');
@@ -204,6 +241,8 @@ function resizeRouteCanvas() {
 let _smooth = null;   // 平滑后的车体相对点数组 [{x,z}]（与原始点一一对应）
 let _seeded = false;  // 是否已用首个有效帧种子化（首帧 snap，不从竖线 lerp）
 let _scaleSmooth = null; // 自适应缩放因子(fit)的低通平滑值；首帧 snap，避免线宽/弧度逐帧忽大忽小跳
+// 近端锚定（问题2）：车端首若干采样点用更强的时间平滑/锚定，让静止/匀速时不脉动。
+let _nearAnchor = null; // [{x,z}] 近端被锚定/强平滑的点（只覆盖前 NEAR_LOCK_N 个）
 
 // 收集前向有效点（z≥0 且在可视距离内），按 z 升序（computeRoutePreview 已天然有序）。
 function collectForward(pts) {
@@ -220,6 +259,10 @@ function collectForward(pts) {
 }
 
 // 时间平滑：把 target 点数组逐点 lerp 进 _smooth。点数变化或大跳变（瞬移/跳机位）直接 snap。
+//   问题2 修复：近端首 NEAR_LOCK_N 个点用更低的跟随系数（更强平滑/接近锚定），
+//   并对“车端首点”的纵向 z 做硬锚定（0），消除静止/匀速时端头伸缩脉动。
+//   远端仍用原 k 正常跟随道路弯（不把整条线变僵）。
+const NEAR_LOCK_N = 3;   // 近端被强平滑的采样点个数
 function smoothPoints(target) {
   if (!target) return _smooth; // 无新数据：沿用历史（中断帧不闪）
   if (!_smooth || _smooth.length !== target.length || !_seeded) {
@@ -234,11 +277,16 @@ function smoothPoints(target) {
     _smooth = target.map((p) => ({ x: p.x, z: p.z }));
     return _smooth;
   }
-  // k 偏低更稳（跳动明显减少）；大跳变已在上面直接 snap，这里只做日常平顺跟随。
-  const k = 0.12;
+  // 逆向数据平滑：近端用很低的 k（强锚定），远端用常规 k；z 近端更硬。
+  const kFar = 0.12;       // 远端日常平顺跟随
+  const kNearX = 0.04;     // 近端横向：更强平滑（静止/匀速不抽）
+  const kNearZ = 0.03;     // 近端纵向：更强，抑制端头伸缩脉动
   for (let i = 0; i < target.length; i++) {
-    _smooth[i].x += (target[i].x - _smooth[i].x) * k;
-    _smooth[i].z += (target[i].z - _smooth[i].z) * k;
+    const near = i < NEAR_LOCK_N;
+    const kx = near ? kNearX : kFar;
+    const kz = near ? kNearZ : kFar;
+    _smooth[i].x += (target[i].x - _smooth[i].x) * kx;
+    _smooth[i].z += (target[i].z - _smooth[i].z) * kz;
   }
   return _smooth;
 }
@@ -279,9 +327,10 @@ function drawRoutePreview(pts) {
   }
   // 自适应：若最弯点超出可视半宽，等比压缩 xScale 让它刚好落进画布（大弯不被截断、不甩出）。
   const targetFit = maxAbs > halfAvail ? (halfAvail / maxAbs) : 1;
-  // 对 fit 做时间低通平滑：避免每帧重算让线宽/弧度逐帧跳。首帧直接 snap（不从 1 慢收）。
+  // 对 fit 做时间低通平滑 + 死区：避免每帧重算让线宽/弧度逐帧跳（问题2 成因a）。
+  // 首帧 snap；后续只在变化超过死区时缓慢逼近，静止/匀速时 fit 几乎不动。
   if (_scaleSmooth == null) _scaleSmooth = targetFit;
-  else _scaleSmooth += (targetFit - _scaleSmooth) * 0.12;
+  else if (Math.abs(targetFit - _scaleSmooth) > 0.012) _scaleSmooth += (targetFit - _scaleSmooth) * 0.06;
   const fit = _scaleSmooth;
   const xScale = xScaleBase * fit;
   // 远端纵向压缩：zNorm^0.62 让近段占更多纵向像素（近大远远小）。
@@ -333,31 +382,39 @@ function drawRoutePreview(pts) {
   }
   ctx.restore();
 
-  // 3) 车辆位置点：固定锦定在画布底部正中 (cx, yBottom)，永不漂移。
-  //   不用 sp[0]（会随道路弯曲/采样横向漂移）；路线从此固定点往前延伸。
+  // 3) 车端镜空白色端头（问题1 修复）：不再用 destination-out 黑点压在线头上。
+  //   导航线在车端（cx, yBottom）自然收成一个“镜空白色环形端头”：
+  //   只画一圈白色描边环（与主线同色系），环内保持透明（透出背景），
+  //   形成 hollow white endpoint；由于不填色/不挡黑，线头与端头干净衔接，消除黑点遮挡观感。
+  //   lineCap=round 已为线头提供圆收口；这里只用描边环强调镜空端点，不叠实心圆。
   ctx.save();
-  const rDot = Math.max(3.2, routeW * 0.05);
   const carX = cx, carY = yBottom;
-  ctx.shadowColor = 'rgba(190,222,255,0.6)';
-  ctx.shadowBlur = 6;
-  // 描边环
-  ctx.beginPath();
-  ctx.arc(carX, carY, rDot, 0, Math.PI * 2);
-  ctx.lineWidth = Math.max(1.6, rDot * 0.42);
-  ctx.strokeStyle = 'rgba(232,244,255,0.95)';
-  ctx.stroke();
-  // 中心挖空（清掉环内，露出背景）
-  ctx.shadowBlur = 0;
+  // 环半径与近端线宽协调：略大于半个线宽，让线头刚好从环内镜空处生长出去。
+  const rDot = Math.max(3.2, wNear * 0.62);
+  const ringW = Math.max(1.5, wNear * 0.30);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // 先在端头中心挖出一个小空心（destination-out），让线头不是实心 blob，
+  // 而是透出背景的镜空点；再在外圈描一道白环强调端点轮廓。
   ctx.globalCompositeOperation = 'destination-out';
   ctx.beginPath();
-  ctx.arc(carX, carY, Math.max(1, rDot - ctx.lineWidth * 0.62), 0, Math.PI * 2);
+  ctx.arc(carX, carY, Math.max(1, rDot - ringW * 0.5), 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.shadowColor = 'rgba(190,222,255,0.55)';
+  ctx.shadowBlur = 6;
+  // 镜空白色环端头（不填心，中心透出背景）。
+  ctx.beginPath();
+  ctx.arc(carX, carY, rDot, 0, Math.PI * 2);
+  ctx.lineWidth = ringW;
+  ctx.strokeStyle = 'rgba(236,246,255,0.96)';
+  ctx.stroke();
   ctx.restore();
 }
 
 // 每帧调用：speedKmh / distanceM / racePhase / gear / routePts / halfW。
 //   routePts 由 main.js 基于 samples / nearestRoad 算好（车体相对坐标，右为正）。
-//   halfW = world.js 导出 HALF_W（只读）。电量/续航静态占位。AUTOSTEER 恒 OFF。
+//   halfW = world.js 导出 HALF_W（只读）。电量/续航由 distanceM 驱动动态更新。AUTOSTEER 恒 OFF。
 export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'free', gear = 'N', routePts = null, halfW = null) {
   if (!installed) return;
   if (typeof halfW === 'number' && halfW > 0) ROUTE_HALF_W_M = halfW;
@@ -368,6 +425,7 @@ export function updateHmiDrivingHud(speedKmh = 0, distanceM = 0, racePhase = 'fr
     if (elGear.dataset.gear !== g) elGear.dataset.gear = g;
   }
   if (elAutoState && elAutoState.textContent !== 'OFF') elAutoState.textContent = 'OFF';
+  updateEnergy(distanceM); // 动态电量/续航（问题3）：随行驶距离从 100% 缓降，续航 KM 同步。
   if (routeCtx) drawRoutePreview(routePts);
 }
 
