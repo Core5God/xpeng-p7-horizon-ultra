@@ -1,0 +1,38 @@
+name: Deploy V3 to Vercel
+
+on:
+  push:
+    branches:
+      - v3-main
+  workflow_dispatch:
+
+jobs:
+  trigger-v3-deploy:
+    name: Trigger V3 Vercel Deploy Hook
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate branch
+        run: |
+          echo "Current ref: $GITHUB_REF"
+          if [ "$GITHUB_REF" != "refs/heads/v3-main" ]; then
+            echo "This workflow only deploys v3-main."
+            exit 1
+          fi
+
+      - name: Trigger Vercel Deploy Hook
+        env:
+          VERCEL_V3_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_V3_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_V3_DEPLOY_HOOK_URL" ]; then
+            echo "Missing GitHub secret: VERCEL_V3_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+          echo "Triggering V3 Vercel Deploy Hook..."
+          curl -X POST "$VERCEL_V3_DEPLOY_HOOK_URL" \
+            --fail \
+            --silent \
+            --show-error
+
+          echo "V3 deploy hook triggered."
