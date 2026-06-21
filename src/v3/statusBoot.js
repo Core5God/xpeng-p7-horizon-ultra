@@ -72,6 +72,30 @@ text-decoration:none;font-size:13px;font-weight:600;transition:all .15s}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
+// 英文阶段状态 → 中文展示（兜底映射表；JSON *Zh 字段优先）
+const STATUS_ZH = {
+  'not started': '未开始',
+  'preparing': '准备中',
+  'doing': '进行中',
+  'submitted for review': '已提交待验收',
+  'review': '待评审',
+  'passed': '已通过',
+  'hold': '暂停 / HOLD',
+  'blocked': '阻塞',
+  'failed': '未通过',
+  'cleanup': '整改中'
+};
+function statusZh(s){
+  const k = String(s||'').trim().toLowerCase();
+  if (STATUS_ZH[k]) return STATUS_ZH[k];
+  if (k.indexOf('hold') >= 0) return '暂停 / HOLD';
+  if (k.indexOf('submit') >= 0) return '已提交待验收';
+  if (k.indexOf('review') >= 0) return '待评审';
+  if (k.indexOf('prepar') >= 0) return '准备中';
+  if (k.indexOf('not start') >= 0) return '未开始';
+  return s || '';
+}
+
 export function launchStatus() {
   Array.prototype.forEach.call(document.body.children, (el) => { el.style.display = 'none'; });
   document.documentElement.classList.add('v3-dash-active');
@@ -80,14 +104,14 @@ export function launchStatus() {
   document.head.appendChild(style);
   const root = document.createElement('div');
   root.id = 'v3dash';
-  root.innerHTML = '<div class="dh-err">Loading V3 cockpit\u2026</div>';
+  root.innerHTML = '<div class="dh-err">正在加载 V3 项目驾驶舱\u2026</div>';
   document.body.appendChild(root);
-  document.title = 'Horizon V3 \u00b7 Project Cockpit';
+  document.title = 'Horizon V3 \u00b7 项目驾驶舱';
   fetch(STATUS_URL, { cache: 'no-store' })
     .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then((data) => render(root, data))
     .catch((err) => {
-      root.innerHTML = '<div class="dh-err">Failed to load status JSON.<br>' +
+      root.innerHTML = '<div class="dh-err">状态 JSON 加载失败。<br>' +
         esc(err && err.message || err) + '</div>';
     });
 }
@@ -108,14 +132,18 @@ function barColor(p){
   return '#3a4252';
 }
 
-function envBlock(title, safe, project, branch, commit, url, branchOk){
+function envBlock(title, safe, project, branch, commit, url, branchOk, safeZh){
   const safePill = safe
-    ? '<span class="pill ok">\u2714 SAFE</span>'
-    : '<span class="pill bad">\u2716 AT RISK</span>';
+    ? '<span class="pill ok">\u2714 安全</span>'
+    : '<span class="pill bad">\u2716 有风险</span>';
+  const safeLine = safeZh
+    ? '<div class="row"><span class="k">安全状态</span><span class="v">' + esc(safeZh) + '</span></div>'
+    : '';
   return '<div class="card"><h2>' + esc(title) + ' ' + safePill + '</h2>' +
     '<div class="envbox">' +
-    row('Project', esc(project)) +
-    row('Branch', esc(branch) + (branchOk === undefined ? '' :
+    safeLine +
+    row('项目', esc(project)) +
+    row('分支', esc(branch) + (branchOk === undefined ? '' :
       (branchOk ? ' <span class="pill ok">on v3-main</span>' : ' <span class="pill bad">off-branch</span>'))) +
     row('Commit', esc(commit)) +
     '<div class="row"><span class="k">URL</span><a class="v" style="color:var(--dash-accent)" href="' +
@@ -146,12 +174,14 @@ function render(root, d){
 
   const stagesHtml = stages.map((s)=>{
     const p = Number(s.progress)||0;
-    const nextHtml = s.next ? '<small class="next">' + esc(s.next) + '</small>' : '';
+    const nm = s.nameZh || s.name;
+    const nx = s.nextZh || s.next;
+    const nextHtml = nx ? '<small class="next">' + esc(nx) + '</small>' : '';
     return '<div class="stage">' +
       '<span class="id">' + esc(s.id) + '</span>' +
-      '<span class="nm">' + esc(s.name) + nextHtml + '</span>' +
+      '<span class="nm">' + esc(nm) + nextHtml + '</span>' +
       '<span class="meta">' +
-        '<span class="st-tag ' + statusClass(s.status) + '">' + esc(s.status) + '</span>' +
+        '<span class="st-tag ' + statusClass(s.status) + '">' + esc(statusZh(s.status)) + '</span>' +
         '<div class="sbar"><div class="sfill" style="width:' + p + '%;background:' + barColor(p) + '"></div></div>' +
         '<div style="font-size:12px;color:var(--dash-sub);margin-top:3px">' + p + '%</div>' +
       '</span>' +
@@ -159,16 +189,16 @@ function render(root, d){
   }).join('');
 
   const linksHtml =
-    linkBtn('V3 Track Editor', links.v3Editor) +
-    linkBtn('V3 Greybox Loop', links.v3Greybox) +
-    linkBtn('Viewpoint 0', links.vp0) +
-    linkBtn('Viewpoint 1', links.vp1) +
-    linkBtn('Viewpoint 5', links.vp5) +
-    linkBtn('Status JSON', links.statusJson) +
-    linkBtn('V2 Production', links.v2Production, 'prod');
+    linkBtn('V3 路线编辑器', links.v3Editor) +
+    linkBtn('V3 灰模驾驶', links.v3Greybox) +
+    linkBtn('VP0 全环俯视', links.vp0) +
+    linkBtn('VP1 起点基地', links.vp1) +
+    linkBtn('VP5 山顶俯瞰', links.vp5) +
+    linkBtn('状态 JSON', links.statusJson) +
+    linkBtn('V2 生产站', links.v2Production, 'prod');
 
   const dailyHtml = (d.dailyLog||[]).map((l)=>
-    '<div class="dl"><div class="d">' + esc(l.date) + '</div><div class="s">' + esc(l.summary) + '</div></div>'
+    '<div class="dl"><div class="d">' + esc(l.date) + '</div><div class="s">' + esc(l.summaryZh || l.summary) + '</div></div>'
   ).join('');
 
   const overall = Number(d.overallProgress)||0;
@@ -176,40 +206,40 @@ function render(root, d){
   root.innerHTML =
     '<div class="dh-top">' +
       '<div>' +
-        '<div class="dh-title">' + esc(d.projectName) + '</div>' +
-        '<div class="dh-sub">' + esc(d.currentStatus) + '</div>' +
-        '<div class="dh-gate" style="margin-top:8px">Current Gate: <b>' + esc(d.currentGate) + '</b>' +
+        '<div class="dh-title">' + esc(d.projectNameZh || d.projectName) + '</div>' +
+        '<div class="dh-sub">当前状态：' + esc(d.currentStatusZh || statusZh(d.currentStatus)) + '</div>' +
+        '<div class="dh-gate" style="margin-top:8px">当前阶段：<b>' + esc(d.currentGateZh || d.currentGate) + '</b>' +
           (pr15Hold ? ' &nbsp;\u00b7&nbsp; <span class="pill bad">PR1.5 HOLD</span>' :
-            ' &nbsp;\u00b7&nbsp; <span class="pill ok">PR1.5 released</span>') + '</div>' +
+            ' &nbsp;\u00b7&nbsp; <span class="pill ok">PR1.5 已释放</span>') + '</div>' +
       '</div>' +
       '<div class="dh-prog">' +
-        '<div class="lbl"><span>Overall Progress</span><b>' + overall + '%</b></div>' +
+        '<div class="lbl"><span>项目总进度</span><b>' + overall + '%</b></div>' +
         '<div class="bar"><div class="fill" style="width:' + overall + '%"></div></div>' +
       '</div>' +
     '</div>' +
 
     '<div class="grid cols2" style="margin-bottom:16px">' +
-      envBlock('V2 Production', d.v2Safe, d.v2Project, d.v2Branch, d.v2Commit, d.v2Url) +
-      envBlock('V3 Rebuild', d.v3Safe, d.v3Project, d.v3Branch, d.v3Commit, d.v3Url, v3OnBranch) +
+      envBlock('V2 生产环境', d.v2Safe, d.v2Project, d.v2Branch, d.v2Commit, d.v2Url, undefined, d.v2SafeZh) +
+      envBlock('V3 重做环境', d.v3Safe, d.v3Project, d.v3Branch, d.v3Commit, d.v3Url, v3OnBranch, d.v3SafeZh) +
     '</div>' +
 
-    '<div class="card" style="margin-bottom:16px"><h2>Stages \u00b7 12 PR Gates</h2>' +
+    '<div class="card" style="margin-bottom:16px"><h2>阶段进度 \u00b7 12 个 PR 门禁</h2>' +
       '<div class="stages">' + stagesHtml + '</div></div>' +
 
     '<div class="grid cols2" style="margin-bottom:16px">' +
-      '<div class="card plan"><h2>Today Plan</h2>' + listOrdered(d.todayPlan) + '</div>' +
-      '<div class="card plan"><h2>Tomorrow Plan</h2>' + listOrdered(d.tomorrowPlan) + '</div>' +
+      '<div class="card plan"><h2>今日计划</h2>' + listOrdered(d.todayPlanZh || d.todayPlan) + '</div>' +
+      '<div class="card plan"><h2>明日计划</h2>' + listOrdered(d.tomorrowPlanZh || d.tomorrowPlan) + '</div>' +
     '</div>' +
 
-    '<div class="card blk" style="margin-bottom:16px"><h2>Blocked \u00b7 Do Not Touch</h2>' +
-      '<ul>' + (d.blockedItems||[]).map((t)=>'<li>' + esc(t) + '</li>').join('') + '</ul></div>' +
+    '<div class="card blk" style="margin-bottom:16px"><h2>当前禁止事项</h2>' +
+      '<ul>' + ((d.blockedItemsZh || d.blockedItems)||[]).map((t)=>'<li>' + esc(t) + '</li>').join('') + '</ul></div>' +
 
-    '<div class="card" style="margin-bottom:16px"><h2>Review Links</h2>' +
+    '<div class="card" style="margin-bottom:16px"><h2>验收入口</h2>' +
       '<div class="links">' + linksHtml + '</div></div>' +
 
-    '<div class="card daily"><h2>Daily Log</h2>' + dailyHtml + '</div>' +
+    '<div class="card daily"><h2>每日记录</h2>' + dailyHtml + '</div>' +
 
-    '<div class="foot">Single source of truth: <a href="' + esc(links.statusJson || STATUS_URL) +
+    '<div class="foot">唯一真实进度源：<a href="' + esc(links.statusJson || STATUS_URL) +
       '" target="_blank" rel="noopener">horizon-v3-status.json</a> \u00b7 ' +
-      'This cockpit only renders the JSON. V2 is isolated and untouched.</div>';
+      '本驾驶舱仅渲染 JSON。V2 已隔离，未受影响。</div>';
 }

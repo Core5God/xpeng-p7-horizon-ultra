@@ -1,24 +1,36 @@
 {
   "projectName": "Horizon V3 Closed Loop Rebuild",
+  "projectNameZh": "Horizon V3 闭合环线重做",
   "overallProgress": 12,
   "currentGate": "V3-PR1.0.2",
-  "currentStatus": "Preparing Track Editor Usability + Route Design Validation",
+  "currentStatus": "Submitted for Review",
+  "currentStatusZh": "已提交待验收",
+  "currentGateZh": "V3-PR1.0.2｜赛道编辑器可用性 + 路线设计验证",
   "v2Safe": true,
   "v2Project": "xpeng-p7-horizon-ultra",
   "v2Branch": "main",
   "v2Commit": "5ffda01",
   "v2Url": "https://horizon.beastle.cn",
+  "v2SafeZh": "安全，main / 纯 V2",
   "v3Safe": true,
   "v3Project": "users-xpeng-library-application-support-claude",
   "v3Branch": "v3-main",
-  "v3Commit": "b3167d9",
+  "v3Commit": "ae7d475",
   "v3Url": "https://users-xpeng-library-application-sup.vercel.app",
+  "v3SafeZh": "安全，v3-main / PR1.0.2",
   "todayPlan": [
     "Create V3-DASH project cockpit",
     "Add status JSON",
     "Add status page",
     "Create PR1.0.2 task card",
     "Dispatch Coder for editor usability and route validation"
+  ],
+  "todayPlanZh": [
+    "验收 PR1.0.2 编辑器是否能看懂路线",
+    "检查 Route Summary 是否清晰",
+    "检查高度剖面是否能判断山路节奏",
+    "检查 Segment 列表是否能辅助路线设计",
+    "检查 Validation Report 是否有用"
   ],
   "tomorrowPlan": [
     "Review PR1.0.2 submission",
@@ -28,10 +40,25 @@
     "Check Validation Report",
     "Decide PR1.1 or PR1.0.3"
   ],
+  "tomorrowPlanZh": [
+    "验收 PR1.0.2 提交成果",
+    "检查路线摘要 Route Summary",
+    "检查高度剖面 Height Profile",
+    "检查 Segment 列表",
+    "检查校验报告 Validation Report",
+    "决定开 PR1.1 还是 PR1.0.3"
+  ],
   "blockedItems": [
     "Do not start PR1.5 Airborne Physics before PR1.0.2 passes",
     "Do not touch V2",
     "Do not start art assets, ocean, vegetation, fog, clouds, vehicle material"
+  ],
+  "blockedItemsZh": [
+    "不开 PR1.5 腾空物理（须等 PR1.0.2 通过）",
+    "不碰美术资产",
+    "不碰海水、植被、体积云、局部雾、车辆材质",
+    "不碰 V2",
+    "不把 V3 合并进 main"
   ],
   "reviewLinks": {
     "v3Editor": "https://users-xpeng-library-application-sup.vercel.app/?edit=1",
@@ -46,77 +73,94 @@
     {
       "id": "V3-PR0",
       "name": "Art Bible + Asset Pipeline",
+      "nameZh": "美术圣经 + 资产管线",
       "status": "Review",
       "progress": 80,
-      "next": "VIK final approval"
+      "next": "VIK final approval",
+      "nextZh": "VIK 最终审批"
     },
     {
       "id": "V3-PR1",
       "name": "Loop Editor + Greybox Skeleton",
+      "nameZh": "闭合环线编辑器 + 灰模驾驶骨架",
       "status": "Submitted for Review",
       "progress": 70,
-      "next": "PR1.0.2 cleanup"
+      "next": "PR1.0.2 cleanup",
+      "nextZh": "PR1.0.2 整改"
     },
     {
       "id": "V3-PR1.0.2",
       "name": "Track Editor Usability + Route Design Validation",
-      "status": "Preparing",
+      "nameZh": "赛道编辑器可用性 + 路线设计验证",
+      "status": "Submitted for Review",
       "progress": 0,
-      "next": "Create task card and dispatch Coder"
+      "next": "Create task card and dispatch Coder",
+      "nextZh": "等待 VIK 验收"
     },
     {
       "id": "V3-PR1.1",
       "name": "Track Scale + Cruise Speed Calibration",
+      "nameZh": "路线尺度 + 巡航速度校准",
       "status": "Not Started",
       "progress": 0,
-      "next": "Wait for PR1.0.2"
+      "next": "Wait for PR1.0.2",
+      "nextZh": "等待 PR1.0.2"
     },
     {
       "id": "V3-PR1.5",
       "name": "Airborne Vehicle Physics",
+      "nameZh": "腾空 / 离地 / 落地物理",
       "status": "HOLD",
       "progress": 0,
-      "next": "Wait for route validation"
+      "next": "Wait for route validation",
+      "nextZh": "等待路线验证"
     },
     {
       "id": "V3-PR2",
       "name": "Terrain Semantic Pass",
+      "nameZh": "地形语义生成",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR3",
       "name": "Material Baseline",
+      "nameZh": "基础材质系统",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR4",
       "name": "Vegetation / Asset Pipeline",
+      "nameZh": "植被与资产管线",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR5",
       "name": "Hero Zones",
+      "nameZh": "Hero Zone 精修",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR6",
       "name": "Ocean / Coast / Fog",
+      "nameZh": "海岸 / 海水 / 局部雾",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR7",
       "name": "Sky / Weather",
+      "nameZh": "天空 / 天气 / 昼夜",
       "status": "Not Started",
       "progress": 0
     },
     {
       "id": "V3-PR8",
       "name": "Polish / Performance",
+      "nameZh": "性能优化与最终打磨",
       "status": "Not Started",
       "progress": 0
     }
@@ -124,7 +168,8 @@
   "dailyLog": [
     {
       "date": "2026-06-22",
-      "summary": "V2/V3 isolation confirmed. PR1 skeleton submitted but not passed. PR1.0.2 defined as next gate."
+      "summary": "V2/V3 isolation confirmed. PR1 skeleton submitted but not passed. PR1.0.2 defined as next gate.",
+      "summaryZh": "确认 V2/V3 环境隔离。PR1 骨架已提交但未通过。PR1.0.2 定为下一阶段。"
     }
   ]
 }
