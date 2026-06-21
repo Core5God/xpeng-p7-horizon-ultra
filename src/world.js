@@ -1492,6 +1492,7 @@ function buildEnv() {
   const poolG = new THREE.PlaneGeometry(10, 10);
   const poolM = new THREE.MeshBasicMaterial({map:poolTex, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false});
   const poleGeos = [], headGeos = [], poolGeos = [];
+  const headPositions = []; // 记录灯头世界坐标，用于叠加面向相机的柔光晕 sprite
   const tmpL = new THREE.Object3D();
   for (let i = 0; i < NS; i += 16) {
     const p = samples[i], n = normals[i];
@@ -1509,6 +1510,7 @@ function buildEnv() {
     tmpL.lookAt(p.x, p.y+4.46, p.z);
     tmpL.updateMatrix();
     headGeos.push(headG.clone().applyMatrix4(tmpL.matrix));
+    headPositions.push(new THREE.Vector3(bx - n.x*side*1.4, p.y+4.46, bz - n.z*side*1.4));
     tmpL.position.set(bx - n.x*side*1.4, p.y+0.12, bz - n.z*side*1.4);
     tmpL.rotation.set(-Math.PI/2, 0, 0);
     tmpL.updateMatrix();
@@ -1516,8 +1518,22 @@ function buildEnv() {
   }
   scene.add(new THREE.Mesh(mergeGeometries(poleGeos), poleM));
   const lampHeadMesh = new THREE.Mesh(mergeGeometries(headGeos), env.lampHeadM);
-  lampHeadMesh.layers.enable(BLOOM_LAYER); // 路灯灯头进 selective bloom
+  // 注意：灯头 box 本体不再单独进 bloom，避免方块边缘被放大成生硬过曝方块。
+  // 改由下方面向相机的柔光晕 sprite 承担夜间发光观感（圆形软光，无方块边缘）。
   scene.add(lampHeadMesh);
+  // —— 灯头柔光晕：每个灯头叠加一个面向相机的 billboard glow sprite（圆形软光）
+  const lampGlowTex = makeGlowTex([[0,'rgba(255,238,200,0.95)'],[0.25,'rgba(255,224,165,0.55)'],[0.55,'rgba(255,210,140,0.18)'],[1,'rgba(255,200,120,0)']]);
+  env.lampGlowMat = new THREE.SpriteMaterial({map:lampGlowTex, transparent:true, opacity:0, color:0xffe8b8, blending:THREE.AdditiveBlending, depthWrite:false, fog:false});
+  env.lampGlows = new THREE.Group();
+  for (const hp of headPositions) {
+    const sp = new THREE.Sprite(env.lampGlowMat);
+    sp.position.copy(hp);
+    sp.scale.set(2.2, 2.2, 1);
+    sp.layers.enable(BLOOM_LAYER); // 柔光晕进 selective bloom，bloom 在圆形软光上扩散自然
+    env.lampGlows.add(sp);
+  }
+  env.lampGlows.visible = false;
+  scene.add(env.lampGlows);
   env.lampPools = new THREE.Mesh(mergeGeometries(poolGeos), poolM);
   env.lampPools.layers.enable(BLOOM_LAYER); // 灯光池进 selective bloom
   scene.add(env.lampPools);
@@ -1886,8 +1902,10 @@ function applyTod(name) {
   // 环境元素昼夜联动（环境可能尚未构建完成，需判空）
   if (env.lampHeadM) {
     const night = name === 'night';
-    env.lampHeadM.emissiveIntensity = night ? 2.2 : 0.12;
+    // 灯头 box 本体夜间适度发光即可（不再拉到 2.2 过曝成方块），柔光晕承担主要发光观感
+    env.lampHeadM.emissiveIntensity = night ? 0.9 : 0.12;
     env.lampPools.visible = night;
+    if (env.lampGlows) { env.lampGlows.visible = night; env.lampGlowMat.opacity = night ? 0.95 : 0; }
     env.moon.visible = night;
     if (night) env.moon.position.set(curSunDir.x*1700, Math.max(curSunDir.y*1700, 320), curSunDir.z*1700);
     env.fireflies.visible = night;
