@@ -65,7 +65,7 @@ export class TrackEditor {
         </div>
         <textarea id="v3e-io" placeholder="导入：粘贴 Track JSON 后点[导入JSON]&#10;导出：点[导出JSON]后从此处复制"></textarea>
       </div>`;
-    container.appendChild(root);
+    this.container.appendChild(root);
     this.canvas = root.querySelector('#v3edit-canvas');
     this.ctx = this.canvas.getContext('2d');
     this.panel = root.querySelector('#v3edit-panel');

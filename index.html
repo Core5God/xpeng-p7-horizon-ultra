@@ -427,10 +427,14 @@
   // Horizon V3 路由（task-20260621-V3-PR1）：
   // ?edit=1 → V3 赛道编辑器；?v3=1 → V3 灰模环线运行时；否则走 V2。
   const q = new URLSearchParams(location.search);
-  if (q.get('edit') === '1') {
-    import('/src/v3/editorBoot.js').then((m) => m.launchEditor());
-  } else if (q.get('v3') === '1') {
-    import('/src/v3/v3main.js').then((m) => m.launchV3());
+  if (q.get('edit') === '1' || q.get('v3') === '1') {
+    // 隐藏 V2 当前存在的静态 DOM（车库菜单/HUD/boot），不影响 V3 随后新增的元素。
+    Array.prototype.forEach.call(document.body.children, (el) => { el.style.display = 'none'; });
+    if (q.get('edit') === '1') {
+      import('/src/v3/editorBoot.js').then((m) => m.launchEditor());
+    } else {
+      import('/src/v3/v3main.js').then((m) => m.launchV3());
+    }
   } else {
     import('/src/main.js');
   }
