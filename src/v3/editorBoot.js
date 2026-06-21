@@ -10,6 +10,7 @@ export function launchEditor() {
   document.body.style.margin = '0';
   const ed = new TrackEditor(document.body);
   window.__v3editor = ed; // 便于 headless / 控制台调试
+  ed._setMode('move');
   // 自动尝试载入仓库里的初始环线
   ed._loadDefault();
   return ed;

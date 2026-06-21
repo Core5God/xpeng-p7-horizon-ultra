@@ -26,6 +26,7 @@ export class TrackEditor {
     this.view = { ox: 0, oz: 0, scale: 0.12 }; // world→screen: px = (world - o)*scale + center
     this.selected = -1;
     this.dragging = -1;
+    this.mode = 'move'; // PR1.0.1 编辑模式: draw|move|height|tag|vp|validate
     this.panning = false;
     this.panStart = null;
     this._build();
@@ -40,18 +41,42 @@ export class TrackEditor {
     root.id = 'v3edit-root';
     root.innerHTML = `
       <canvas id="v3edit-canvas"></canvas>
+      <div id="v3edit-guide">
+        <div class="v3g-title">✨ 上手步骤</div>
+        <ol>
+          <li>① 点「载入初始环线」加载起始赛道</li>
+          <li>② 拖动控制点调整走向（选中点会高亮）</li>
+          <li>③ 在右侧面板改高度/路宽/标签</li>
+          <li>④ 点「Validate」检查闭环与总长</li>
+          <li>⑤ 点「导出 JSON」保存 / 进入灰模驾驶(?v3=1)</li>
+        </ol>
+        <button id="v3g-close">知道了，隐藏</button>
+      </div>
       <div id="v3edit-panel">
-        <div class="v3e-title">V3 赛道编辑器 · PR1 灰模骨架</div>
+        <div class="v3e-title">V3 赛道编辑器 · 灰模阶段</div>
+        <div class="v3e-sub">文件</div>
         <div class="v3e-row">
           <button data-act="newtrack">新建</button>
           <button data-act="loaddefault">载入初始环线</button>
           <button data-act="import">导入JSON</button>
           <button data-act="export">导出JSON</button>
+          <button data-act="fit">对齐视野</button>
         </div>
-        <div class="v3e-hint">左键空白处=加点 · 拖动点=移动 · 选中点按 Del=删除 · 右键拖=平移 · 滚轮=缩放</div>
+        <div class="v3e-sub">编辑模式</div>
+        <div id="v3e-modes" class="v3e-row">
+          <button data-mode="draw" class="v3e-mode">Draw 加点</button>
+          <button data-mode="move" class="v3e-mode">Move 移动</button>
+          <button data-mode="height" class="v3e-mode">Height 高度</button>
+          <button data-mode="tag" class="v3e-mode">Tag 标签</button>
+          <button data-mode="vp" class="v3e-mode">VP 机位</button>
+          <button data-mode="validate" class="v3e-mode">Validate 校验</button>
+        </div>
+        <div class="v3e-hint">选中点会高亮(放大+黄圈) · 拖动点=移动 · 选中按 Del=删除 · 右键拖=平移 · 滚轮=缩放</div>
         <div id="v3e-status" class="v3e-status"></div>
+        <div id="v3e-export-summary" class="v3e-export" style="display:none"></div>
         <div id="v3e-cpedit" class="v3e-cpedit" style="display:none">
           <div class="v3e-sub">选中控制点</div>
+          <div id="v3e-cpinfo" class="v3e-cpinfo"></div>
           <label>高度 y <input type="range" id="v3e-y" min="-200" max="600" step="1"><span id="v3e-yv"></span></label>
           <label>路宽 <input type="range" id="v3e-w" min="4" max="40" step="0.5"><span id="v3e-wv"></span></label>
           <label>倾斜 bankDeg <input type="range" id="v3e-bank" min="-25" max="25" step="0.5"><span id="v3e-bankv"></span></label>
@@ -102,6 +127,20 @@ export class TrackEditor {
       .v3e-tag.phys.on{background:#e0793a;border-color:#e0793a}
       #v3e-io{width:100%;height:120px;margin-top:8px;background:#0a0d12;color:#9fe;border:1px solid #243245;
         border-radius:8px;font-family:monospace;font-size:10px;box-sizing:border-box}
+      #v3edit-guide{position:absolute;left:14px;top:14px;width:280px;background:rgba(16,22,32,.94);
+        color:#dfe6f0;border:1px solid #2a4664;border-radius:10px;padding:12px 14px;z-index:10000;font-size:12px}
+      .v3g-title{font-weight:700;color:#7affc0;margin-bottom:6px}
+      #v3edit-guide ol{margin:0 0 8px;padding-left:18px;line-height:1.7;color:#cdd8e8}
+      #v3edit-guide li{margin:2px 0}
+      #v3g-close{background:#1d2735;color:#cfe;border:1px solid #2f3e52;border-radius:7px;
+        padding:5px 10px;cursor:pointer;font-size:11px}
+      .v3e-mode{position:relative}
+      .v3e-mode.on{background:#2a6df4 !important;color:#fff !important;border-color:#2a6df4 !important}
+      .v3e-cpinfo{font:11px/1.6 monospace;color:#9fe;background:#0a0d12;border:1px solid #243245;
+        border-radius:6px;padding:6px 8px;margin:4px 0;white-space:pre-wrap}
+      .v3e-export{font:11px/1.6 monospace;background:#10261b;border:1px solid #1f6b45;border-radius:8px;
+        padding:8px 10px;margin-bottom:8px;color:#bfeede;white-space:pre-wrap}
+      .v3e-export.bad{background:#2a1414;border-color:#7a2f2f;color:#ffc9c9}
     `;
     document.head.appendChild(st);
   }

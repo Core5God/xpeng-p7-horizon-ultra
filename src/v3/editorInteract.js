@@ -29,8 +29,9 @@ P._bind = function () {
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
     if (e.button === 2) { this.panning = true; this.panStart = { sx, sy, ox: this.view.ox, oz: this.view.oz }; return; }
     const hit = this.hitTest(sx, sy);
-    if (hit >= 0) { this.selected = hit; this.dragging = hit; this._syncCpEdit(); this.draw(); return; }
-    // 空白处加点
+    if (hit >= 0) { this.selected = hit; this.dragging = (this.mode !== 'validate') ? hit : -1; this._syncCpEdit(); this.draw(); return; }
+    // 空白处：仅 draw 模式加点
+    if (this.mode !== 'draw') { return; }
     const w = this.screenToWorld(sx, sy);
     const cp = makeControlPoint(Math.round(w.x), 0, Math.round(w.z));
     this.track.controlPoints.push(cp);
@@ -75,6 +76,14 @@ P._bind = function () {
     if (act) this._onAction(act);
     const tag = e.target.dataset && e.target.dataset.tag;
     if (tag) this._toggleTag(tag);
+    const mode = e.target.dataset && e.target.dataset.mode;
+    if (mode) this._setMode(mode);
+  });
+  // 引导关闭
+  const gclose = this.container.querySelector('#v3g-close');
+  if (gclose) gclose.addEventListener('click', () => {
+    const g = this.container.querySelector('#v3edit-guide');
+    if (g) g.style.display = 'none';
   });
   // CP 编辑控件
   const bind = (id, key, span, factor = 1) => {
@@ -99,6 +108,15 @@ P._bind = function () {
   });
 };
 
+P._setMode = function (mode) {
+  this.mode = mode;
+  this.panel.querySelectorAll('.v3e-mode').forEach((b) => {
+    b.classList.toggle('on', b.dataset.mode === mode);
+  });
+  if (this.canvas) this.canvas.style.cursor = mode === 'draw' ? 'crosshair' : 'default';
+  if (mode === 'validate') this._showExportSummary();
+};
+
 P._toggleTag = function (tag) {
   if (this.selected < 0) return;
   const cp = this.track.controlPoints[this.selected];
@@ -113,6 +131,16 @@ P._syncCpEdit = function () {
   this.cpEdit.style.display = 'block';
   const set = (id, v) => { this.panel.querySelector('#' + id).value = v; };
   const setS = (id, v) => { this.panel.querySelector('#' + id).textContent = v; };
+  // 产品化详情：id/坐标/高度/路宽/bank/标签/VP
+  const info = this.panel.querySelector('#v3e-cpinfo');
+  if (info) {
+    info.textContent =
+      `点 #${this.selected}  id ${cp.id}\n` +
+      `坐标 x ${cp.pos.x}  z ${cp.pos.z}\n` +
+      `高度 y ${cp.pos.y.toFixed(1)}  路宽 ${cp.roadWidth.toFixed(1)}  bank ${cp.bankDeg.toFixed(1)}\u00b0\n` +
+      `标签 ${cp.tags.length ? cp.tags.join(', ') : '无'}\n` +
+      `VP锡点 ${cp.vpAnchor || '无'}`;
+  }
   set('v3e-y', cp.pos.y); setS('v3e-yv', cp.pos.y.toFixed(1));
   set('v3e-w', cp.roadWidth); setS('v3e-wv', cp.roadWidth.toFixed(1));
   set('v3e-bank', cp.bankDeg); setS('v3e-bankv', cp.bankDeg.toFixed(1));
@@ -128,9 +156,12 @@ P._onAction = function (act) {
     this.track.controlPoints = []; this.selected = -1; this._syncCpEdit(); this.draw();
   } else if (act === 'loaddefault') {
     this._loadDefault();
+  } else if (act === 'fit') {
+    this.fitToTrack(); this.draw();
   } else if (act === 'export') {
     this.ioEl.value = serializeTrack(this.track);
     this.ioEl.select();
+    this._showExportSummary();
     this._status('已导出到下方文本框，可复制保存为 track.main.json');
   } else if (act === 'import') {
     try {
@@ -154,4 +185,31 @@ P._loadDefault = async function () {
 
 P._status = function (msg) {
   if (this.statusEl) this.statusEl.textContent = msg;
+};
+
+// 导出前校验摘要：闭环 / 自交叉 / 总长(km) / 控制点数
+P._showExportSummary = function () {
+  const box = this.panel.querySelector('#v3e-export-summary');
+  if (!box) return;
+  const cps = this.track.controlPoints;
+  if (cps.length < 3) {
+    box.style.display = 'block';
+    box.classList.add('bad');
+    box.textContent = '⚠ 控制点不足 3 个，无法成环。当前 ' + cps.length + ' 个。';
+    return;
+  }
+  const samples = sampleClosedSpline(cps, 24);
+  const hits = detectSelfIntersections(samples);
+  const closure = checkClosure(samples);
+  const km = (closure.total / 1000).toFixed(2);
+  const ok = closure.closed && hits.length === 0 && closure.degenerate === 0;
+  box.style.display = 'block';
+  box.classList.toggle('bad', !ok);
+  box.textContent =
+    '导出前校验\n' +
+    `闭环: ${closure.closed ? '✔ 已闭合' : '✘ 未闭合'}\n` +
+    `自交叉: ${hits.length === 0 ? '✔ 无' : '⚠ ' + hits.length + ' 处'}\n` +
+    `总长度: ${km} km (${closure.total.toFixed(0)} m)\n` +
+    `控制点数: ${cps.length}\n` +
+    `退化段: ${closure.degenerate}`;
 };
