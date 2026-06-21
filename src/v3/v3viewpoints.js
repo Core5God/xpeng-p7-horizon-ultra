@@ -34,35 +34,41 @@ export function resolveViewpoints(world) {
 
   const out = {};
 
-  // VP0 — 全环俯视
+  // VP0 — 全环俯视（拉高+稍偏，保证整环入画 + 降雾后看清）
   out[0] = {
     label: VP_ANCHORS[0].label,
-    camPos: { x: cx, y: maxY + span * 1.1, z: cz + 1 },
+    camPos: { x: cx, y: maxY + span * 1.35, z: cz + span * 0.18 },
     lookAt: { x: cx, y: 0, z: cz },
     sIndex: null,
   };
 
-  // VP1 — 起点基地
+  // VP1 — 起点机位：抬高+拉远（不贴脸，看到起点全貌+走向）
   const cp1 = findCp('VP1', 'start') || cps[0];
   const s1 = nearestSampleIndex(center, cp1.pos);
+  const nxt1 = center[(s1 + 8) % center.length];
+  const dirx = nxt1.x - cp1.pos.x, dirz = nxt1.z - cp1.pos.z;
+  const dl = Math.hypot(dirx, dirz) || 1;
   out[1] = {
     label: VP_ANCHORS[1].label,
-    camPos: { x: cp1.pos.x + 20, y: cp1.pos.y + 12, z: cp1.pos.z + 24 },
-    lookAt: { x: cp1.pos.x, y: cp1.pos.y + 2, z: cp1.pos.z },
+    camPos: {
+      x: cp1.pos.x - (dirx / dl) * 90,
+      y: cp1.pos.y + 70,
+      z: cp1.pos.z - (dirz / dl) * 90,
+    },
+    lookAt: { x: cp1.pos.x + (dirx / dl) * 60, y: cp1.pos.y + 4, z: cp1.pos.z + (dirz / dl) * 60 },
     sIndex: s1,
   };
 
-  // VP5 — 山顶俯瞰
+  // VP5 — 山顶俯瞰：机位高于山顶，看清山顶/道路/远景关系
   let cp5 = findCp('VP5', 'summit');
   if (!cp5) {
-    // 回退：取 y 最高的控制点
     cp5 = cps.reduce((a, b) => (b.pos.y > a.pos.y ? b : a), cps[0]);
   }
   const s5 = nearestSampleIndex(center, cp5.pos);
   out[5] = {
     label: VP_ANCHORS[5].label,
-    camPos: { x: cp5.pos.x + 40, y: cp5.pos.y + 60, z: cp5.pos.z + 60 },
-    lookAt: { x: cx, y: 0, z: cz },
+    camPos: { x: cp5.pos.x + span * 0.16, y: cp5.pos.y + 220, z: cp5.pos.z + span * 0.30 },
+    lookAt: { x: (cp5.pos.x + cx) / 2, y: 0, z: (cp5.pos.z + cz) / 2 },
     sIndex: s5,
   };
 

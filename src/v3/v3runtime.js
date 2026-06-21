@@ -88,6 +88,11 @@ export function startLoop(ctx) {
       }
       placeCar(car, world, drive.s);
     }
+    // 当前所在段（供验收面板显示）
+    {
+      const ci = sampleCenterAtS(world, drive.s).i0;
+      drive.segName = (world.center[ci] && world.center[ci].segName) || 'Road';
+    }
 
     // 相机：静态 VP 则不跟车；否则追尾
     if (!drive.staticCam) {
@@ -116,19 +121,29 @@ export function startLoop(ctx) {
 
 function makeHud() {
   const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;left:14px;top:14px;color:#dfe6f0;font-family:monospace;font-size:12px;background:rgba(14,18,24,.6);padding:8px 12px;border-radius:8px;z-index:50;line-height:1.6;white-space:pre';
+  el.style.cssText = 'position:fixed;left:14px;top:14px;color:#eaf2fb;font-family:"Noto Sans SC",monospace;font-size:13px;background:rgba(14,20,30,.82);padding:12px 16px;border-radius:10px;z-index:50;line-height:1.7;border:1px solid #2a4664;min-width:210px';
   document.body.appendChild(el);
+  // 闭环状态（首帧计算一次）
+  let closureStr = '';
   return {
     update(world, drive, quality) {
+      if (!closureStr) {
+        const first = world.center[0], last = world.center[world.center.length - 1];
+        const gap = Math.hypot(first.x - last.x, first.z - last.z);
+        closureStr = gap < 30 ? '✔ 已闭合' : '⚠ 间隙 ' + gap.toFixed(0) + 'm';
+      }
       const km = (world.total / 1000).toFixed(2);
-      const prog = (drive.lapProgress * 100).toFixed(1);
-      el.textContent =
-        `V3 灰模环线 · ${km} km/圈\n` +
-        `画质: ${quality.mode}→${quality.resolved}\n` +
-        `速度: ${(drive.speed * 3.6).toFixed(0)} km/h\n` +
-        `圈进度: ${prog}%  圈数: ${drive.laps || 0}\n` +
-        `chunks: ${world.chunks.length}` +
-        (drive.staticCam ? `\n机位: ${drive.staticCam.label}` : '\n[空格暂停 方向键调速]');
+      const prog = (drive.lapProgress * 100).toFixed(0);
+      const seg = drive.segName || 'Road';
+      el.innerHTML =
+        '<b style="color:#7affc0">V3 灰模环线 · 验收信息</b><br>' +
+        '当前路段: <b style="color:#ffd24d">' + seg + '</b><br>' +
+        '圈进度: <b>' + prog + '%</b>　圈数: ' + (drive.laps || 0) + '<br>' +
+        '总长度: <b>' + km + ' km</b>/圈<br>' +
+        '闭环: ' + closureStr + '　路段数: ' + world.chunks.length + '<br>' +
+        '速度: ' + (drive.speed * 3.6).toFixed(0) + ' km/h　画质: ' + quality.resolved + '<br>' +
+        '<span style="color:#9fb0c8;font-size:11px">' +
+        (drive.staticCam ? ('机位: ' + drive.staticCam.label) : '[空格暂停 · 方向键调速]') + '</span>';
     },
   };
 }

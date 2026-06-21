@@ -8,7 +8,7 @@
 // 同时输出可供车辆采样的中心线（环线、等弧长），让车能开完整一圈。
 
 import * as THREE from 'three';
-import { normalizeTrack } from './trackSchema.js';
+import { normalizeTrack, classifyControlPoint } from './trackSchema.js';
 import { sampleClosedSpline, resampleByArc, arcLengths } from './trackSpline.js';
 
 export function buildTrackWorld(rawTrack) {
@@ -32,6 +32,18 @@ export function buildTrackWorld(rawTrack) {
     a.nx = -a.tz; a.nz = a.tx; // 左法线
   }
 
+  // PR1.0.1 — 为每个中心点标记所属段类型（按最近控制点），供 HUD 显示当前路段。
+  for (let i = 0; i < N; i++) {
+    const c = center[i];
+    let best = Infinity, bi = 0;
+    for (let j = 0; j < cps.length; j++) {
+      const d = Math.hypot(cps[j].pos.x - c.x, cps[j].pos.z - c.z);
+      if (d < best) { best = d; bi = j; }
+    }
+    const st = classifyControlPoint(cps[bi]);
+    c.segName = st.name; c.segKey = st.key;
+  }
+
   // 2) 灰模路面 ribbon 几何
   const ribbon = buildRibbonGeometry(center);
 
@@ -41,7 +53,10 @@ export function buildTrackWorld(rawTrack) {
   // 4) chunk 边界（沿弧长按 chunkLength 切）
   const chunks = buildChunks(center, total, track.settings.chunkLength);
 
-  return { track, center, total, ribbon, terrain, chunks };
+  // 5) 路面方向箭头（灰模阶段允许：指示往哪开）
+  const arrows = buildDirectionArrows(center, total);
+
+  return { track, center, total, ribbon, terrain, chunks, arrows };
 }
 
 function buildRibbonGeometry(center) {
@@ -70,7 +85,7 @@ function buildRibbonGeometry(center) {
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x6a6f78, roughness: 0.95, metalness: 0.0 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xc2c7cf, roughness: 0.85, metalness: 0.0 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'v3-road-ribbon';
   return mesh;
@@ -89,7 +104,7 @@ function buildTerrain(center, followR) {
   }
   const pad = followR * 2 + 200;
   minX -= pad; maxX += pad; minZ -= pad; maxZ += pad;
-  const SEG = 96;
+  const SEG = 128;
   const geo = new THREE.PlaneGeometry(maxX - minX, maxZ - minZ, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -97,22 +112,43 @@ function buildTerrain(center, followR) {
   const baseY = -8; // 基准海拔（海平面以下一点的灰模地基）
   // 简单空间哈希加速最近点查询
   const sampleNearest = makeNearestFn(center);
+  // 加宽过渡半径 → 地形更平滑、分层，不像随机噪声
+  const blendR = Math.max(followR * 2.4, 140);
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i) + cx;
     const wz = pos.getZ(i) + cz;
     const { d, y } = sampleNearest(wx, wz);
-    // 距离 ≤ followR：贴路面 y；之外平滑回落到基准（含海边压低）
-    const t = Math.min(1, d / followR);
+    const t = Math.min(1, d / blendR);
     const k = t * t * (3 - 2 * t); // smoothstep
     const h = y * (1 - k) + baseY * k;
-    pos.setY(i, h - 0.4); // 路面略高于地形避免 z-fight
+    pos.setY(i, h - 0.6); // 路面略高于地形避免 z-fight
   }
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5258, roughness: 1.0, metalness: 0.0, flatShading: false });
+  // 灰模地形：明显比路面暗的灰阶，与路面拉开层级；vertexColors 按高度分层
+  applyTerrainHeightTint(geo);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1.0, metalness: 0.0, flatShading: false });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'v3-terrain';
   mesh.userData.offset = { cx, cz };
   return mesh;
+}
+
+// 按高度给地形分层着色（暗灰阶梯度），避免随机噪声感，与亮路面拉开对比。
+function applyTerrainHeightTint(geo) {
+  const pos = geo.attributes.position;
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < pos.count; i++) { const y = pos.getY(i); if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  const span = Math.max(1, maxY - minY);
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - minY) / span; // 0 低～1 高
+    // 低处偏深蓝灰（谷/海边），高处偏浅暖灰（山顶）
+    const r = 0.24 + t * 0.30;
+    const g = 0.27 + t * 0.30;
+    const b = 0.30 + t * 0.26;
+    colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 }
 
 function makeNearestFn(center) {
@@ -148,6 +184,30 @@ function makeNearestFn(center) {
     }
     return { d: best, y: bestY };
   };
+}
+
+// 路面方向箭头：沿中心线每隔一段贴一个朝前三角箭（贴路面略高）。
+function buildDirectionArrows(center, total) {
+  const grp = new THREE.Group();
+  grp.name = 'v3-dir-arrows';
+  const N = center.length;
+  const spacing = 80; // 每 80m 一个箭头
+  const count = Math.max(6, Math.floor(total / spacing));
+  const mat = new THREE.MeshBasicMaterial({ color: 0x9fe0ff });
+  // 三角形箭头（平躺在 XZ，尖朝 +Z）
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 3.2); shape.lineTo(-2.2, -2.2); shape.lineTo(2.2, -2.2); shape.closePath();
+  const arrowGeo = new THREE.ShapeGeometry(shape);
+  arrowGeo.rotateX(-Math.PI / 2); // 躺平
+  for (let k = 0; k < count; k++) {
+    const idx = Math.floor((k / count) * N) % N;
+    const a = center[idx];
+    const m = new THREE.Mesh(arrowGeo, mat);
+    m.position.set(a.x, a.y + 0.35, a.z);
+    m.rotation.y = Math.atan2(a.tx, a.tz);
+    grp.add(m);
+  }
+  return grp;
 }
 
 function buildChunks(center, total, chunkLength) {

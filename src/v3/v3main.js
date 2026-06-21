@@ -33,7 +33,8 @@ export async function launchV3() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9fb6cc);
-  scene.fog = new THREE.Fog(0x9fb6cc, 800, 6000);
+  // PR1.0.1 — 大幅降雾：VP0 俱视全环必须看清。雾起点推远、终点拉到超过环线尺度。
+  scene.fog = new THREE.Fog(0xc2d2e2, 4000, 16000);
 
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
   camera.position.set(0, 400, 600);
@@ -69,19 +70,10 @@ export async function launchV3() {
   }
   scene.add(world.terrain);
   scene.add(world.ribbon);
+  if (world.arrows) scene.add(world.arrows);
 
-  // 简单灰模车（盒子）
-  const car = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 1.6, 9),
-    new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.7 }),
-  );
-  body.position.y = 1.2; car.add(body);
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(3.4, 1.2, 4),
-    new THREE.MeshStandardMaterial({ color: 0x8892a0, roughness: 0.5 }),
-  );
-  cabin.position.set(0, 2.4, -0.5); car.add(cabin);
+  // 低模车身轮廓（灰模 low-poly，明确可辨车头朝向，车头 +Z）
+  const car = buildGreyboxCar();
   scene.add(car);
 
   // 起点 / VP 锚点小标记（灰模可视）
@@ -122,6 +114,44 @@ function addAnchorMarkers(scene, world) {
     m.name = 'anchor-' + (cp.vpAnchor || cp.tags[0]);
     scene.add(m);
   });
+}
+
+// 低模车身轮廓（灰模）：车头朝 +Z，靠楿形车头 + 亮色鼻尖 + 顶部方向鲍明确朝向。
+function buildGreyboxCar() {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb9c0cb, roughness: 0.6, metalness: 0.05, flatShading: true });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.7, flatShading: true });
+  const noseMat = new THREE.MeshStandardMaterial({ color: 0xff7a3c, roughness: 0.5, flatShading: true });
+
+  // 主车身（梯形截面，low-poly）长轴沿 Z
+  const L = 9, W = 4, Hb = 1.5;
+  const body = new THREE.BoxGeometry(W, Hb, L);
+  const bm = new THREE.Mesh(body, bodyMat); bm.position.y = 1.0; g.add(bm);
+
+  // 鼻锥（wedge）：指向 +Z，拉尖车头
+  const nose = new THREE.ConeGeometry(W * 0.5, 3.2, 4);
+  nose.rotateX(Math.PI / 2); // 锥尖朝 +Z
+  const nm = new THREE.Mesh(nose, noseMat);
+  nm.position.set(0, 1.0, L / 2 + 0.9); nm.rotation.z = Math.PI / 4;
+  g.add(nm);
+
+  // 驾驶舱（偏后，下梯形感）
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.82, 1.2, L * 0.42), darkMat);
+  cabin.position.set(0, 2.0, -0.6); g.add(cabin);
+
+  // 顶部方向鲍（指向 +Z 的三角鲍，远看也能辨车头）
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.4, 3), noseMat);
+  fin.rotateX(Math.PI / 2);
+  fin.position.set(0, 2.9, 1.2); g.add(fin);
+
+  // 四轮（扭扉圆柱）
+  const wheelGeo = new THREE.CylinderGeometry(1.0, 1.0, 0.7, 10);
+  wheelGeo.rotateZ(Math.PI / 2);
+  const wpos = [[-W / 2, 0.9, L * 0.32], [W / 2, 0.9, L * 0.32], [-W / 2, 0.9, -L * 0.32], [W / 2, 0.9, -L * 0.32]];
+  wpos.forEach((wp) => { const wm = new THREE.Mesh(wheelGeo, darkMat); wm.position.set(wp[0], wp[1], wp[2]); g.add(wm); });
+
+  g.name = 'v3-car';
+  return g;
 }
 
 function showError(msg) {
