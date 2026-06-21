@@ -55,24 +55,34 @@ const STYLE = `
   #${ROOT_ID} .hmi-label{font-size:var(--hmi-scale-labelTiny);font-weight:500;letter-spacing:.24em;
     text-transform:uppercase;color:var(--hmi-text-secondary);line-height:1.1}
   #${ROOT_ID} .hmi-label.dim{color:var(--hmi-text-tertiary);letter-spacing:.28em}
+  /* 电量读数可见性增强（任务1）：BATTERY 标签由最暗 tertiary 提到 secondary 档，
+     并比通用 .dim 略亮（.62），略加大字号，确保亮背景/强光下也能看清，但仍克制不喧宾夺主。 */
+  #${ROOT_ID} .hmi-energy .hmi-label.dim{color:rgba(255,255,255,.62);letter-spacing:.26em;
+    font-size:clamp(10px,0.5vw,13px);font-weight:600;
+    text-shadow:0 1px 8px rgba(0,0,0,.5)}
 
   /* 左：Energy 能量模块（电车身份） */
   #${ROOT_ID} .hmi-energy{display:flex;flex-direction:column;align-items:flex-start;gap:clamp(3px,0.5vh,7px)}
+  /* SOC 主数字提亮/适当增大：向 speed 数字可读性看齐（但不抢主），字重略加、提亮到全白，
+     并加强冷白柔光描边，强光下不被吃掉。字号 clamp 上限拉高一档。 */
   #${ROOT_ID} .hmi-soc{display:inline-flex;align-items:baseline;gap:.16em;
-    font-size:var(--hmi-scale-socNum);font-weight:200;line-height:.95;color:var(--hmi-text-primary);
+    font-size:clamp(36px,3.1vw,68px);font-weight:300;line-height:.95;color:rgba(255,255,255,.98);
     font-variant-numeric:tabular-nums;letter-spacing:.005em;
-    text-shadow:0 0 14px var(--hmi-glass-arcGlow),0 1px 12px rgba(0,0,0,.42)}
-  #${ROOT_ID} .hmi-soc .pct{font-size:.42em;color:var(--hmi-text-secondary);font-weight:300;letter-spacing:.05em;margin-left:.04em}
-  /* 能量极简：去掉分段能量条，最多一条极细单横线示意电量（克制）。 */
-  #${ROOT_ID} .hmi-tickline{position:relative;width:clamp(54px,5vw,96px);height:1px;
-    margin:clamp(2px,0.4vh,5px) 0;background:rgba(255,255,255,.12);overflow:hidden}
-  #${ROOT_ID} .hmi-tickline span{position:absolute;left:0;top:0;height:100%;
-    background:rgba(196,228,255,.55);box-shadow:0 0 6px rgba(150,200,255,.35)}
+    text-shadow:0 0 16px var(--hmi-glass-arcGlow),0 0 4px rgba(0,0,0,.55),0 1px 12px rgba(0,0,0,.5)}
+  #${ROOT_ID} .hmi-soc .pct{font-size:.42em;color:rgba(255,255,255,.7);font-weight:400;letter-spacing:.05em;margin-left:.04em}
+  /* 能量极简：去掉分段能量条，最多一条极细单横线示意电量（克制）。
+     任务1：略加粗(1px→2px)、底槽与亮条都提亮一点，让“电量在掉”可感知。 */
+  #${ROOT_ID} .hmi-tickline{position:relative;width:clamp(58px,5.2vw,104px);height:2px;border-radius:2px;
+    margin:clamp(2px,0.4vh,5px) 0;background:rgba(255,255,255,.2);overflow:hidden}
+  #${ROOT_ID} .hmi-tickline span{position:absolute;left:0;top:0;height:100%;border-radius:2px;
+    background:rgba(208,234,255,.82);box-shadow:0 0 8px rgba(160,205,255,.5)}
+  /* 续航数字保持 accent 冷色；CLTC / KM 标签从最暗 tertiary 提到 secondary 档并略加字号，亮背景可读。 */
   #${ROOT_ID} .hmi-range{display:inline-flex;align-items:baseline;gap:.30em;
-    font-size:var(--hmi-scale-rangeNum);font-weight:300;line-height:1;
-    color:var(--hmi-glass-accent);font-variant-numeric:tabular-nums;letter-spacing:.01em}
-  #${ROOT_ID} .hmi-range .tag{font-size:.5em;color:var(--hmi-text-tertiary);font-weight:600;letter-spacing:.24em;text-transform:uppercase}
-  #${ROOT_ID} .hmi-range .u{font-size:.5em;color:var(--hmi-text-tertiary);font-weight:600;letter-spacing:.2em;text-transform:uppercase}
+    font-size:clamp(17px,1.35vw,30px);font-weight:400;line-height:1;
+    color:var(--hmi-glass-accent);font-variant-numeric:tabular-nums;letter-spacing:.01em;
+    text-shadow:0 1px 10px rgba(0,0,0,.45)}
+  #${ROOT_ID} .hmi-range .tag{font-size:.5em;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.24em;text-transform:uppercase}
+  #${ROOT_ID} .hmi-range .u{font-size:.5em;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.2em;text-transform:uppercase}
 
   /* 中：slowroads 式真实路线预览（按前方道路点折线） + AUTOSTEER。需足够高才能读出弯道。 */
   /* 中：slowroads 式真实路线预览 + AUTOSTEER。直接画前方道路点折线，需足够高才能看出弯道。 */
@@ -262,7 +272,8 @@ function collectForward(pts) {
 //   问题2 修复：近端首 NEAR_LOCK_N 个点用更低的跟随系数（更强平滑/接近锚定），
 //   并对“车端首点”的纵向 z 做硬锚定（0），消除静止/匀速时端头伸缩脉动。
 //   远端仍用原 k 正常跟随道路弯（不把整条线变僵）。
-const NEAR_LOCK_N = 3;   // 近端被强平滑的采样点个数
+const NEAR_LOCK_N = 5;        // 近端被强平滑的采样点个数（3→5，任务2再压）
+const NEAR_DEADZONE_M = 0.18; // 近端位置死区（米）：偏移小于此量不跟随，消除采样抖引起的周期性伸缩
 function smoothPoints(target) {
   if (!target) return _smooth; // 无新数据：沿用历史（中断帧不闪）
   if (!_smooth || _smooth.length !== target.length || !_seeded) {
@@ -278,16 +289,23 @@ function smoothPoints(target) {
     return _smooth;
   }
   // 逆向数据平滑：近端用很低的 k（强锚定），远端用常规 k；z 近端更硬。
-  const kFar = 0.12;       // 远端日常平顺跟随
-  const kNearX = 0.04;     // 近端横向：更强平滑（静止/匀速不抽）
-  const kNearZ = 0.03;     // 近端纵向：更强，抑制端头伸缩脉动
+  const kFar = 0.12;       // 远端日常平顺跟随（远端要跟弯）
+  const kNearX = 0.022;    // 近端横向：更强平滑（0.04→0.022）
+  const kNearZ = 0.016;    // 近端纵向：更强（0.03→0.016），抑制端头伸缩脉动
   for (let i = 0; i < target.length; i++) {
     const near = i < NEAR_LOCK_N;
-    const kx = near ? kNearX : kFar;
-    const kz = near ? kNearZ : kFar;
-    _smooth[i].x += (target[i].x - _smooth[i].x) * kx;
-    _smooth[i].z += (target[i].z - _smooth[i].z) * kz;
+    if (near) {
+      // 近端位置死区：偏移在死区内不跟（静止/匀速不抽）；超出才用极低 k 缓慢逆近。
+      const dx = target[i].x - _smooth[i].x;
+      const dz = target[i].z - _smooth[i].z;
+      if (Math.abs(dx) > NEAR_DEADZONE_M) _smooth[i].x += dx * kNearX;
+      if (Math.abs(dz) > NEAR_DEADZONE_M) _smooth[i].z += dz * kNearZ;
+    } else {
+      _smooth[i].x += (target[i].x - _smooth[i].x) * kFar;
+      _smooth[i].z += (target[i].z - _smooth[i].z) * kFar;
+    }
   }
+  if (_smooth.length) _smooth[0].z = 0; // 车端首点纵向硬锢定 0，从根上消除端头纵向伸缩。
   return _smooth;
 }
 
@@ -329,8 +347,9 @@ function drawRoutePreview(pts) {
   const targetFit = maxAbs > halfAvail ? (halfAvail / maxAbs) : 1;
   // 对 fit 做时间低通平滑 + 死区：避免每帧重算让线宽/弧度逐帧跳（问题2 成因a）。
   // 首帧 snap；后续只在变化超过死区时缓慢逼近，静止/匀速时 fit 几乎不动。
+  // 任务2：死区加宽(0.012→0.03)、低通系数调保守(0.06→0.03)，进一步减缩放逐帧跳。
   if (_scaleSmooth == null) _scaleSmooth = targetFit;
-  else if (Math.abs(targetFit - _scaleSmooth) > 0.012) _scaleSmooth += (targetFit - _scaleSmooth) * 0.06;
+  else if (Math.abs(targetFit - _scaleSmooth) > 0.03) _scaleSmooth += (targetFit - _scaleSmooth) * 0.03;
   const fit = _scaleSmooth;
   const xScale = xScaleBase * fit;
   // 远端纵向压缩：zNorm^0.62 让近段占更多纵向像素（近大远远小）。
