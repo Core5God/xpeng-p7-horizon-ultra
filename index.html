@@ -192,34 +192,55 @@
   #playlistbar button:hover{opacity:1}
   #plTrackName{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);max-width:170px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.4px}
-  /* —— 电台浮窗 (长按 B) —— */
-  #radioWheel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:35;
-    width:280px;height:280px;border-radius:50%;
-    background:rgba(15,18,28,.65);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
-    border:1px solid var(--glass-border);box-shadow:0 8px 40px rgba(0,0,0,.4);
-    display:none;align-items:center;justify-content:center}
-  #radioWheel.show{display:flex;animation:rwIn .18s ease-out}
-  @keyframes rwIn{from{opacity:0;transform:translate(-50%,-50%) scale(.82)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-  .rw-hub{position:absolute;text-align:center;pointer-events:none}
-  .rw-hub .rw-icon{font-size:28px}
-  .rw-hub .rw-label{font-size:10px;letter-spacing:2px;opacity:.5;margin-top:2px}
-  .rw-item{position:absolute;top:50%;left:50%;width:76px;height:76px;
-    margin-left:-38px;margin-top:-38px;border-radius:50%;
-    background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);
-    color:rgba(255,255,255,.75);font-size:12.5px;font-weight:600;letter-spacing:.5px;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:2px;text-align:center;transition:all .12s;cursor:default}
-  .rw-item .rw-i{font-size:20px;line-height:1}
-  .rw-item.sel{background:rgba(255,255,255,.20);border-color:var(--glass-border-hi);color:#fff;
-    box-shadow:0 2px 14px rgba(0,0,0,.3)}
-  .rw-top{transform:translateY(-100px)}
-  .rw-top.sel{transform:translateY(-100px) scale(1.12)}
-  .rw-right{transform:translateX(100px)}
-  .rw-right.sel{transform:translateX(100px) scale(1.12)}
-  .rw-bottom{transform:translateY(100px)}
-  .rw-bottom.sel{transform:translateY(100px) scale(1.12)}
-  .rw-left{transform:translateX(-100px)}
-  .rw-left.sel{transform:translateX(-100px) scale(1.12)}
+  /* —— 正在播放 玻璃卡片（B 唤出，极简 Apple 玻璃 · 顶部左角，避开底部 HMI 能量/时速/导航线）—— */
+  #radioPanel{position:fixed;top:20px;left:22px;z-index:36;width:288px;
+    background:rgba(20,26,36,.42);backdrop-filter:blur(26px) saturate(1.4);
+    -webkit-backdrop-filter:blur(26px) saturate(1.4);
+    border:1px solid var(--glass-border);border-radius:20px;
+    box-shadow:0 10px 38px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.10);
+    padding:14px 16px 12px;color:#eaf1fb;
+    opacity:0;transform:translateY(-10px) scale(.97);pointer-events:none;
+    transition:opacity .26s ease,transform .26s cubic-bezier(.2,.8,.2,1)}
+  #radioPanel.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+  .rp-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .rp-mode{font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+    color:rgba(190,222,255,.92);background:rgba(120,170,255,.12);
+    border:1px solid rgba(170,210,255,.26);border-radius:999px;padding:3px 10px;
+    box-shadow:0 0 8px rgba(120,170,255,.10),inset 0 0 6px rgba(170,210,255,.06)}
+  .rp-state{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:.14em;
+    color:rgba(208,234,255,.7);display:flex;align-items:center;gap:5px}
+  .rp-state .rp-dot{width:6px;height:6px;border-radius:50%;background:rgba(160,205,255,.85);
+    box-shadow:0 0 7px rgba(160,205,255,.6)}
+  .rp-state.off{color:rgba(255,255,255,.4)}
+  .rp-state.off .rp-dot{background:rgba(255,255,255,.3);box-shadow:none}
+  .rp-now{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+  .rp-art{width:42px;height:42px;border-radius:11px;flex:0 0 auto;
+    background:linear-gradient(135deg,rgba(150,195,255,.22),rgba(120,150,210,.10));
+    border:1px solid rgba(180,215,255,.20);display:flex;align-items:center;justify-content:center;
+    font-size:21px;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+  .rp-track{min-width:0}
+  .rp-name{font-size:14.5px;font-weight:600;letter-spacing:.2px;color:#f3f8ff;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rp-sub{font-size:11px;font-weight:500;color:rgba(208,234,255,.55);margin-top:2px;letter-spacing:.4px}
+  .rp-ctrl{display:flex;align-items:center;gap:7px}
+  .rp-btn{flex:1;font-family:inherit;cursor:pointer;color:rgba(234,241,251,.82);
+    background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:12px;
+    padding:8px 0;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;
+    transition:background .15s,border-color .15s,transform .12s,color .15s}
+  .rp-btn:hover{background:rgba(255,255,255,.11);border-color:var(--glass-border-hi);color:#fff;transform:translateY(-1px)}
+  .rp-btn.rp-key{position:relative}
+  .rp-btn .rp-kc{position:absolute;top:-6px;right:-3px;font-size:8.5px;font-weight:700;
+    letter-spacing:.04em;color:rgba(190,222,255,.8);background:rgba(20,28,42,.85);
+    border:1px solid rgba(170,210,255,.28);border-radius:5px;padding:1px 3px;pointer-events:none}
+  .rp-btn.rp-play{flex:1.25;color:rgba(190,230,255,.95);background:rgba(120,170,255,.12);
+    border-color:rgba(170,210,255,.3)}
+  .rp-btn.rp-shuffle.on{color:rgba(190,230,255,.98);background:rgba(120,170,255,.16);
+    border-color:rgba(170,210,255,.4)}
+  .rp-foot{margin-top:10px;font-size:9.5px;letter-spacing:.1em;color:rgba(208,234,255,.4);
+    text-align:center}
+  .rp-foot kbd{font:inherit;font-size:9px;color:rgba(190,222,255,.7);
+    background:rgba(255,255,255,.06);border:1px solid var(--glass-border);border-radius:4px;
+    padding:1px 4px;margin:0 1px}
 </style>
 </head>
 <body class="nohud">
@@ -275,12 +296,26 @@
   <button id="plNext" title="下一首">⏭</button>
   <button id="plShuffle" title="随机播放">🔀</button>
 </div>
-<div id="radioWheel">
-  <div class="rw-hub"><div class="rw-icon">📻</div><div class="rw-label">RADIO</div></div>
-  <div class="rw-item rw-top" data-rw="off"><span class="rw-i">⏻</span>关闭电台</div>
-  <div class="rw-item rw-right" data-rw="next"><span class="rw-i">⏭</span>下一首</div>
-  <div class="rw-item rw-bottom" data-rw="mode"><span class="rw-i">🔄</span>切换模式</div>
-  <div class="rw-item rw-left" data-rw="prev"><span class="rw-i">⏮</span>上一首</div>
+<div id="radioPanel">
+  <div class="rp-head">
+    <span class="rp-mode" id="rpMode">歌单</span>
+    <span class="rp-state" id="rpState"><span class="rp-dot"></span><span id="rpStateTxt">播放中</span></span>
+  </div>
+  <div class="rp-now">
+    <div class="rp-art" id="rpArt">🎵</div>
+    <div class="rp-track">
+      <div class="rp-name" id="rpName">—</div>
+      <div class="rp-sub" id="rpSub">NOW PLAYING</div>
+    </div>
+  </div>
+  <div class="rp-ctrl">
+    <div class="rp-btn rp-key" id="rpPrev" title="上一首"><span class="rp-kc">←</span>⏮</div>
+    <div class="rp-btn rp-key rp-play" id="rpPlay" title="播放 / 关闭"><span class="rp-kc">↓</span>⏻</div>
+    <div class="rp-btn rp-key" id="rpNext" title="下一首"><span class="rp-kc">→</span>⏭</div>
+    <div class="rp-btn rp-key" id="rpMode2" title="切换模式（歌单 ↔ 电台）"><span class="rp-kc">↑</span>🔄</div>
+    <div class="rp-btn rp-key rp-shuffle" id="rpShuffle" title="随机播放"><span class="rp-kc">S</span>🔀</div>
+  </div>
+  <div class="rp-foot"><kbd>← →</kbd> 切歌 · <kbd>↑</kbd> 模式 · <kbd>↓</kbd> 播/停 · <kbd>B</kbd>/<kbd>Esc</kbd> 收起</div>
 </div>
 
 <!-- 车库 / 主菜单 -->
