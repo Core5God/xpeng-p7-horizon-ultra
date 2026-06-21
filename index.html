@@ -81,31 +81,33 @@
   .menu{position:fixed;inset:0;z-index:20;display:none;color:#fff}
   .menu.show{display:block}
   .menu::before{content:'';position:absolute;inset:0;background:radial-gradient(120% 100% at 0% 0%,rgba(4,7,13,.62) 0%,rgba(4,7,13,.34) 42%,rgba(4,7,13,.12) 100%)}
-  .rail{position:absolute;top:20px;bottom:20px;left:20px;width:min(500px,calc(100vw - 40px));max-height:calc(100vh - 40px);box-sizing:border-box;padding:42px 38px 32px;overflow-y:auto;
+  .rail{position:absolute;top:20px;bottom:20px;left:20px;width:min(500px,calc(100vw - 40px));max-height:calc(100vh - 40px);box-sizing:border-box;padding:clamp(20px,4.2vh,42px) clamp(24px,3vw,38px) clamp(18px,3.2vh,32px);overflow-y:auto;
+    scrollbar-width:none;-ms-overflow-style:none;
     background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
     border-radius:var(--panel-radius);border:1px solid var(--glass-border);
     box-shadow:0 40px 120px rgba(0,0,0,.55),0 8px 40px rgba(0,0,0,.4),0 2px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 .5px rgba(255,255,255,.05);
     animation:railIn .42s cubic-bezier(.2,.9,.25,1) both}
+  .rail::-webkit-scrollbar{display:none;width:0;height:0}
   @keyframes railIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
-  .logoblk{margin-bottom:28px}
+  .logoblk{margin-bottom:clamp(14px,2.8vh,28px)}
   .xlogo{font-size:13px;font-weight:500;letter-spacing:8px;color:var(--text-secondary);margin-bottom:6px}
-  .rail h1{font-size:42px;margin:0;font-weight:600;letter-spacing:-.5px;line-height:1.05;color:var(--text-primary)}
+  .rail h1{font-size:clamp(30px,5.2vh,42px);margin:0;font-weight:600;letter-spacing:-.5px;line-height:1.05;color:var(--text-primary)}
   .rail .sub{font-size:12px;letter-spacing:4px;opacity:.45;margin-top:8px}
-  .cta{display:block;width:100%;margin:0 0 12px;padding:16px 24px;border:1px solid var(--glass-border);border-radius:var(--btn-radius);cursor:pointer;color:var(--text-primary);text-align:left;
+  .cta{display:block;width:100%;margin:0 0 clamp(7px,1.3vh,12px);padding:clamp(10px,1.8vh,16px) 24px;border:1px solid var(--glass-border);border-radius:var(--btn-radius);cursor:pointer;color:var(--text-primary);text-align:left;
     background:rgba(255,255,255,.10);
     transition:transform var(--fast-ease),background var(--fast-ease),border-color var(--fast-ease),box-shadow var(--fast-ease);
     box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 1px 6px rgba(0,0,0,.18)}
   .cta.cta2{background:rgba(255,255,255,.07)}
   .cta.ghost{background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
-  .cta>span{display:block;font-size:20px;font-weight:600;letter-spacing:.5px;line-height:1.2}
-  .cta>em{display:block;font-style:normal;font-size:12px;letter-spacing:2px;opacity:.5;margin-top:4px}
+  .cta>span{display:block;font-size:clamp(17px,2.6vh,20px);font-weight:600;letter-spacing:.5px;line-height:1.2}
+  .cta>em{display:block;font-style:normal;font-size:12px;letter-spacing:2px;opacity:.5;margin-top:clamp(2px,0.5vh,4px)}
   .cta:hover:not(:disabled){transform:var(--hover-lift);background:rgba(255,255,255,.16);border-color:var(--glass-border-hi);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 8px 26px rgba(0,0,0,.32)}
   .cta:active:not(:disabled){transform:scale(.985)}
   .cta:disabled{opacity:.3;cursor:wait}
-  .sec{font-size:11px;font-weight:600;letter-spacing:.32em;color:var(--text-tertiary);text-transform:uppercase;margin:30px 0 14px;padding:0 0 9px;
+  .sec{font-size:11px;font-weight:600;letter-spacing:.32em;color:var(--text-tertiary);text-transform:uppercase;margin:clamp(14px,3vh,30px) 0 clamp(8px,1.4vh,14px);padding:0 0 clamp(5px,0.9vh,9px);
     border-bottom:1px solid rgba(255,255,255,.10)}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px}
-  .swatch{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.22);cursor:pointer;padding:0;transition:transform var(--fast-ease),box-shadow var(--fast-ease)}
+  .row{display:flex;gap:clamp(7px,1vw,10px);flex-wrap:wrap;margin-bottom:4px}
+  .swatch{width:clamp(32px,4.4vh,42px);height:clamp(32px,4.4vh,42px);border-radius:50%;border:2px solid rgba(255,255,255,.22);cursor:pointer;padding:0;transition:transform var(--fast-ease),box-shadow var(--fast-ease)}
   .swatch:hover{transform:scale(1.12)}
   .swatch.sel{border-color:var(--glass-border-hi);box-shadow:0 0 0 2px rgba(255,255,255,.55),0 2px 8px rgba(0,0,0,.3)}
   .opt{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-primary);background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
@@ -115,12 +117,31 @@
   /* —— 角色选择卡 —— */
   .charrow{gap:12px}
   .charcard{font-family:inherit;min-width:140px;color:#fff;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
-    border-radius:var(--btn-radius-sm);padding:14px 18px;cursor:pointer;text-align:left;
+    border-radius:var(--btn-radius-sm);padding:clamp(9px,1.6vh,14px) 18px;cursor:pointer;text-align:left;
     transition:background var(--fast-ease),box-shadow var(--fast-ease),transform var(--fast-ease)}
   .charcard>b{display:block;font-size:18px;font-weight:600;letter-spacing:1px;line-height:1.2}
   .charcard>i{display:block;font-style:normal;font-size:11px;letter-spacing:1px;opacity:.55;margin-top:3px}
   .charcard:hover{background:rgba(255,255,255,.13);transform:var(--hover-lift)}
   .charcard.sel{background:rgba(255,255,255,.18);border-color:var(--glass-border-hi);box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+  /* —— 矮屏兜底分级压缩：常见笔记本/小屏完整落进 .rail，不出现可见滚动条 —— */
+  @media (max-height:820px){
+    .rail h1{font-size:34px}
+    .logoblk{margin-bottom:16px}
+    .sec{margin:16px 0 10px}
+    .charcard{padding:10px 16px}
+  }
+  @media (max-height:720px){
+    .rail{padding:18px 30px 16px}
+    .rail h1{font-size:28px}
+    .logoblk{margin-bottom:12px}
+    .cta{margin:0 0 7px;padding:9px 22px}
+    .cta>span{font-size:16px}
+    .cta>em{font-size:11px;margin-top:1px}
+    .sec{margin:12px 0 8px;padding-bottom:6px}
+    .swatch{width:32px;height:32px}
+    .charcard{padding:8px 14px;min-width:120px}
+    .charcard>b{font-size:16px}
+  }
   #loadbar{height:4px;width:100%;background:rgba(255,255,255,.1);margin-top:24px;overflow:hidden;border-radius:2px}
   #loadfill{height:100%;width:0%;background:rgba(255,255,255,.7);transition:width .3s;border-radius:2px}
   #loadtext{font-size:12px;opacity:.55;margin-top:8px;letter-spacing:.5px}

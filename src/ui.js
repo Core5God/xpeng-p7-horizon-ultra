@@ -609,6 +609,7 @@ addEventListener('keydown', e => {
         // 下车：保留车速，由 coastVehicle 自然滚停（不瞬停、不飞出）
         G.appState = 'walk';
         document.body.classList.remove('nohud');
+        document.body.classList.remove('drive'); // 步行时隐藏整套驾驶 HUD（电量/车速/导航线/AUTOSTEER/电台卡）
         document.body.style.cursor = 'none';
         canvas.requestPointerLock?.(); // 按键即用户手势，直接锁定鼠标控镜头，无需再点屏幕
         showMsg('🚶 步行模式｜WASD 移动(跟随镜头) · 鼠标转视角 · SHIFT 跑 · SPACE 跳 · F 上车 · ESC 菜单', 5200, 21);
@@ -616,6 +617,7 @@ addEventListener('keydown', e => {
     } else if (G.appState === 'walk') {
       G.appState = 'drive'; // 先切状态，避免 exitPointerLock 的 pointerlockchange 误触发暂停
       setCharacterVisible(false);
+      document.body.classList.add('drive'); // 上车恢复驾驶 HUD
       document.body.style.cursor = 'none';
       camPos.copy(camera.position);
       camDamp.x.v = camDamp.y.v = camDamp.z.v = 0;
