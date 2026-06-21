@@ -12,6 +12,16 @@ import { QualityManager } from './quality.js';
 import { VP_ANCHORS, resolveViewpoints } from './v3viewpoints.js';
 import { installControls, applyViewpoint, startLoop } from './v3runtime.js';
 
+const V3_BUILD = '20260621-deploycheck-1';
+console.log('[V3 build] ' + V3_BUILD);
+
+function addBuildTag() {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;right:6px;bottom:6px;font:8px/1 monospace;color:rgba(255,255,255,.25);z-index:99999;pointer-events:none';
+  t.textContent = 'v3 build ' + V3_BUILD;
+  document.body.appendChild(t);
+}
+
 export async function launchV3() {
   const canvas = document.createElement('canvas');
   canvas.id = 'v3-canvas';
@@ -95,6 +105,7 @@ export async function launchV3() {
   if (urlVp != null) applyViewpoint(vps, urlVp, camera, drive, car, world);
 
   startLoop({ renderer, scene, camera, world, car, quality, drive, vps });
+  addBuildTag();
   removeBoot();
   return window.__v3;
 }
