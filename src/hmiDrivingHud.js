@@ -326,7 +326,14 @@ function drawRoutePreview(pts) {
   //   路线近端起点也对齐到该固定底点 → 把所有点的横向减去首点横向(x0)，
   //   这样近端均为 (cx,yBottom)，远端按真实道路弯——车点永远不动，路在它前方弯。
   const cx = routeW * 0.5;
-  const yBottom = routeH - 2;     // 车端（近）在底
+  // 补充1：车点不被底边裁。车端镜空环半径 rDot≈wNear*0.62 + 描边 ringW + glow，
+  //   原 yBottom=routeH-2 会把整个环切掉一截。先算出 wNear（与下方一致）推导底部余量，
+  //   yBottom 上移该余量，让镁空车点完整落在画布内；usableH 随新 yBottom 重算。
+  const wNearPlan = Math.max(7, routeW * 0.085);
+  const rDotPlan = Math.max(3.2, wNearPlan * 0.62);
+  const ringWPlan = Math.max(1.5, wNearPlan * 0.30);
+  const bottomPad = rDotPlan + ringWPlan * 0.5 + 7; // 环外缘 + 半个描边 + 约 7px glow 余量
+  const yBottom = routeH - Math.max(2, bottomPad);   // 车端（近）在底，但留出镜空环完整余量
   const yTop = routeH * 0.05;     // 远端可达到的最高位置
   const usableH = yBottom - yTop;
   const zMax = ROUTE_FORWARD_M;   // 投影归一化用的最大前向距离
@@ -363,6 +370,21 @@ function drawRoutePreview(pts) {
   };
   const sp = fwd.map(project);
 
+  // 补充2：边缘渐隐（代替画布硬裁的“粗暴切割”）。对每个点按到上缘/左右缘的距离
+  //   算一个 0~1 的 alpha 衰减系数：越接近边界越接近 0，线头/线尾/出界处柔和淼出，不被硬截。
+  //   远端顶部（接近 yTop）和横向接近左右可视边界都做软淡出。
+  const fadeTop = Math.max(8, routeH * 0.12);   // 顶部淡出带宽
+  const fadeSide = Math.max(8, routeW * 0.10);  // 左右淡出带宽
+  const edgeFade = (pt) => {
+    // 顶部：y 越接近 yTop 越淡（到 yTop 以上为 0）。
+    const dTop = (pt.y - yTop) / fadeTop;
+    // 左右：到最近侧边的距离。
+    const dSide = Math.min(pt.x, routeW - pt.x) / fadeSide;
+    const f = Math.min(1, Math.max(0, dTop)) * Math.min(1, Math.max(0, dSide));
+    // 平滑曲线 smoothstep，避免硬边。
+    return f * f * (3 - 2 * f);
+  };
+
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -372,26 +394,30 @@ function drawRoutePreview(pts) {
   const wFar = Math.max(2, routeW * 0.022);
   const widthAt = (zNorm) => wNear + (wFar - wNear) * Math.pow(zNorm, 0.85);
 
-  // 柔光底层：更宽更淡的同色 glow。
+  // 柔光底层：更宽更淡的同色 glow。边缘按 edgeFade 软淡出。
   ctx.shadowColor = 'rgba(180,215,255,0.5)';
   ctx.shadowBlur = 12;
   for (let i = 0; i < sp.length - 1; i++) {
     const a = sp[i], b = sp[i + 1];
     const zm = (a.zNorm + b.zNorm) * 0.5;
+    const ef = Math.min(edgeFade(a), edgeFade(b));
+    if (ef <= 0.001) continue;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = 'rgba(206,232,255,0.18)';
+    ctx.strokeStyle = `rgba(206,232,255,${(0.18 * ef).toFixed(3)})`;
     ctx.lineWidth = widthAt(zm) * 1.9;
     ctx.stroke();
   }
-  // 主线：冷白、近粗远细、圆头、远端 alpha 渐弱。
+  // 主线：冷白、近粗远细、圆头。远端 alpha 渐弱 × 边缘 edgeFade 软淡出。
   ctx.shadowColor = 'rgba(190,222,255,0.62)';
   ctx.shadowBlur = 6;
   for (let i = 0; i < sp.length - 1; i++) {
     const a = sp[i], b = sp[i + 1];
     const zm = (a.zNorm + b.zNorm) * 0.5;
-    const alpha = 0.94 - 0.46 * Math.pow(zm, 1.25); // 远端渐弱
+    const ef = Math.min(edgeFade(a), edgeFade(b));
+    if (ef <= 0.001) continue;
+    const alpha = (0.94 - 0.46 * Math.pow(zm, 1.25)) * ef; // 远端渐弱 × 边缘淡出
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
