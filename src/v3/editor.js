@@ -141,4 +141,22 @@ export class TrackEditor {
     this.canvas.width = window.innerWidth - 300;
     this.canvas.height = window.innerHeight;
   }
+
+  // PR1.0.1 — 自动 fit 到环线包围盒（打开/载入后不再一片空旷）。
+  fitToTrack(pad = 1.18) {
+    const cps = this.track.controlPoints;
+    if (!cps.length) { this.view = { ox: 0, oz: 0, scale: 0.12 }; return; }
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const cp of cps) {
+      minX = Math.min(minX, cp.pos.x); maxX = Math.max(maxX, cp.pos.x);
+      minZ = Math.min(minZ, cp.pos.z); maxZ = Math.max(maxZ, cp.pos.z);
+    }
+    const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+    const spanX = Math.max(1, (maxX - minX) * pad);
+    const spanZ = Math.max(1, (maxZ - minZ) * pad);
+    const sx = this.canvas.width / spanX;
+    const sz = this.canvas.height / spanZ;
+    this.view.scale = Math.max(0.01, Math.min(2, Math.min(sx, sz)));
+    this.view.ox = cx; this.view.oz = cz;
+  }
 }

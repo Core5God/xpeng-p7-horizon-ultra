@@ -35,6 +35,28 @@ export const LANDMARK_TAGS = [
 
 export const ALL_TAGS = [...LANDMARK_TAGS, ...PHYSICS_TAGS];
 
+// PR1.0.1 — 段类型 → 显示名 + 克制可辨配色（编辑器图例 + 灰模段提示共用）。
+// 按控制点语义标签归类；优先级从前往后匹配。
+export const SEGMENT_TYPES = [
+  { key: 'harbor',  name: 'Harbor',  zh: '港湾',  color: '#d98ad0', tags: ['harbor_sunset'] },
+  { key: 'coast',   name: 'Coast',   zh: '海岸',  color: '#4fb6c8', tags: ['coast_sunrise'] },
+  { key: 'tunnel',  name: 'Tunnel',  zh: '隧道',  color: '#9aa0ad', tags: ['tunnel', 'cave'] },
+  { key: 'summit',  name: 'Summit',  zh: '山顶',  color: '#e0b34d', tags: ['summit'] },
+  { key: 'hairpin', name: 'Hairpin', zh: '发卡弯', color: '#e07a4d', tags: ['hairpin'] },
+  { key: 'valley',  name: 'Valley',  zh: '山谷',  color: '#6fb86f', tags: ['valley'] },
+  { key: 'start',   name: 'Start',   zh: '起点',  color: '#6fd0ff', tags: ['start'] },
+];
+export const SEGMENT_DEFAULT = { key: 'road', name: 'Road', zh: '路段', color: '#8a93a3' };
+
+// 由控制点 tags 推断其段类型（返回 SEGMENT_TYPES 项或默认）。
+export function classifyControlPoint(cp) {
+  const tags = (cp && cp.tags) || [];
+  for (const st of SEGMENT_TYPES) {
+    if (st.tags.some((t) => tags.includes(t))) return st;
+  }
+  return SEGMENT_DEFAULT;
+}
+
 export const DEFAULT_SETTINGS = {
   chunkLength: 200,        // 沿弧长分块的块长（米）—— 供 PR3 流式用
   viewAheadChunks: 6,      // 前向可见块数

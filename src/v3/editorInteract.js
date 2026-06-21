@@ -136,7 +136,7 @@ P._onAction = function (act) {
     try {
       const obj = JSON.parse(this.ioEl.value);
       this.track = normalizeTrack(obj);
-      this.selected = -1; this._syncCpEdit(); this.draw();
+      this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.draw();
       this._status('导入成功：' + this.track.controlPoints.length + ' 个控制点');
     } catch (err) { this._status('导入失败：' + err.message); }
   }
@@ -147,7 +147,7 @@ P._loadDefault = async function () {
     const res = await fetch('./track.main.json');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     this.track = normalizeTrack(await res.json());
-    this.selected = -1; this._syncCpEdit(); this.draw();
+    this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.draw();
     this._status('已载入 track.main.json：' + this.track.controlPoints.length + ' 个控制点');
   } catch (err) { this._status('载入 track.main.json 失败：' + err.message); }
 };

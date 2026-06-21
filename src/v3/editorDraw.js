@@ -3,6 +3,7 @@
 
 import { TrackEditor } from './editor.js';
 import { sampleClosedSpline, detectSelfIntersections, checkClosure, arcLengths } from './trackSpline.js';
+import { classifyControlPoint, SEGMENT_DEFAULT, SEGMENT_TYPES } from './trackSchema.js';
 
 const P = TrackEditor.prototype;
 
@@ -22,7 +23,7 @@ P.draw = function () {
     const hits = detectSelfIntersections(samples);
     const closure = checkClosure(samples);
     analysis = { samples, hits, closure };
-    // 路面宽度带（半透明灰）
+    // 路面宽度带：按段类型着色（克制可辨）
     this._drawRibbon(ctx, samples);
     // 中心线（自交叉则部分标红）
     ctx.lineWidth = 2;
@@ -34,6 +35,10 @@ P.draw = function () {
     });
     ctx.closePath();
     ctx.stroke();
+    // 行驶方向箭头（沿环线均匀分布）
+    this._drawDirectionArrows(ctx, samples);
+    // 起点 START 标记 + 起步方向
+    this._drawStartMarker(ctx, samples);
     // 自交叉红点
     hits.forEach((h) => {
       const p = this.worldToScreen(h.x, h.z);
@@ -43,27 +48,104 @@ P.draw = function () {
     });
   }
 
-  // 控制点
+  // 控制点：按段类型着色 + 选中高亮（放大+变色）
   cps.forEach((cp, i) => {
     const p = this.worldToScreen(cp.pos.x, cp.pos.z);
     const sel = i === this.selected;
-    ctx.beginPath(); ctx.arc(p.x, p.y, sel ? 8 : 6, 0, Math.PI * 2);
-    ctx.fillStyle = sel ? '#ffd24d' : (cp.tags.length ? '#7affc0' : '#cfe');
+    const st = classifyControlPoint(cp);
+    const r = sel ? 11 : 6;
+    if (sel) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffd24d'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = sel ? '#ffd24d' : st.color;
     ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#0e1116'; ctx.stroke();
-    // 序号 + y + 标签
-    ctx.fillStyle = '#cfe'; ctx.font = '11px monospace';
-    ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + 9, p.y - 4);
+    // 序号 + y + 段名/标签
+    ctx.fillStyle = sel ? '#fff' : '#cfe'; ctx.font = '11px monospace';
+    ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + r + 3, p.y - 4);
     if (cp.vpAnchor) {
-      ctx.fillStyle = '#ffd24d';
-      ctx.fillText(cp.vpAnchor, p.x + 9, p.y + 9);
-    } else if (cp.tags.length) {
-      ctx.fillStyle = '#7affc0'; ctx.font = '10px monospace';
-      ctx.fillText(cp.tags[0], p.x + 9, p.y + 9);
+      ctx.fillStyle = '#ffd24d'; ctx.font = '10px monospace';
+      ctx.fillText(cp.vpAnchor, p.x + r + 3, p.y + 9);
+    } else {
+      ctx.fillStyle = st.color; ctx.font = '10px monospace';
+      ctx.fillText(st.name, p.x + r + 3, p.y + 9);
     }
   });
 
+  this._drawLegend(ctx);
   this._drawStatus(analysis);
+};
+
+// 行驶方向箭头：沿环线采样点间隔画箭头
+P._drawDirectionArrows = function (ctx, samples) {
+  const n = samples.length;
+  if (n < 8) return;
+  const stepN = Math.max(6, Math.floor(n / 18));
+  ctx.fillStyle = 'rgba(143,208,255,0.9)';
+  for (let i = 0; i < n; i += stepN) {
+    const a = samples[i], b = samples[(i + 2) % n];
+    const p = this.worldToScreen(a.x, a.z);
+    const ang = Math.atan2(
+      this.worldToScreen(b.x, b.z).y - p.y,
+      this.worldToScreen(b.x, b.z).x - p.x,
+    );
+    const sz = 7;
+    ctx.save();
+    ctx.translate(p.x, p.y); ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(sz, 0); ctx.lineTo(-sz * 0.7, sz * 0.6); ctx.lineTo(-sz * 0.7, -sz * 0.6);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+};
+
+// 起点 START 标记：在起点控制点画明显旗标 + 起步方向大箭头
+P._drawStartMarker = function (ctx, samples) {
+  const cps = this.track.controlPoints;
+  let si = cps.findIndex((c) => c.vpAnchor === 'VP1' || (c.tags && c.tags.includes('start')));
+  if (si < 0) si = 0;
+  const cp = cps[si];
+  const p = this.worldToScreen(cp.pos.x, cp.pos.z);
+  // 起步方向：指向下一个控制点
+  const nxt = cps[(si + 1) % cps.length];
+  const pn = this.worldToScreen(nxt.pos.x, nxt.pos.z);
+  const ang = Math.atan2(pn.y - p.y, pn.x - p.x);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(ang);
+  // 粗起步箭头
+  ctx.fillStyle = '#7affc0';
+  ctx.beginPath();
+  ctx.moveTo(34, 0); ctx.lineTo(14, 11); ctx.lineTo(14, 4);
+  ctx.lineTo(-2, 4); ctx.lineTo(-2, -4); ctx.lineTo(14, -4); ctx.lineTo(14, -11);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // START 旗标牌
+  ctx.fillStyle = '#1a8f5a';
+  ctx.fillRect(p.x - 30, p.y - 34, 60, 18);
+  ctx.strokeStyle = '#7affc0'; ctx.lineWidth = 2; ctx.strokeRect(p.x - 30, p.y - 34, 60, 18);
+  ctx.fillStyle = '#eafff3'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('START', p.x, p.y - 21);
+  ctx.textAlign = 'left';
+};
+
+// 图例：段类型颜色说明（画布左下角）
+P._drawLegend = function (ctx) {
+  const items = SEGMENT_TYPES;
+  const x = 14, h = 18;
+  let y = this.canvas.height - items.length * h - 14;
+  ctx.fillStyle = 'rgba(14,18,24,0.7)';
+  ctx.fillRect(x - 8, y - 8, 132, items.length * h + 14);
+  ctx.font = '11px monospace';
+  items.forEach((st) => {
+    ctx.fillStyle = st.color;
+    ctx.fillRect(x, y + 3, 12, 12);
+    ctx.fillStyle = '#cfe';
+    ctx.fillText(`${st.name} ${st.zh}`, x + 18, y + 13);
+    y += h;
+  });
 };
 
 P._drawGrid = function (ctx, W, H) {
@@ -87,7 +169,7 @@ P._drawGrid = function (ctx, W, H) {
 };
 
 P._drawRibbon = function (ctx, samples) {
-  // 用左右边界多边形填充灰带
+  // 按段类型分段填充路面带（克制可辨）
   const left = [], right = [];
   const n = samples.length;
   for (let i = 0; i < n; i++) {
@@ -99,11 +181,27 @@ P._drawRibbon = function (ctx, samples) {
     left.push(this.worldToScreen(a.x + nx * hw, a.z + nz * hw));
     right.push(this.worldToScreen(a.x - nx * hw, a.z - nz * hw));
   }
-  ctx.fillStyle = 'rgba(150,160,175,0.22)';
-  ctx.beginPath();
-  left.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-  for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
-  ctx.closePath(); ctx.fill();
+  const cps = this.track.controlPoints;
+  for (let i = 0; i < n; i++) {
+    const a = samples[i];
+    const st = cps[a.cpA] ? classifyControlPoint(cps[a.cpA]) : SEGMENT_DEFAULT;
+    const i1 = (i + 1) % n;
+    ctx.fillStyle = this._hexToRgba(st.color, 0.32);
+    ctx.beginPath();
+    ctx.moveTo(left[i].x, left[i].y);
+    ctx.lineTo(left[i1].x, left[i1].y);
+    ctx.lineTo(right[i1].x, right[i1].y);
+    ctx.lineTo(right[i].x, right[i].y);
+    ctx.closePath(); ctx.fill();
+  }
+};
+
+P._hexToRgba = function (hex, a) {
+  const m = hex.replace('#', '');
+  const r = parseInt(m.slice(0, 2), 16);
+  const g = parseInt(m.slice(2, 4), 16);
+  const b = parseInt(m.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
 };
 
 P._drawStatus = function (a) {
