@@ -37,6 +37,7 @@ P._bind = function () {
     this.track.controlPoints.push(cp);
     this.selected = this.track.controlPoints.length - 1;
     this._syncCpEdit();
+    this.refreshPanels();
     this.draw();
   });
   cv.addEventListener('mousemove', (e) => {
@@ -54,7 +55,10 @@ P._bind = function () {
       this.draw();
     }
   });
-  window.addEventListener('mouseup', () => { this.dragging = -1; this.panning = false; });
+  window.addEventListener('mouseup', () => {
+    if (this.dragging >= 0) { this.dragging = -1; this.panning = false; this.refreshPanels(); return; }
+    this.dragging = -1; this.panning = false;
+  });
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
     const f = e.deltaY < 0 ? 1.12 : 0.89;
@@ -65,7 +69,7 @@ P._bind = function () {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (this.selected >= 0 && document.activeElement === document.body) {
         this.track.controlPoints.splice(this.selected, 1);
-        this.selected = -1; this._syncCpEdit(); this.draw();
+        this.selected = -1; this._syncCpEdit(); this.refreshPanels(); this.draw();
       }
     }
   });
@@ -78,6 +82,9 @@ P._bind = function () {
     if (tag) this._toggleTag(tag);
     const mode = e.target.dataset && e.target.dataset.mode;
     if (mode) this._setMode(mode);
+    // Segment 列表点击→定位视图
+    const segEl = e.target.closest && e.target.closest('[data-seg]');
+    if (segEl) this._locateSegment(+segEl.dataset.seg);
   });
   // 引导关闭
   const gclose = this.container.querySelector('#v3g-close');
@@ -95,6 +102,7 @@ P._bind = function () {
       if (key === 'y') cp.pos.y = v;
       else cp[key] = v;
       if (span) this.panel.querySelector('#' + span).textContent = v.toFixed(1);
+      this.refreshPanels();
       this.draw();
     });
   };
@@ -104,6 +112,7 @@ P._bind = function () {
   this.panel.querySelector('#v3e-vp').addEventListener('change', (e) => {
     if (this.selected < 0) return;
     this.track.controlPoints[this.selected].vpAnchor = e.target.value || null;
+    this.refreshPanels();
     this.draw();
   });
 };
@@ -122,7 +131,19 @@ P._toggleTag = function (tag) {
   const cp = this.track.controlPoints[this.selected];
   const i = cp.tags.indexOf(tag);
   if (i >= 0) cp.tags.splice(i, 1); else cp.tags.push(tag);
-  this._syncCpEdit(); this.draw();
+  this._syncCpEdit(); this.refreshPanels(); this.draw();
+};
+
+// 点击 Segment → 视图定位到该段中心，并选中该段起始控制点。
+P._locateSegment = function (idx) {
+  const seg = (this._segments || [])[idx];
+  if (!seg) return;
+  this.view.ox = seg.cx; this.view.oz = seg.cz;
+  this.view.scale = Math.max(this.view.scale, 0.25);
+  this.selected = idx;
+  this._syncCpEdit();
+  this.draw();
+  this._status(`定位到 #${idx} ${seg.name}（${seg.zh}） ${seg.len.toFixed(0)}m`);
 };
 
 P._syncCpEdit = function () {
@@ -167,9 +188,26 @@ P._onAction = function (act) {
     try {
       const obj = JSON.parse(this.ioEl.value);
       this.track = normalizeTrack(obj);
-      this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.draw();
+      this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.refreshPanels(); this.draw();
       this._status('导入成功：' + this.track.controlPoints.length + ' 个控制点');
     } catch (err) { this._status('导入失败：' + err.message); }
+  } else if (act === 'importrevised') {
+    try {
+      const obj = JSON.parse(this.ioEl.value);
+      this.track = normalizeTrack(obj);
+      this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.refreshPanels(); this.draw();
+      this._status('Import Revised JSON 成功：' + this.track.controlPoints.length + ' 个控制点（已重算 Summary/Validation）');
+    } catch (err) { this._status('Import Revised 失败：' + err.message); }
+  } else if (act === 'importpatch') {
+    this.importPatch();
+  } else if (act === 'copytrack') {
+    this.copyToClipboard(serializeTrack(this.track), 'Copy Track JSON for GPT');
+  } else if (act === 'copysummary') {
+    this.copyToClipboard(this.summaryText(), 'Copy Route Summary for GPT');
+  } else if (act === 'copyvalidation') {
+    this.copyToClipboard(this.validationText(), 'Copy Validation Report for GPT');
+  } else if (act === 'exportprofile') {
+    this.copyToClipboard(this.profileCsv(), 'Export Height Profile Data (CSV)');
   }
 };
 
@@ -178,7 +216,7 @@ P._loadDefault = async function () {
     const res = await fetch('./track.main.json');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     this.track = normalizeTrack(await res.json());
-    this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.draw();
+    this.selected = -1; this._syncCpEdit(); this.fitToTrack(); this.refreshPanels(); this.draw();
     this._status('已载入 track.main.json：' + this.track.controlPoints.length + ' 个控制点');
   } catch (err) { this._status('载入 track.main.json 失败：' + err.message); }
 };

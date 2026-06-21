@@ -41,6 +41,10 @@ export class TrackEditor {
     root.id = 'v3edit-root';
     root.innerHTML = `
       <canvas id="v3edit-canvas"></canvas>
+      <div id="v3p-topbar">
+        <div class="v3p-title">Route Summary · 山海闭合环线</div>
+        <div id="v3p-summary"></div>
+      </div>
       <div id="v3edit-guide">
         <div class="v3g-title">✨ 上手步骤</div>
         <ol>
@@ -81,14 +85,31 @@ export class TrackEditor {
           <label>路宽 <input type="range" id="v3e-w" min="4" max="40" step="0.5"><span id="v3e-wv"></span></label>
           <label>倾斜 bankDeg <input type="range" id="v3e-bank" min="-25" max="25" step="0.5"><span id="v3e-bankv"></span></label>
           <label>VP锚点
-            <select id="v3e-vp"><option value="">无</option><option>VP0</option><option>VP1</option><option>VP5</option></select>
+            <select id="v3e-vp"><option value="">无</option><option>VP1</option><option>VP2</option><option>VP3</option><option>VP4</option><option>VP5</option><option>VP6</option><option>VP7</option><option>VP8</option></select>
           </label>
           <div class="v3e-sub">地标标签</div>
           <div id="v3e-landmarks" class="v3e-tags"></div>
           <div class="v3e-sub">物理标签（PR1只存）</div>
           <div id="v3e-physics" class="v3e-tags"></div>
         </div>
-        <textarea id="v3e-io" placeholder="导入：粘贴 Track JSON 后点[导入JSON]&#10;导出：点[导出JSON]后从此处复制"></textarea>
+        <textarea id="v3e-io" placeholder="导入：粘贴 Track JSON / Patch 后点对应按钮&#10;导出：点 Copy 类按钮后从此复制"></textarea>
+        <div class="v3e-sub">高度剖面（距离×海拔）</div>
+        <canvas id="v3p-profile"></canvas>
+        <div class="v3e-sub">Segment 列表（点击定位视图）</div>
+        <div id="v3p-seglist" class="v3p-seglist"></div>
+        <div class="v3e-sub">Route Validation</div>
+        <div id="v3p-validation" class="v3p-validation"></div>
+        <div class="v3e-sub">AI / GPT 协作</div>
+        <div class="v3e-row">
+          <button data-act="copytrack">Copy Track JSON</button>
+          <button data-act="copysummary">Copy Route Summary</button>
+          <button data-act="copyvalidation">Copy Validation Report</button>
+        </div>
+        <div class="v3e-row">
+          <button data-act="importrevised">Import Revised JSON</button>
+          <button data-act="importpatch">Import Patch / Revision</button>
+          <button data-act="exportprofile">Export Height Profile Data</button>
+        </div>
       </div>`;
     this.container.appendChild(root);
     this.canvas = root.querySelector('#v3edit-canvas');
@@ -109,8 +130,7 @@ export class TrackEditor {
       #v3edit-root{position:fixed;inset:0;background:#0e1116;font-family:'Noto Sans SC',sans-serif;z-index:9999}
       #v3edit-canvas{position:absolute;inset:0;display:block;cursor:crosshair}
       #v3edit-panel{position:absolute;top:0;right:0;width:300px;height:100%;overflow-y:auto;
-        background:rgba(16,20,28,.92);color:#dfe6f0;padding:14px;box-sizing:border-box;font-size:13px}
-      .v3e-title{font-weight:700;font-size:15px;margin-bottom:10px;color:#8fd0ff}
+        background:rgba(16,20,28,.92);color:#dfe6f0;padding:14px;box-sizing:border-box;font-size:13px}      .v3e-title{font-weight:700;font-size:15px;margin-bottom:10px;color:#8fd0ff}
       .v3e-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
       #v3edit-panel button{background:#1d2735;color:#cfe;border:1px solid #2f3e52;border-radius:8px;
         padding:6px 10px;cursor:pointer;font-size:12px}
@@ -127,7 +147,7 @@ export class TrackEditor {
       .v3e-tag.phys.on{background:#e0793a;border-color:#e0793a}
       #v3e-io{width:100%;height:120px;margin-top:8px;background:#0a0d12;color:#9fe;border:1px solid #243245;
         border-radius:8px;font-family:monospace;font-size:10px;box-sizing:border-box}
-      #v3edit-guide{position:absolute;left:14px;top:14px;width:280px;background:rgba(16,22,32,.94);
+      #v3edit-guide{position:absolute;left:14px;top:78px;width:280px;background:rgba(16,22,32,.94);
         color:#dfe6f0;border:1px solid #2a4664;border-radius:10px;padding:12px 14px;z-index:10000;font-size:12px}
       .v3g-title{font-weight:700;color:#7affc0;margin-bottom:6px}
       #v3edit-guide ol{margin:0 0 8px;padding-left:18px;line-height:1.7;color:#cdd8e8}
@@ -141,6 +161,34 @@ export class TrackEditor {
       .v3e-export{font:11px/1.6 monospace;background:#10261b;border:1px solid #1f6b45;border-radius:8px;
         padding:8px 10px;margin-bottom:8px;color:#bfeede;white-space:pre-wrap}
       .v3e-export.bad{background:#2a1414;border-color:#7a2f2f;color:#ffc9c9}
+      #v3p-topbar{position:absolute;top:0;left:0;right:300px;background:rgba(12,16,22,.96);
+        border-bottom:1px solid #243245;color:#dfe6f0;padding:8px 14px;z-index:10001;box-sizing:border-box}
+      #v3p-topbar .v3p-title{font-weight:700;font-size:13px;color:#7affc0;margin-bottom:6px}
+      .v3p-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px 10px}
+      .v3p-cell{display:flex;flex-direction:column;font-size:11px;line-height:1.3}
+      .v3p-k{color:#8aa;font-size:10px}
+      .v3p-v{color:#dfe6f0;font-weight:600;font-family:monospace}
+      .v3p-ok{color:#7affc0}.v3p-bad{color:#ff8a8a}
+      #v3p-profile{width:100%;height:150px;background:#0a0d12;border:1px solid #243245;border-radius:6px;display:block}
+      .v3p-seglist{max-height:230px;overflow-y:auto;border:1px solid #1d2735;border-radius:6px}
+      .v3p-seg{display:flex;align-items:center;gap:5px;padding:4px 6px;font-size:11px;cursor:pointer;border-bottom:1px solid #161d28}
+      .v3p-seg:hover{background:#1a2433}
+      .v3p-seg.warn{background:rgba(122,47,47,.25)}
+      .v3p-dot{width:9px;height:9px;border-radius:50%;flex:none}
+      .v3p-sname{font-weight:600;color:#cfe}.v3p-sname small{color:#7e8aa0;margin-left:3px;font-weight:400}
+      .v3p-hero{background:#2a6df4;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700}
+      .v3p-vp{background:#e0b34d;color:#1a1a1a;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700}
+      .v3p-smeta{margin-left:auto;color:#9fb0c8;font-family:monospace;font-size:10px}
+      .v3p-segw{color:#ffb14d;font-weight:700}
+      .v3p-validation{font-size:11px}
+      .v3p-vhead{padding:5px 8px;border-radius:6px;margin-bottom:6px;font-weight:600}
+      .v3p-vhead.ok{background:#10261b;color:#bfeede}.v3p-vhead.bad{background:#2a1f14;color:#ffe0bf}
+      .v3p-vrow{padding:4px 6px;border-left:3px solid #444;margin-bottom:3px;background:#0f1620;border-radius:0 4px 4px 0}
+      .v3p-vrow small{color:#9fb0c8}
+      .v3p-vrow.ok{border-color:#3aa06a}.v3p-vrow.warn{border-color:#e0a23a}.v3p-vrow.error{border-color:#e05a5a}
+      .v3p-vic{font-weight:700}.v3p-vrow.ok .v3p-vic{color:#7affc0}.v3p-vrow.warn .v3p-vic{color:#ffb14d}.v3p-vrow.error .v3p-vic{color:#ff8a8a}
+      .v3p-vscope{color:#8aa;font-size:10px}
+      .v3p-empty,.v3p-bad{color:#7e8aa0;font-size:11px;padding:4px}
     `;
     document.head.appendChild(st);
   }

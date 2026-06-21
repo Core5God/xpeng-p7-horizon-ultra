@@ -5,6 +5,7 @@
 import { TrackEditor } from './editor.js';
 import './editorInteract.js'; // 扩展原型：交互 + IO
 import './editorDraw.js';     // 扩展原型：绘制
+import './editorPanels.js';   // 扩展原型：Summary/Profile/Segment/Validation/AI
 
 export function launchEditor() {
   document.body.style.margin = '0';

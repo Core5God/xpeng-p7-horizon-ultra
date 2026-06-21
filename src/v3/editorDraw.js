@@ -4,6 +4,13 @@
 import { TrackEditor } from './editor.js';
 import { sampleClosedSpline, detectSelfIntersections, checkClosure, arcLengths } from './trackSpline.js';
 import { classifyControlPoint, SEGMENT_DEFAULT, SEGMENT_TYPES } from './trackSchema.js';
+import { HERO_TAGS } from './routeAnalysis.js';
+
+// landmark 标签 → 体验节点显示名（优先级高于控制点编号）
+const HERO_LABEL = {
+  start: 'START', valley: 'VALLEY', hairpin: 'HAIRPIN', summit: 'SUMMIT',
+  cave: 'CAVE', tunnel: 'TUNNEL', coast_sunrise: 'COAST', harbor_sunset: 'HARBOR',
+};
 
 const P = TrackEditor.prototype;
 
@@ -48,11 +55,12 @@ P.draw = function () {
     });
   }
 
-  // 控制点：按段类型着色 + 选中高亮（放大+变色）
+  // 控制点：按段类型着色 + 选中高亮；体验节点标签优先级 > 编号
   cps.forEach((cp, i) => {
     const p = this.worldToScreen(cp.pos.x, cp.pos.z);
     const sel = i === this.selected;
     const st = classifyControlPoint(cp);
+    const heroTag = (cp.tags || []).find((t) => HERO_TAGS.includes(t));
     const r = sel ? 11 : 6;
     if (sel) {
       ctx.beginPath(); ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
@@ -62,13 +70,37 @@ P.draw = function () {
     ctx.fillStyle = sel ? '#ffd24d' : st.color;
     ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#0e1116'; ctx.stroke();
-    // 序号 + y + 段名/标签（只在选中点 / VP锡点显示文字，避免太密）
-    if (sel || cp.vpAnchor) {
-      ctx.fillStyle = sel ? '#fff' : '#cfe'; ctx.font = 'bold 12px monospace';
-      ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + r + 4, p.y - 5);
-      ctx.fillStyle = cp.vpAnchor ? '#ffd24d' : st.color; ctx.font = '11px monospace';
-      ctx.fillText(cp.vpAnchor ? `${cp.vpAnchor} ${st.name}` : st.name, p.x + r + 4, p.y + 10);
+    // 控制点编号：工程信息，小号淡色（仅选中 / VP / hero 时显示）
+    if (sel || cp.vpAnchor || heroTag) {
+      ctx.fillStyle = '#6f7c93'; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + r + 4, p.y + 12);
     }
+  });
+  // 体验节点标签（二次遍历，画在控制点上层，视觉优先级最高）
+  cps.forEach((cp, i) => {
+    const heroTag = (cp.tags || []).find((t) => HERO_TAGS.includes(t));
+    if (!heroTag && !cp.vpAnchor) return;
+    const p = this.worldToScreen(cp.pos.x, cp.pos.z);
+    const label = HERO_LABEL[heroTag] || '';
+    let ty = p.y - 16;
+    if (label) {
+      ctx.font = 'bold 12px "Noto Sans SC",monospace'; ctx.textAlign = 'center';
+      const tw = ctx.measureText(label).width + 12;
+      ctx.fillStyle = 'rgba(10,13,18,0.82)';
+      ctx.fillRect(p.x - tw / 2, ty - 12, tw, 16);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, p.x, ty);
+      ty -= 18;
+    }
+    if (cp.vpAnchor) {
+      ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+      const vw = ctx.measureText(cp.vpAnchor).width + 10;
+      ctx.fillStyle = '#e0b34d';
+      ctx.fillRect(p.x - vw / 2, ty - 11, vw, 14);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillText(cp.vpAnchor, p.x, ty);
+    }
+    ctx.textAlign = 'left';
   });
 
   this._drawLegend(ctx);
