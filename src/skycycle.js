@@ -192,9 +192,10 @@ export function skyCycleUpdate(dt) {
   const nf = smooth(clamp01((nightAmt - 0.3) / 0.4));
   for (const h of G.headlights) h.intensity = 600 * nf;
   if (env.lampHeadM) {
-    env.lampHeadM.emissiveIntensity = 0.1 + (2.2 - 0.1) * nf;
+    env.lampHeadM.emissiveIntensity = 0.1 + (0.9 - 0.1) * nf;
     env.lampPools.material.opacity = 0.4 * nf;
     env.lampPools.visible = nf > 0.01;
+    if (env.lampGlows) { env.lampGlows.visible = nf > 0.01; env.lampGlowMat.opacity = 0.95 * nf; }
     env.moon.visible = false;           // 禁止程序月亮
     env.fireflies.visible = nf > 0.01;
     env.beamGrp.visible = nf > 0.01;
