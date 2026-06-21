@@ -15,10 +15,13 @@ export const HMI = {
     speed: 'clamp(48px,4.2vw,118px)',
     socNum: 'clamp(30px,2.7vw,60px)',
     rangeNum: 'clamp(16px,1.25vw,28px)',
-    // 右侧车速数字（视觉平衡 20260621）：原 clamp(46,4.0vw,104) 整体偏矮，比左侧电量块(SOC+BATTERY+横线+续航 四行堆叠)矮一截。
-    // 按需求方「右侧数字大一点，高度和左侧一致」放大到 clamp(78,6.6vw,150)，使右块单行大数字的视觉高度≈左块四行堆叠高度，左右对称。
-    // 三档自检：1080p≈117px / 1440p≈138px / 2160p 封顶 150px，均落在 dock height clamp(112,15vmin,184) 内，不裁切不溢出。
-    speedNum: 'clamp(78px,6.6vw,150px)',
+    // 右侧车速数字（透视等高校准 20260621 / task-006）：上一轮放大到 clamp(78,6.6vw,150) 后，
+    // 在 headless 实测中右侧 .hmi-speed-num 透视投影高度=143.7px，而左侧电量大数字 .hmi-soc(98) 投影仅 70.7px，
+    // 比值高达 2.03×——明显过大（根因：左右块各带 rotateY ±38deg 透视斜切，靠原始字号比拉太开就会失衡）。
+    // 校准目标：右侧车速「89」透视后表观高度 ≈ 左侧电量「98」的 1.0~1.3 倍（车速是主信息可略大，但不能两倍多）。
+    // 调回 clamp(44,3.8vw,84)：headless getBoundingClientRect 实测 4 档分辨率比值稳定在 1.08~1.12×（详见交付文档），
+    // 与左侧大数字基本等高、仅微大一档；KM/H 与挡位 D 仍贴基线 nowrap 不裁切。
+    speedNum: 'clamp(44px,3.8vw,84px)',
     labelTiny: 'clamp(9px,0.44vw,11px)',
   },
   glass: {
