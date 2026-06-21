@@ -412,7 +412,8 @@ document.getElementById('btnShot').addEventListener('click', () => {
 // 瞬时手势：B 非驾驶键，长按期间叠加临时轮盘，用鼠标增量(或方向键瞬时)拨动方向，
 // 松手即选。不长期占用 WASD/方向键的驾驶语义，不和驾驶冲突。
 // 方向映射：右=下一首、左=上一首、下=播/停、上=关闭(取消)。死区内松手=取消。
-const RW_DEAD = 30;        // 死区半径(px)：拨出此半径才进入“瞄准”态
+const RW_DEAD = 62;        // 死区半径(px)：加大=需明确拨动才进入瞄准，防误触
+const RW_ARM = 78;         // 进入瞄准的最小位移(px)：超过才锁方向，低于 RW_DEAD 才取消（进/出迟滞）
 const RW_HYST = 10;        // 迟滞角(度)：临界角加入迟滞，避免抖动跳变
 const RW_DIRS = ['right', 'down', 'left', 'up']; // 0°向右，逆时针 90/180/270
 let rwOpen = false, rwAiming = false, rwDir = null, rwVX = 0, rwVY = 0;
@@ -456,8 +457,10 @@ function refreshRadioInfo() {
 function rwUpdateAim() {
   const w = elWheel(); if (!w) return;
   const r = Math.hypot(rwVX, rwVY);
-  // 死区内：不瞄准（松手=取消）
-  if (r < RW_DEAD) {
+  // 进/出迟滞的死区：未瞄准时需拨超 RW_ARM 才锁方向（“明确拨一下”才选）；
+  // 已瞄准时回到 RW_DEAD 以内才取消（避免临界频闪）。
+  const armThresh = rwAiming ? RW_DEAD : RW_ARM;
+  if (r < armThresh) {
     if (rwAiming) { rwAiming = false; rwDir = null; }
     w.classList.remove('aim');
     for (const d of RW_DIRS) document.getElementById('rw' + d[0].toUpperCase() + d.slice(1))?.classList.remove('active');
@@ -551,7 +554,7 @@ addEventListener('mousemove', (e) => {
   rwVX += e.movementX || 0;
   rwVY += e.movementY || 0;
   // 限制半径，避免越拨越远导致无法回死区取消
-  const r = Math.hypot(rwVX, rwVY), MAX = 120;
+  const r = Math.hypot(rwVX, rwVY), MAX = 150;
   if (r > MAX) { rwVX = rwVX / r * MAX; rwVY = rwVY / r * MAX; }
   rwUpdateAim();
 });
@@ -559,7 +562,7 @@ addEventListener('mousemove', (e) => {
 // 方向键瞬时拨动（轮盘开启时；不影响驾驶，因为仅在 rwOpen 时拦截）
 function rwNudge(dx, dy) {
   if (!rwOpen) return;
-  rwVX = dx * 70; rwVY = dy * 70; // 直接定位到对应方向
+  rwVX = dx * 96; rwVY = dy * 96; // 直接定位到对应方向（超过 RW_ARM，明确锁定）
   rwUpdateAim();
 }
 // ---------- 键盘 ----------
