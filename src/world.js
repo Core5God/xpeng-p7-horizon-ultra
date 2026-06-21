@@ -3,7 +3,7 @@ import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER, FASTDEBUG } from './core.js';
+import { G, scene, renderer, sun, hemi, rim, sunDir, bloomPass, BLOOM_LAYER, FASTDEBUG, ROADSIDE_ONLY } from './core.js';
 import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
@@ -1443,11 +1443,20 @@ async function buildScenery() {
 
   try {
     buildRoadsideEcology({
-      scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W
+      scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W, seed: 0x50AD5113
     });
   } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
   } else {
     console.log('[FASTDEBUG] buildScenery: skipped grass+roadside, trees=40 bushes=20, palm/rock+scatter=0');
+    // 路边地编自检：fastdebug 下仍可用 ?roadside=1 单独构建路边生态带（跳过 28k 草）。
+    if (ROADSIDE_ONLY) {
+      try {
+        buildRoadsideEcology({
+          scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W, seed: 0x50AD5113
+        });
+        console.log('[ROADSIDE] ?roadside=1 已在 fastdebug 场景上构建路边生态带');
+      } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
+    }
   }
 }
 

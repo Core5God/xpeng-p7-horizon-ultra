@@ -23,6 +23,13 @@ export const FASTDEBUG = (() => {
   catch { return false; }
 })();
 
+// `?roadside=1`：仅供路边地编自检。在 fastdebug 轻量场景上额外构建路边生态带（跳过 28k 草），
+// 让无 GPU 的 VPS 能快速截到 PR4.1 的路边图层。默认 false，正式访客不受影响。
+export const ROADSIDE_ONLY = (() => {
+  try { return new URLSearchParams(location.search).get('roadside') === '1'; }
+  catch { return false; }
+})();
+
 // ---------- 跨模块共享的可变状态 ----------
 export const G = {
   appState: 'garage',   // garage | drive | pause | photo
@@ -40,7 +47,10 @@ export const G = {
   carReady: false,
   pad: {active:false, steer:0, throttle:0, brake:0, drift:false, boost:false},
   headlights: [],
-  lampMats: []
+  lampMats: [],
+  // PR4.1 路边植被材质注册表：用于映复昼夜（夜间压暗/降饱和，避免荧光绿草。
+  // 每项 { mat, baseColor:THREE.Color }，applyTod / skyCycleUpdate 随 nightFactor 调 mat.color。
+  roadsideVegMats: []
 };
 
 // ---------- 渲染器 ----------

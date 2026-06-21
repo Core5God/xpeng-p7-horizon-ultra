@@ -3,4 +3,5 @@ dist/
 .DS_Store
 *.log
 .shots/
+.shots-rs/
 .build-tmp/

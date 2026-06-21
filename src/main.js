@@ -169,6 +169,10 @@ function loopBody() {
     onRoad = r.onRoad; boost = r.boost;
     raceUpdate();
     gameplayUpdate(dt, onRoad);
+    // 视觉验收机位（?vp=N / 自检）：隐藏竞速门架 + 路线任务点光柱/文字标牌，
+    // 否则静态机位会把 gameplay 标记（如绿色“跨谷挑战”光柱）拍进路边地编验收图。
+    // 仅 viewpointMode 下生效，正常驾驶不受影响；不改 gameplay 逻辑本身。
+    if (G.viewpointMode) hideRouteMarkersForViewpoint();
     // 本次驾驶累积里程（米）：slowroads 左下 KILOMETERS 读数
     if (!isFinite(state.distance)) state.distance = 0;
     state.distance += Math.abs(state.speed) * dt;
@@ -272,11 +276,33 @@ function loopBody() {
 
 // ---------- 视觉验收点跳转（task-20260620-003）----------
 // 让 VIK 在浏览器内一键跳到第 N 个固定机位截图，不改任何视觉/几何，仅摆相机+车+TOD。
+// 视觉验收机位下隐藏 gameplay 路线标记（竞速门架 + 任务点光柱/文字牌）。
+// 这些是驾驶中有意义的 gameplay UI，但会污染 PR4.1 路边地编静态验收图。
+// 不改 gameplay.js 逻辑：只在 viewpointMode 下从 scene 里找到该组并置隐（懒查缓存）。
+let _vpRouteMarkerGrp = null, _vpMarkerSearched = false;
+function hideRouteMarkersForViewpoint() {
+  try {
+    if (cpGroupAll) cpGroupAll.visible = false;
+    if (!_vpMarkerSearched) {
+      _vpMarkerSearched = true;
+      // 任务点组：含文字 Sprite 的顶层 scene 子组（非 cpGroupAll）。
+      for (const child of scene.children) {
+        if (child === cpGroupAll || !child.isGroup) continue;
+        let hasSprite = false;
+        child.traverse((o) => { if (o.isSprite) hasSprite = true; });
+        if (hasSprite && child.children.length && child.children[0].isGroup) { _vpRouteMarkerGrp = child; break; }
+      }
+    }
+    if (_vpRouteMarkerGrp) _vpRouteMarkerGrp.visible = false;
+  } catch (e) {}
+}
+
 // 触发：URL ?vp=N（1~8），或运行时按数字键 1~8。
 function jumpToViewpoint(id) {
   const vp = getViewpoint(id);
   if (!vp) { console.warn('[viewpoint] 无此验收点 id=', id); return; }
   try {
+    G.viewpointMode = true; // 静态验收机位：后续帧隐藏 gameplay 路线标记
     if (G.appState !== 'drive') { try { startDrive(false); } catch (e) {} }
     // 关闭动态天气，让静态 TOD preset 可复现
     G.weatherOn = false;

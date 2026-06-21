@@ -9,6 +9,22 @@ export function smoothstep(edge0, edge1, x) {
 
 export function randomRange(min, max) { return min + Math.random() * (max - min); }
 
+// ---------- 确定性 seeded RNG（mulberry32）----------
+// 用于路边散布：保证每次刷新稳定、不随机漂移。
+// 用法：const rng = makeRng(0xC0FFEE); rng() -> [0,1)
+export function makeRng(seed) {
+  let s = (seed >>> 0) || 0x9e3779b9;
+  return function rng() {
+    s |= 0; s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// seeded 区间随机：用传入 rng 取 [min,max)
+export function rngRange(rng, min, max) { return min + rng() * (max - min); }
+
 // 确定性 2D hash → [0, 1]
 export function hash2(x, z) {
   let h = (x * 374761393 + z * 668265263) | 0;
