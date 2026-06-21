@@ -62,15 +62,12 @@ P.draw = function () {
     ctx.fillStyle = sel ? '#ffd24d' : st.color;
     ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#0e1116'; ctx.stroke();
-    // 序号 + y + 段名/标签
-    ctx.fillStyle = sel ? '#fff' : '#cfe'; ctx.font = '11px monospace';
-    ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + r + 3, p.y - 4);
-    if (cp.vpAnchor) {
-      ctx.fillStyle = '#ffd24d'; ctx.font = '10px monospace';
-      ctx.fillText(cp.vpAnchor, p.x + r + 3, p.y + 9);
-    } else {
-      ctx.fillStyle = st.color; ctx.font = '10px monospace';
-      ctx.fillText(st.name, p.x + r + 3, p.y + 9);
+    // 序号 + y + 段名/标签（只在选中点 / VP锡点显示文字，避免太密）
+    if (sel || cp.vpAnchor) {
+      ctx.fillStyle = sel ? '#fff' : '#cfe'; ctx.font = 'bold 12px monospace';
+      ctx.fillText(`#${i} y${cp.pos.y.toFixed(0)}`, p.x + r + 4, p.y - 5);
+      ctx.fillStyle = cp.vpAnchor ? '#ffd24d' : st.color; ctx.font = '11px monospace';
+      ctx.fillText(cp.vpAnchor ? `${cp.vpAnchor} ${st.name}` : st.name, p.x + r + 4, p.y + 10);
     }
   });
 

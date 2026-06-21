@@ -32,20 +32,20 @@ export async function launchV3() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9fb6cc);
-  // PR1.0.1 — 大幅降雾：VP0 俱视全环必须看清。雾起点推远、终点拉到超过环线尺度。
-  scene.fog = new THREE.Fog(0xc2d2e2, 4000, 16000);
+  scene.background = new THREE.Color(0xaecbe0);
+  // PR1.0.1 — 几乎去雾：VP0 俱视全环必须看清整条闭环轮廓。雾推到远远大于环线尺度。
+  scene.fog = new THREE.Fog(0xc2d2e2, 9000, 40000);
 
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
   camera.position.set(0, 400, 600);
   camera.lookAt(0, 0, 0);
 
-  // 灯光（灰模够用即可）
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(500, 900, 300);
+  // 灯光（灰模）：降低方向光、抬高环境/半球光，减少尖锐折面硬阴影
+  const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+  sun.position.set(500, 1200, 300);
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0xbfd4ec, 0x44484e, 1.0));
-  scene.add(new THREE.AmbientLight(0x404652, 0.6));
+  scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x4a5560, 1.4));
+  scene.add(new THREE.AmbientLight(0x556070, 0.9));
 
   const quality = new QualityManager(renderer);
   quality.set(new URLSearchParams(location.search).get('q') || 'Auto');
@@ -119,17 +119,17 @@ function addAnchorMarkers(scene, world) {
     const off = (c.roadWidth || 12) / 2 + 6;
     const mx = cp.pos.x - c.nx * off, mz = cp.pos.z - c.nz * off;
     const m = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.6, 0.6, 10, 6),
+      new THREE.CylinderGeometry(0.5, 0.5, 6, 6),
       new THREE.MeshStandardMaterial({ color: 0xffd24d, roughness: 0.6 }),
     );
-    m.position.set(mx, cp.pos.y + 5, mz);
+    m.position.set(mx, cp.pos.y + 3, mz);
     m.name = 'anchor-' + cp.vpAnchor;
     scene.add(m);
     const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(2, 10, 8),
+      new THREE.SphereGeometry(1.4, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0xffd24d, emissive: 0x6a5410, roughness: 0.5 }),
     );
-    ball.position.set(mx, cp.pos.y + 11, mz);
+    ball.position.set(mx, cp.pos.y + 6.5, mz);
     scene.add(ball);
   });
   // 起点门（两侧门柱 + 横梁）：明确起点位置，不遮挡路中心
@@ -137,14 +137,14 @@ function addAnchorMarkers(scene, world) {
   const sc = nearest(startCp.pos);
   const hw = (sc.roadWidth || 14) / 2 + 1;
   const gateMat = new THREE.MeshStandardMaterial({ color: 0x7affc0, roughness: 0.5, emissive: 0x123a26 });
-  const postGeo = new THREE.BoxGeometry(1.2, 9, 1.2);
+  const postGeo = new THREE.BoxGeometry(1.0, 6.5, 1.0);
   [-1, 1].forEach((sgn) => {
     const px = sc.x + sc.nx * hw * sgn, pz = sc.z + sc.nz * hw * sgn;
     const post = new THREE.Mesh(postGeo, gateMat);
-    post.position.set(px, sc.y + 4.5, pz); scene.add(post);
+    post.position.set(px, sc.y + 3.25, pz); scene.add(post);
   });
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 2, 1.2, 1.2), gateMat);
-  beam.position.set(sc.x, sc.y + 9, sc.z);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 2, 1.0, 1.0), gateMat);
+  beam.position.set(sc.x, sc.y + 6.5, sc.z);
   beam.rotation.y = Math.atan2(sc.nx, sc.nz);
   scene.add(beam);
 }

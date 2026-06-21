@@ -132,19 +132,22 @@ function buildTerrain(center, followR) {
   const pos = geo.attributes.position;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
   const baseY = -8; // 基准海拔（海平面以下一点的灰模地基）
-  // 简单空间哈希加速最近点查询
-  const sampleNearest = makeNearestFn(center);
-  // 加宽过渡半径 → 地形更平滑、分层，不像随机噪声
-  const blendR = Math.max(followR * 2.4, 140);
+  // 平滑高度场：多点反距离加权（消除单最近点造成的尖锐折面噪点）
+  const sampleSmooth = makeSmoothFn(center);
+  const blendR = Math.max(followR * 3.0, 200);
+  const cols = SEG + 1;
+  const heights = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i) + cx;
     const wz = pos.getZ(i) + cz;
-    const { d, y } = sampleNearest(wx, wz);
+    const { d, y } = sampleSmooth(wx, wz, blendR);
     const t = Math.min(1, d / blendR);
     const k = t * t * (3 - 2 * t); // smoothstep
-    const h = y * (1 - k) + baseY * k;
-    pos.setY(i, h - 1.5); // 路面明显高于地形，路身可辨
+    heights[i] = y * (1 - k) + baseY * k;
   }
+  // 网格 Laplacian 平滑几轮 → 去掉残余折面，读得出是地貌而非噪声
+  smoothGrid(heights, cols, cols, 3);
+  for (let i = 0; i < pos.count; i++) pos.setY(i, heights[i] - 1.5);
   geo.computeVertexNormals();
   // 灰模地形：明显比路面暗的灰阶，与路面拉开层级；vertexColors 按高度分层
   applyTerrainHeightTint(geo);
@@ -164,10 +167,11 @@ function applyTerrainHeightTint(geo) {
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) - minY) / span; // 0 低～1 高
+    const ts = t * t * (3 - 2 * t); // smoothstep → 分层柔和，不放大折面
     // 低处偏深蓝灰（谷/海边），高处偏中灰（山顶）；整体明显暗于亮路面
-    const r = 0.16 + t * 0.26;
-    const g = 0.19 + t * 0.27;
-    const b = 0.23 + t * 0.24;
+    const r = 0.20 + ts * 0.24;
+    const g = 0.24 + ts * 0.25;
+    const b = 0.29 + ts * 0.22;
     colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -206,6 +210,66 @@ function makeNearestFn(center) {
     }
     return { d: best, y: bestY };
   };
+}
+
+// 平滑采样：返回函数 (wx,wz,R) → {d:最近路面距离, y:反距离加权路面高度}。
+// 多点加权避免单最近点的阶跃折面，使谷/顶/海边高低过渡连续。
+function makeSmoothFn(center) {
+  const cell = 80;
+  const grid = new Map();
+  const key = (gx, gz) => gx + ',' + gz;
+  center.forEach((c, i) => {
+    const gx = Math.floor(c.x / cell), gz = Math.floor(c.z / cell);
+    const k = key(gx, gz);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(i);
+  });
+  return (wx, wz, R) => {
+    const gx = Math.floor(wx / cell), gz = Math.floor(wz / cell);
+    const span = Math.ceil(R / cell) + 1;
+    let best = Infinity, wsum = 0, ysum = 0;
+    for (let dx = -span; dx <= span; dx++) {
+      for (let dz = -span; dz <= span; dz++) {
+        const arr = grid.get(key(gx + dx, gz + dz));
+        if (!arr) continue;
+        for (const i of arr) {
+          const c = center[i];
+          const dd = Math.hypot(c.x - wx, c.z - wz);
+          if (dd < best) best = dd;
+          if (dd < R) {
+            const w = 1 / (dd * dd + 25); // 反距离平方权重
+            wsum += w; ysum += w * c.y;
+          }
+        }
+      }
+    }
+    if (wsum === 0) {
+      // 退化：取全量最近点 y
+      let by = 0; best = Infinity;
+      for (const c of center) { const dd = Math.hypot(c.x - wx, c.z - wz); if (dd < best) { best = dd; by = c.y; } }
+      return { d: best, y: by };
+    }
+    return { d: best, y: ysum / wsum };
+  };
+}
+
+// 网格 Laplacian 平滑：对 (cols x rows) 高度场做 iters 轮 4-邻均值，去锐角噪点。
+function smoothGrid(h, cols, rows, iters) {
+  const tmp = new Float32Array(h.length);
+  for (let it = 0; it < iters; it++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c;
+        let s = h[idx], n = 1;
+        if (c > 0) { s += h[idx - 1]; n++; }
+        if (c < cols - 1) { s += h[idx + 1]; n++; }
+        if (r > 0) { s += h[idx - cols]; n++; }
+        if (r < rows - 1) { s += h[idx + cols]; n++; }
+        tmp[idx] = s / n;
+      }
+    }
+    h.set(tmp);
+  }
 }
 
 // 路面方向箭头：沿中心线每隔一段贴一个朝前三角箭（贴路面略高）。
