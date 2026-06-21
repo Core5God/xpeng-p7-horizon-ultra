@@ -1,0 +1,130 @@
+{
+  "projectName": "Horizon V3 Closed Loop Rebuild",
+  "overallProgress": 12,
+  "currentGate": "V3-PR1.0.2",
+  "currentStatus": "Preparing Track Editor Usability + Route Design Validation",
+  "v2Safe": true,
+  "v2Project": "xpeng-p7-horizon-ultra",
+  "v2Branch": "main",
+  "v2Commit": "5ffda01",
+  "v2Url": "https://horizon.beastle.cn",
+  "v3Safe": true,
+  "v3Project": "users-xpeng-library-application-support-claude",
+  "v3Branch": "v3-main",
+  "v3Commit": "b3167d9",
+  "v3Url": "https://users-xpeng-library-application-sup.vercel.app",
+  "todayPlan": [
+    "Create V3-DASH project cockpit",
+    "Add status JSON",
+    "Add status page",
+    "Create PR1.0.2 task card",
+    "Dispatch Coder for editor usability and route validation"
+  ],
+  "tomorrowPlan": [
+    "Review PR1.0.2 submission",
+    "Check Route Summary",
+    "Check Height Profile",
+    "Check Segment List",
+    "Check Validation Report",
+    "Decide PR1.1 or PR1.0.3"
+  ],
+  "blockedItems": [
+    "Do not start PR1.5 Airborne Physics before PR1.0.2 passes",
+    "Do not touch V2",
+    "Do not start art assets, ocean, vegetation, fog, clouds, vehicle material"
+  ],
+  "reviewLinks": {
+    "v3Editor": "https://users-xpeng-library-application-sup.vercel.app/?edit=1",
+    "v3Greybox": "https://users-xpeng-library-application-sup.vercel.app/?v3=1",
+    "vp0": "https://users-xpeng-library-application-sup.vercel.app/?v3=1&vp=0",
+    "vp1": "https://users-xpeng-library-application-sup.vercel.app/?v3=1&vp=1",
+    "vp5": "https://users-xpeng-library-application-sup.vercel.app/?v3=1&vp=5",
+    "v2Production": "https://horizon.beastle.cn",
+    "statusJson": "https://users-xpeng-library-application-sup.vercel.app/status/horizon-v3-status.json"
+  },
+  "stages": [
+    {
+      "id": "V3-PR0",
+      "name": "Art Bible + Asset Pipeline",
+      "status": "Review",
+      "progress": 80,
+      "next": "VIK final approval"
+    },
+    {
+      "id": "V3-PR1",
+      "name": "Loop Editor + Greybox Skeleton",
+      "status": "Submitted for Review",
+      "progress": 70,
+      "next": "PR1.0.2 cleanup"
+    },
+    {
+      "id": "V3-PR1.0.2",
+      "name": "Track Editor Usability + Route Design Validation",
+      "status": "Preparing",
+      "progress": 0,
+      "next": "Create task card and dispatch Coder"
+    },
+    {
+      "id": "V3-PR1.1",
+      "name": "Track Scale + Cruise Speed Calibration",
+      "status": "Not Started",
+      "progress": 0,
+      "next": "Wait for PR1.0.2"
+    },
+    {
+      "id": "V3-PR1.5",
+      "name": "Airborne Vehicle Physics",
+      "status": "HOLD",
+      "progress": 0,
+      "next": "Wait for route validation"
+    },
+    {
+      "id": "V3-PR2",
+      "name": "Terrain Semantic Pass",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR3",
+      "name": "Material Baseline",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR4",
+      "name": "Vegetation / Asset Pipeline",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR5",
+      "name": "Hero Zones",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR6",
+      "name": "Ocean / Coast / Fog",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR7",
+      "name": "Sky / Weather",
+      "status": "Not Started",
+      "progress": 0
+    },
+    {
+      "id": "V3-PR8",
+      "name": "Polish / Performance",
+      "status": "Not Started",
+      "progress": 0
+    }
+  ],
+  "dailyLog": [
+    {
+      "date": "2026-06-22",
+      "summary": "V2/V3 isolation confirmed. PR1 skeleton submitted but not passed. PR1.0.2 defined as next gate."
+    }
+  ]
+}
