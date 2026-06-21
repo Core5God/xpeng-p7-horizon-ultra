@@ -103,17 +103,50 @@ export async function launchV3() {
 }
 
 function addAnchorMarkers(scene, world) {
+  const center = world.center;
+  const nearest = (pos) => {
+    let best = Infinity, bi = 0;
+    for (let i = 0; i < center.length; i++) {
+      const d = Math.hypot(center[i].x - pos.x, center[i].z - pos.z);
+      if (d < best) { best = d; bi = i; }
+    }
+    return center[bi];
+  };
   world.track.controlPoints.forEach((cp) => {
-    if (!cp.vpAnchor && !cp.tags.length) return;
-    const color = cp.vpAnchor ? 0xffd24d : 0x7affc0;
+    // 只为 VP 锡点立标柱，避免遮挡路面/机位/车；偏移到路右侧
+    if (!cp.vpAnchor) return;
+    const c = nearest(cp.pos);
+    const off = (c.roadWidth || 12) / 2 + 6;
+    const mx = cp.pos.x - c.nx * off, mz = cp.pos.z - c.nz * off;
     const m = new THREE.Mesh(
-      new THREE.CylinderGeometry(2, 2, 30, 8),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
+      new THREE.CylinderGeometry(0.6, 0.6, 10, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffd24d, roughness: 0.6 }),
     );
-    m.position.set(cp.pos.x, cp.pos.y + 15, cp.pos.z);
-    m.name = 'anchor-' + (cp.vpAnchor || cp.tags[0]);
+    m.position.set(mx, cp.pos.y + 5, mz);
+    m.name = 'anchor-' + cp.vpAnchor;
     scene.add(m);
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(2, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffd24d, emissive: 0x6a5410, roughness: 0.5 }),
+    );
+    ball.position.set(mx, cp.pos.y + 11, mz);
+    scene.add(ball);
   });
+  // 起点门（两侧门柱 + 横梁）：明确起点位置，不遮挡路中心
+  const startCp = world.track.controlPoints.find((c) => c.vpAnchor === 'VP1' || (c.tags && c.tags.includes('start'))) || world.track.controlPoints[0];
+  const sc = nearest(startCp.pos);
+  const hw = (sc.roadWidth || 14) / 2 + 1;
+  const gateMat = new THREE.MeshStandardMaterial({ color: 0x7affc0, roughness: 0.5, emissive: 0x123a26 });
+  const postGeo = new THREE.BoxGeometry(1.2, 9, 1.2);
+  [-1, 1].forEach((sgn) => {
+    const px = sc.x + sc.nx * hw * sgn, pz = sc.z + sc.nz * hw * sgn;
+    const post = new THREE.Mesh(postGeo, gateMat);
+    post.position.set(px, sc.y + 4.5, pz); scene.add(post);
+  });
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 2, 1.2, 1.2), gateMat);
+  beam.position.set(sc.x, sc.y + 9, sc.z);
+  beam.rotation.y = Math.atan2(sc.nx, sc.nz);
+  scene.add(beam);
 }
 
 // 低模车身轮廓（灰模）：车头朝 +Z，靠楿形车头 + 亮色鼻尖 + 顶部方向鲍明确朝向。

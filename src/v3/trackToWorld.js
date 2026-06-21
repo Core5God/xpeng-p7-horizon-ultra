@@ -85,9 +85,31 @@ function buildRibbonGeometry(center) {
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: 0xc2c7cf, roughness: 0.85, metalness: 0.0 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xd8dde4, roughness: 0.7, metalness: 0.0 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'v3-road-ribbon';
+  // 路缘线：两侧深色边线，从以上/远处拉出路面轮廓（与地形明显区分）
+  const edgePos = [];
+  for (let i = 0; i < N; i++) {
+    const c = center[i];
+    const hw = c.roadWidth / 2;
+    edgePos.push(c.x + c.nx * hw, c.y + 0.5, c.z + c.nz * hw);
+  }
+  edgePos.push(edgePos[0], edgePos[1], edgePos[2]);
+  const rightPos = [];
+  for (let i = 0; i < N; i++) {
+    const c = center[i];
+    const hw = c.roadWidth / 2;
+    rightPos.push(c.x - c.nx * hw, c.y + 0.5, c.z - c.nz * hw);
+  }
+  rightPos.push(rightPos[0], rightPos[1], rightPos[2]);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x20262e });
+  const lGeo = new THREE.BufferGeometry();
+  lGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
+  const rGeo = new THREE.BufferGeometry();
+  rGeo.setAttribute('position', new THREE.Float32BufferAttribute(rightPos, 3));
+  mesh.add(new THREE.Line(lGeo, edgeMat));
+  mesh.add(new THREE.Line(rGeo, edgeMat));
   return mesh;
 }
 
@@ -121,7 +143,7 @@ function buildTerrain(center, followR) {
     const t = Math.min(1, d / blendR);
     const k = t * t * (3 - 2 * t); // smoothstep
     const h = y * (1 - k) + baseY * k;
-    pos.setY(i, h - 0.6); // 路面略高于地形避免 z-fight
+    pos.setY(i, h - 1.5); // 路面明显高于地形，路身可辨
   }
   geo.computeVertexNormals();
   // 灰模地形：明显比路面暗的灰阶，与路面拉开层级；vertexColors 按高度分层
@@ -142,10 +164,10 @@ function applyTerrainHeightTint(geo) {
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) - minY) / span; // 0 低～1 高
-    // 低处偏深蓝灰（谷/海边），高处偏浅暖灰（山顶）
-    const r = 0.24 + t * 0.30;
-    const g = 0.27 + t * 0.30;
-    const b = 0.30 + t * 0.26;
+    // 低处偏深蓝灰（谷/海边），高处偏中灰（山顶）；整体明显暗于亮路面
+    const r = 0.16 + t * 0.26;
+    const g = 0.19 + t * 0.27;
+    const b = 0.23 + t * 0.24;
     colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
