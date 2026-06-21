@@ -12,7 +12,7 @@ import { QualityManager } from './quality.js';
 import { VP_ANCHORS, resolveViewpoints } from './v3viewpoints.js';
 import { installControls, applyViewpoint, startLoop } from './v3runtime.js';
 
-const V3_BUILD = '20260621-deploycheck-1';
+const V3_BUILD = '20260621-pr1.0.1-usability';
 console.log('[V3 build] ' + V3_BUILD);
 
 function addBuildTag() {
