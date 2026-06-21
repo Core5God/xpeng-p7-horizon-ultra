@@ -5,7 +5,7 @@ import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallba
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
-import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack } from './audio.js';
+import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack, plShuffle } from './audio.js';
 import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS, charState } from './character.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
@@ -407,73 +407,59 @@ document.getElementById('btnShot').addEventListener('click', () => {
   showMsg('已保存截图 📸', 1200, 30);
 });
 
-// ---------- 电台浮窗（长按 B） ----------
-let bHoldTimer = null, wheelActive = false, bStartTime = 0;
-let wdx = 0, wdy = 0;                       // 累积鼠标增量（虚拟摇杆）
-const DEAD = 28;                             // 死区像素
-const WHEEL_OPTS = ['off', 'next', 'mode', 'prev'];
+// ---------- 正在播放 玻璃面板（B 开关） ----------
+// 极简 Apple 玻璃「正在播放」卡片，顶部左角。键盘 ←/→ 切歌、↑ 切模式、↓ 播/停、S 随机、B/Esc/Enter 收起。
+// 唤出时临时解锁鼠标（pointerlock）以便点击控件，收起后恢复，且不误触发暂停菜单。
+let radioOpen = false, radioWasLocked = false;
+const elRadio = () => document.getElementById('radioPanel');
 
-addEventListener('mousemove', e => {
-  if (!wheelActive) return;
-  wdx += (e.movementX || 0);
-  wdy += (e.movementY || 0);
-  const dist = Math.sqrt(wdx * wdx + wdy * wdy);
-  if (dist < DEAD) {
-    document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel'));
-    return;
+function refreshRadioPanel() {
+  const p = elRadio(); if (!p) return;
+  const isPl = G.musicMode === 'playlist';
+  const t = getCurrentTrack();
+  const mode = document.getElementById('rpMode');
+  const name = document.getElementById('rpName');
+  const sub  = document.getElementById('rpSub');
+  const art  = document.getElementById('rpArt');
+  const st   = document.getElementById('rpState');
+  const stT  = document.getElementById('rpStateTxt');
+  const sh   = document.getElementById('rpShuffle');
+  if (mode) mode.textContent = isPl ? '歌单' : 'Lofi 电台';
+  if (art)  art.textContent  = isPl ? '🎵' : '📻';
+  if (name) name.textContent = !G.musicOn ? '已暂停' : isPl ? (t ? t.name : '歌单') : 'Lofi · 海岸频率';
+  if (sub)  sub.textContent  = !G.musicOn ? 'PAUSED' : isPl ? 'NOW PLAYING' : 'LIVE RADIO';
+  if (st && stT) {
+    st.classList.toggle('off', !G.musicOn);
+    stT.textContent = G.musicOn ? '播放中' : '已暂停';
   }
-  // 屏幕坐标系：右=0°  下=90°  左=180°  上=270°
-  const angle = (Math.atan2(wdy, wdx) * 180 / Math.PI + 360) % 360;
-  const opt = angle >= 315 || angle < 45  ? 'next'   // 右
-            : angle >= 45  && angle < 135 ? 'mode'   // 下
-            : angle >= 135 && angle < 225 ? 'prev'   // 左
-            :                                'off';  // 上
-  highlightWheelOpt(opt);
-});
-
-// 右键关闭浮窗（取消选择）
-addEventListener('contextmenu', e => {
-  if (wheelActive) {
-    e.preventDefault();
-    wheelActive = false;
-    document.getElementById('radioWheel').classList.remove('show');
-  }
-});
-
-function showRadioWheel() {
-  wheelActive = true;
-  wdx = 0; wdy = 0; // 重置虚拟摇杆
-  document.getElementById('radioWheel').classList.add('show');
-  updateWheelLabel();
-  // 清空高亮
-  document.querySelectorAll('.rw-item').forEach(el => el.classList.remove('sel'));
+  if (sh) sh.classList.toggle('on', !!plShuffle);
 }
 
-function updateWheelLabel() {
-  const hub = document.querySelector('.rw-hub .rw-label');
-  if (!hub) return;
-  if (G.musicMode === 'playlist') {
-    const t = getCurrentTrack();
-    hub.textContent = t ? t.name : '歌单';
-  } else {
-    hub.textContent = G.musicOn ? 'LOFI' : 'RADIO';
+function showRadioPanel() {
+  if (radioOpen) return;
+  radioOpen = true;
+  radioWasLocked = !!document.pointerLockElement;
+  // 临时解锁鼠标让面板可点击（标记来源，避免 pointerlockchange 误开暂停菜单）
+  if (radioWasLocked) { G._radioUnlock = true; document.exitPointerLock?.(); }
+  refreshRadioPanel();
+  elRadio()?.classList.add('show');
+}
+
+function hideRadioPanel() {
+  if (!radioOpen) return;
+  radioOpen = false;
+  elRadio()?.classList.remove('show');
+  // 恢复指针锁定（行驶/步行态继续用鼠标控镜头）
+  if (radioWasLocked && (G.appState === 'drive' || G.appState === 'walk')) {
+    canvas.requestPointerLock?.();
   }
+  radioWasLocked = false;
 }
 
-function highlightWheelOpt(opt) {
-  document.querySelectorAll('.rw-item').forEach(el =>
-    el.classList.toggle('sel', el.dataset.rw === opt));
-}
-
-function selectWheelOption(opt) {
-  wheelActive = false;
-  document.getElementById('radioWheel').classList.remove('show');
+// 面板内动作（点击控件与键盘共用）
+function radioAction(act) {
   initAudio(); startMusic();
-  switch (opt) {
-    case 'off':
-      setMusic(false, false);
-      showMsg('电台 关', 900, 26);
-      break;
+  switch (act) {
     case 'prev':
       if (G.musicMode !== 'playlist' || !G.musicOn) setMusicMode('playlist');
       prevTrack();
@@ -485,17 +471,37 @@ function selectWheelOption(opt) {
     case 'mode':
       setMusicMode(G.musicMode === 'lofi' ? 'playlist' : 'lofi');
       break;
+    case 'shuffle':
+      toggleShuffle();
+      break;
+    case 'play':
+      if (!G.musicOn) {
+        setMusic(true, false);
+        if (G.musicMode === 'playlist') startPlaylist();
+        showMsg(G.musicMode === 'playlist' ? '🎵 歌单 开' : '🎵 Lofi 电台 开', 900, 26);
+      } else {
+        setMusic(false, false);
+        showMsg('音乐 关', 900, 26);
+      }
+      break;
   }
+  refreshRadioPanel();
 }
+
+// 控件点击绑定
+[['rpPrev','prev'],['rpPlay','play'],['rpNext','next'],['rpMode2','mode'],['rpShuffle','shuffle']]
+  .forEach(([id, act]) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => radioAction(act));
+  });
 
 // ---------- 键盘 ----------
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') {
-    if (wheelActive) {
-      wheelActive = false;
-      document.getElementById('radioWheel').classList.remove('show');
+    if (radioOpen) {
+      hideRadioPanel();
       return;
     }
     if (G.appState === 'drive' || G.appState === 'walk') pauseGame();
@@ -512,11 +518,20 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') { G.muted = !G.muted; refreshSettingBtns(); saveSettings(); showMsg(G.muted?'引擎声 关':'引擎声 开', 800, 24); }
   if (e.code === 'KeyB') {
     if (!e.repeat) {
-      bStartTime = performance.now();
-      bHoldTimer = setTimeout(() => {
-        if (keys['KeyB']) showRadioWheel();
-      }, 350);
+      if (G.appState === 'drive' || G.appState === 'walk') {
+        if (radioOpen) hideRadioPanel(); else showRadioPanel();
+      }
     }
+    e.preventDefault();
+  }
+  // 面板唤出时：方向键/Enter 操作电台，不影响驾驶
+  if (radioOpen) {
+    if (e.code === 'ArrowLeft')  { radioAction('prev'); e.preventDefault(); }
+    else if (e.code === 'ArrowRight') { radioAction('next'); e.preventDefault(); }
+    else if (e.code === 'ArrowUp')    { radioAction('mode'); e.preventDefault(); }
+    else if (e.code === 'ArrowDown')  { radioAction('play'); e.preventDefault(); }
+    else if (e.code === 'KeyS')       { radioAction('shuffle'); }
+    else if (e.code === 'Enter')      { hideRadioPanel(); e.preventDefault(); }
   }
   // 画质统一：取消手动切换，默认最高、系统自适应降级（Q 键不再切画质）
   if (e.code === 'KeyH') {
@@ -564,43 +579,13 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => {
   keys[e.code] = false;
-  if (e.code === 'KeyB') {
-    clearTimeout(bHoldTimer);
-    if (wheelActive) {
-      // 浮窗已打开：根据累积鼠标增量选择选项
-      const dist = Math.sqrt(wdx * wdx + wdy * wdy);
-      if (dist > DEAD) {
-        const angle = (Math.atan2(wdy, wdx) * 180 / Math.PI + 360) % 360;
-        const opt = angle >= 315 || angle < 45  ? 'next'
-                  : angle >= 45  && angle < 135 ? 'mode'
-                  : angle >= 135 && angle < 225 ? 'prev'
-                  :                                'off';
-        selectWheelOption(opt);
-      } else {
-        // 未推出死区，取消选择
-        wheelActive = false;
-        document.getElementById('radioWheel').classList.remove('show');
-      }
-    } else if (performance.now() - bStartTime < 350) {
-      // 短按：快速切换模式（保留原行为）
-      initAudio(); startMusic();
-      if (!G.musicOn) {
-        G.musicOn = true;
-        setMusic(true, false);
-        if (G.musicMode === 'playlist') startPlaylist();
-        showMsg(G.musicMode === 'playlist' ? '🎵 歌单模式 开' : '🎵 Lofi 电台 开', 900, 26);
-      } else if (G.musicMode === 'lofi') {
-        setMusicMode('playlist');
-      } else {
-        setMusic(false, false);
-        showMsg('音乐 关', 900, 26);
-      }
-    }
-  }
 });
 // 步行时按 ESC 会先被浏览器用于退出指针锁定 → 监听解锁事件来打开菜单（单次 ESC 即可进菜单）
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && G.appState === 'walk') pauseGame();
+  if (!document.pointerLockElement) {
+    if (G._radioUnlock) { G._radioUnlock = false; return; } // 电台面板主动解锁，不进菜单
+    if (G.appState === 'walk') pauseGame();
+  }
 });
 
 // ---------- HUD / 小地图 ----------
