@@ -66,7 +66,7 @@ P.renderSegments = function () {
     const vp = s.vp ? `<span class="v3p-vp">${s.vp}</span>` : '';
     return `<div class="v3p-seg ${warn ? 'warn' : ''}" data-seg="${s.index}">` +
       `<span class="v3p-dot" style="background:${s.color}"></span>` +
-      `<span class="v3p-sname">#${s.index} ${s.name}<small>${s.zh}</small></span>` +
+      `<span class="v3p-sname">#${s.index} ${s.zh}<small>${s.name}</small></span>` +
       hero + vp +
       `<span class="v3p-smeta">${s.len.toFixed(0)}m · 均${s.avgGrade.toFixed(1)}% · 峰${s.maxGrade.toFixed(1)}%</span>` +
       (warn ? '<span class="v3p-segw">⚠</span>' : '') +
@@ -185,6 +185,41 @@ P.validationText = function () {
   const v = this._validation || validateRoute(this.track);
   const lines = [`Horizon V3 Route Validation  errors=${v.counts.error} warns=${v.counts.warn} ok=${v.counts.ok} pass=${v.pass}`];
   for (const it of v.items) lines.push(`[${it.level}][${it.scope}] ${it.title} :: ${it.detail}`);
+  return lines.join('\n');
+};
+
+// 中文版 Route Summary：方便直接贴给 GPT 判断山海环线节奏。
+P.summaryTextZh = function () {
+  const s = this._summary || routeSummary(this.track);
+  const yn = (bad, b, o) => (bad ? b : o);
+  return [
+    'Horizon V3 路线概览（山海闭合环线）',
+    `总长度：${s.totalKm.toFixed(2)} km（${s.totalM.toFixed(0)} m）`,
+    `预计单圈时间：${s.lapMin.toFixed(1)} min（按 ${THRESHOLDS.avgSpeedKmh} km/h）`,
+    `控制点数量：${s.cpCount}　Segment 数量：${s.segCount}　VP 数量：${s.vpCount}/8 [${s.vps.join(',') || '无'}]`,
+    `最高点：${s.maxY.toFixed(0)} m　最低点：${s.minY.toFixed(0)} m　总高差：${s.dHeight.toFixed(0)} m`,
+    `最大上坡：${s.maxUp.toFixed(1)}%　最大下坡：${s.maxDown.toFixed(1)}%`,
+    `闭合状态：${yn(!s.closed, '未闭合', '已闭合')}`,
+    `自交叉状态：${s.selfIntersect > 0 ? '有 ' + s.selfIntersect + ' 处' : '无'}`,
+    `起点是否过挤：${yn(s.startCrowd, '是', '否')}`,
+    `是否有过陡路段：${yn(s.tooSteep, '有', '无')}`,
+    `Hero Zone 是否过短：${yn(s.heroTooShort, '是（最短 ' + s.shortestHero.toFixed(0) + 'm）', '否')}`,
+  ].join('\n');
+};
+
+// 中文版 Validation Report：VIK / GPT 不用翻译就看懂哪条路线有问题。
+P.validationTextZh = function () {
+  const v = this._validation || validateRoute(this.track);
+  const scopeName = { math: '数学校验', visual: '视觉打结', start: '起点区域' };
+  const lv = { error: '错误', warn: '警告', ok: '通过' };
+  const lines = [
+    'Horizon V3 路线校验报告',
+    `错误 ${v.counts.error} · 警告 ${v.counts.warn} · 通过 ${v.counts.ok} · 总判定：${v.pass ? '全部通过' : '需关注'}`,
+    '',
+  ];
+  for (const it of v.items) {
+    lines.push(`[${lv[it.level] || it.level}][${scopeName[it.scope] || it.scope}] ${it.title}：${it.detail}`);
+  }
   return lines.join('\n');
 };
 

@@ -42,7 +42,7 @@ export class TrackEditor {
     root.innerHTML = `
       <canvas id="v3edit-canvas"></canvas>
       <div id="v3p-topbar">
-        <div class="v3p-title">Route Summary · 山海闭合环线</div>
+        <div class="v3p-title">路线概览 Route Summary · 山海闭合环线</div>
         <div id="v3p-summary"></div>
       </div>
       <div id="v3edit-guide">
@@ -62,54 +62,65 @@ export class TrackEditor {
         <div class="v3e-row">
           <button data-act="newtrack">新建</button>
           <button data-act="loaddefault">载入初始环线</button>
-          <button data-act="import">导入JSON</button>
-          <button data-act="export">导出JSON</button>
+          <button data-act="import">导入 JSON</button>
+          <button data-act="export">导出 JSON</button>
           <button data-act="fit">对齐视野</button>
         </div>
         <div class="v3e-sub">编辑模式</div>
         <div id="v3e-modes" class="v3e-row">
-          <button data-mode="draw" class="v3e-mode">Draw 加点</button>
-          <button data-mode="move" class="v3e-mode">Move 移动</button>
-          <button data-mode="height" class="v3e-mode">Height 高度</button>
-          <button data-mode="tag" class="v3e-mode">Tag 标签</button>
+          <button data-mode="draw" class="v3e-mode">加点</button>
+          <button data-mode="move" class="v3e-mode">移动</button>
+          <button data-mode="height" class="v3e-mode">高度</button>
+          <button data-mode="tag" class="v3e-mode">标签</button>
           <button data-mode="vp" class="v3e-mode">VP 机位</button>
-          <button data-mode="validate" class="v3e-mode">Validate 校验</button>
+          <button data-mode="validate" class="v3e-mode">校验</button>
         </div>
         <div class="v3e-hint">选中点会高亮(放大+黄圈) · 拖动点=移动 · 选中按 Del=删除 · 右键拖=平移 · 滚轮=缩放</div>
         <div id="v3e-status" class="v3e-status"></div>
         <div id="v3e-export-summary" class="v3e-export" style="display:none"></div>
         <div id="v3e-cpedit" class="v3e-cpedit" style="display:none">
-          <div class="v3e-sub">选中控制点</div>
+          <div class="v3e-sub">选中控制点详情</div>
           <div id="v3e-cpinfo" class="v3e-cpinfo"></div>
           <label>高度 y <input type="range" id="v3e-y" min="-200" max="600" step="1"><span id="v3e-yv"></span></label>
-          <label>路宽 <input type="range" id="v3e-w" min="4" max="40" step="0.5"><span id="v3e-wv"></span></label>
+          <label>路宽 roadWidth <input type="range" id="v3e-w" min="4" max="40" step="0.5"><span id="v3e-wv"></span></label>
           <label>倾斜 bankDeg <input type="range" id="v3e-bank" min="-25" max="25" step="0.5"><span id="v3e-bankv"></span></label>
           <label>VP锚点
             <select id="v3e-vp"><option value="">无</option><option>VP1</option><option>VP2</option><option>VP3</option><option>VP4</option><option>VP5</option><option>VP6</option><option>VP7</option><option>VP8</option></select>
           </label>
           <div class="v3e-sub">地标标签</div>
           <div id="v3e-landmarks" class="v3e-tags"></div>
-          <div class="v3e-sub">物理标签（PR1只存）</div>
+          <div class="v3e-sub">物理标签（本棒只存）</div>
           <div id="v3e-physics" class="v3e-tags"></div>
         </div>
         <textarea id="v3e-io" placeholder="导入：粘贴 Track JSON / Patch 后点对应按钮&#10;导出：点 Copy 类按钮后从此复制"></textarea>
-        <div class="v3e-sub">高度剖面（距离×海拔）</div>
-        <canvas id="v3p-profile"></canvas>
-        <div class="v3e-sub">Segment 列表（点击定位视图）</div>
-        <div id="v3p-seglist" class="v3p-seglist"></div>
-        <div class="v3e-sub">Route Validation</div>
-        <div id="v3p-validation" class="v3p-validation"></div>
-        <div class="v3e-sub">AI / GPT 协作</div>
-        <div class="v3e-row">
-          <button data-act="copytrack">Copy Track JSON</button>
-          <button data-act="copysummary">Copy Route Summary</button>
-          <button data-act="copyvalidation">Copy Validation Report</button>
-        </div>
-        <div class="v3e-row">
-          <button data-act="importrevised">Import Revised JSON</button>
-          <button data-act="importpatch">Import Patch / Revision</button>
-          <button data-act="exportprofile">Export Height Profile Data</button>
-        </div>
+        <details class="v3e-grp" open><summary>高度剖面（距离×海拔）</summary>
+          <canvas id="v3p-profile"></canvas>
+        </details>
+        <details class="v3e-grp" open><summary>Segment 路线节奏（点击定位视图）</summary>
+          <div class="v3p-seghd"><span>名称</span><span>HeroZone/VP</span><span>长度·坎度</span></div>
+          <div id="v3p-seglist" class="v3p-seglist"></div>
+        </details>
+        <details class="v3e-grp" open><summary>路线校验 Route Validation</summary>
+          <div id="v3p-validation" class="v3p-validation"></div>
+        </details>
+        <details class="v3e-grp"><summary>复制·导入·导出（贴给 GPT）</summary>
+          <div class="v3e-sub">复制（中文优先）</div>
+          <div class="v3e-row">
+            <button data-act="copysummaryzh">复制路线概览（中文）</button>
+            <button data-act="copyvalidationzh">复制校验报告（中文）</button>
+          </div>
+          <div class="v3e-row">
+            <button data-act="copytrack">复制 Track JSON</button>
+            <button data-act="copysummary">复制概览（EN）</button>
+            <button data-act="copyvalidation">复制校验（EN）</button>
+          </div>
+          <div class="v3e-sub">导入 / 导出数据</div>
+          <div class="v3e-row">
+            <button data-act="importrevised">导入修订 JSON</button>
+            <button data-act="importpatch">导入 Patch</button>
+            <button data-act="exportprofile">导出剖面数据 CSV</button>
+          </div>
+        </details>
       </div>`;
     this.container.appendChild(root);
     this.canvas = root.querySelector('#v3edit-canvas');
@@ -138,6 +149,16 @@ export class TrackEditor {
       .v3e-hint{font-size:11px;color:#7e8aa0;line-height:1.5;margin-bottom:8px}
       .v3e-status{font-size:12px;line-height:1.6;margin-bottom:8px;white-space:pre-wrap}
       .v3e-sub{font-weight:600;margin:8px 0 4px;color:#9fb0c8}
+      .v3e-grp{margin:8px 0;border:1px solid #1d2735;border-radius:8px;background:rgba(10,14,20,.4);overflow:hidden}
+      .v3e-grp>summary{cursor:pointer;list-style:none;padding:7px 10px;font-weight:700;font-size:12px;
+        color:#8fd0ff;background:#141b26;user-select:none}
+      .v3e-grp>summary::-webkit-details-marker{display:none}
+      .v3e-grp>summary::before{content:'▾ ';color:#5b7088}
+      .v3e-grp[open]>summary{border-bottom:1px solid #1d2735}
+      .v3e-grp>:not(summary){margin:8px 10px}
+      .v3p-seghd{display:flex;gap:5px;padding:3px 8px;margin:6px 10px 0!important;font-size:10px;
+        color:#7e8aa0;border-bottom:1px solid #1d2735}
+      .v3p-seghd span:last-child{margin-left:auto}
       .v3e-cpedit label{display:flex;align-items:center;gap:6px;font-size:12px;margin:4px 0}
       .v3e-cpedit input[type=range]{flex:1}
       .v3e-tags{display:flex;flex-wrap:wrap;gap:4px}

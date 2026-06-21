@@ -204,8 +204,12 @@ P._onAction = function (act) {
     this.copyToClipboard(serializeTrack(this.track), 'Copy Track JSON for GPT');
   } else if (act === 'copysummary') {
     this.copyToClipboard(this.summaryText(), 'Copy Route Summary for GPT');
+  } else if (act === 'copysummaryzh') {
+    this.copyToClipboard(this.summaryTextZh(), '路线概览（中文）已复制');
   } else if (act === 'copyvalidation') {
     this.copyToClipboard(this.validationText(), 'Copy Validation Report for GPT');
+  } else if (act === 'copyvalidationzh') {
+    this.copyToClipboard(this.validationTextZh(), '校验报告（中文）已复制');
   } else if (act === 'exportprofile') {
     this.copyToClipboard(this.profileCsv(), 'Export Height Profile Data (CSV)');
   }

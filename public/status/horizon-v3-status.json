@@ -1,11 +1,11 @@
 {
   "projectName": "Horizon V3 Closed Loop Rebuild",
   "projectNameZh": "Horizon V3 闭合环线重做",
-  "overallProgress": 12,
-  "currentGate": "V3-PR1.0.2",
-  "currentStatus": "Submitted for Review",
-  "currentStatusZh": "已提交待验收",
-  "currentGateZh": "V3-PR1.0.2｜赛道编辑器可用性 + 路线设计验证",
+  "overallProgress": 14,
+  "currentGate": "V3-PR1.0.2.1",
+  "currentStatus": "In Progress",
+  "currentStatusZh": "进行中",
+  "currentGateZh": "V3-PR1.0.2.1｜编辑器中文化 + 右侧面板可读性 cleanup",
   "v2Safe": true,
   "v2Project": "xpeng-p7-horizon-ultra",
   "v2Branch": "main",
@@ -17,7 +17,7 @@
   "v3Branch": "v3-main",
   "v3Commit": "ae7d475",
   "v3Url": "https://users-xpeng-library-application-sup.vercel.app",
-  "v3SafeZh": "安全，v3-main / PR1.0.2",
+  "v3SafeZh": "安全，v3-main / PR1.0.2.1 进行中",
   "todayPlan": [
     "Create V3-DASH project cockpit",
     "Add status JSON",
@@ -93,9 +93,18 @@
       "name": "Track Editor Usability + Route Design Validation",
       "nameZh": "赛道编辑器可用性 + 路线设计验证",
       "status": "Submitted for Review",
-      "progress": 0,
-      "next": "Create task card and dispatch Coder",
-      "nextZh": "等待 VIK 验收"
+      "progress": 100,
+      "next": "VIK review; functionally on target",
+      "nextZh": "已提交待验收·功能基本达标"
+    },
+    {
+      "id": "V3-PR1.0.2.1",
+      "name": "Editor Chinese + Layout Readability Cleanup",
+      "nameZh": "编辑器中文化 + 右侧面板可读性 cleanup",
+      "status": "In Progress",
+      "progress": 60,
+      "next": "Chinese editor UI + readable right panel + Chinese Copy",
+      "nextZh": "编辑器中文化 + 右侧面板可读性重构 + Copy 中文版"
     },
     {
       "id": "V3-PR1.1",
@@ -103,8 +112,8 @@
       "nameZh": "路线尺度 + 巡航速度校准",
       "status": "Not Started",
       "progress": 0,
-      "next": "Wait for PR1.0.2",
-      "nextZh": "等待 PR1.0.2"
+      "next": "Wait for PR1.0.2.1 to pass",
+      "nextZh": "未开始（待 PR1.0.2.1 通过）"
     },
     {
       "id": "V3-PR1.5",

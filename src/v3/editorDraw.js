@@ -172,7 +172,7 @@ P._drawLegend = function (ctx) {
     ctx.fillStyle = st.color;
     ctx.fillRect(x, y + 3, 12, 12);
     ctx.fillStyle = '#cfe';
-    ctx.fillText(`${st.name} ${st.zh}`, x + 18, y + 13);
+    ctx.fillText(`${st.zh} ${st.name}`, x + 18, y + 13);
     y += h;
   });
 };
