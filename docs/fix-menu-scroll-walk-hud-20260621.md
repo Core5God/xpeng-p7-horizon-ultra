@@ -6,7 +6,10 @@
 ```
 M	index.html
 M	src/ui.js
+A	docs/fix-menu-scroll-walk-hud-20260621.md
 ```
+
+> 追加（task-20260621-008 范围内的视觉优化）：车漆 PAINT 色盘 `.swatch` 金属光泽质感，见文末「Bug 3 / 视觉优化」。
 
 ---
 
@@ -96,3 +99,44 @@ dist/assets/three-ZelMX2jd.js  553.73 kB │ gzip: 141.53 kB
 - 分支：`feat/fix-menu-scroll-walk-hud-20260621`
 - author：Core5God <129576964+Core5God@users.noreply.github.com>
 - commit / push ref：见下文回填
+
+---
+
+## Bug 3 / 视觉优化：车漆 PAINT 色盘金属光泽
+
+### 需求
+车漆选择色盘（`.swatch` 圆形色块）原为 42px 纯色圆 + 2px 边框，较扁平。需求方要求加金属车漆质感、更精致，且与整体 Apple 玻璃冷色调协调、克制不浮夸。
+
+### 关键约束
+底色由 JS（`buildRows` 里 `b.style.background = ...`）**内联动态填入**（每个色不同，含一个 conic 金属渐变）。内联 `background` 简写会覆盖 CSS 的 `background-image`，故金属高光层必须用**与底色无关的叠加方式**实现，才能任意底色套同一套效果。
+
+### 实现方式（index.html `.swatch`）
+- 用 `::before` 伪元素叠加层（`inset:0` + `overflow:hidden` 裁成圆），不碰底色，三层 background 叠加：
+  1. `radial-gradient` 顶部偏左柔和高光斑（环境光反射 glint，球面立体感）；
+  2. `radial-gradient` 底部暗部（让色块像金属漆小球而非平面圆）；
+  3. `linear-gradient` 细微对角高光→暗部过渡（漆面斜向反光）。
+- `.swatch` 本体加 inset box-shadow：顶部内高光 + 底部内暗影 + 1px 内白圈，强化金属边圈反光。
+- `.sel` 选中态在金属质感上保留并略增强冷白外环（`0 0 0 2px rgba(255,255,255,.62)`）。
+- hover `scale(1.12)` 微动效保留。
+
+关键 CSS：
+```css
+.swatch{position:relative;width:clamp(32px,4.4vh,42px);height:clamp(32px,4.4vh,42px);
+  border-radius:50%;border:2px solid rgba(255,255,255,.22);overflow:hidden;
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.30),inset 0 -3px 6px rgba(0,0,0,.42),
+             inset 0 0 0 1px rgba(255,255,255,.10),0 2px 5px rgba(0,0,0,.30)}
+.swatch::before{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:
+    radial-gradient(60% 50% at 32% 26%,rgba(255,255,255,.62) 0%,rgba(255,255,255,.20) 34%,rgba(255,255,255,0) 60%),
+    radial-gradient(120% 120% at 50% 118%,rgba(0,0,0,.40) 0%,rgba(0,0,0,0) 52%),
+    linear-gradient(150deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,0) 40%,rgba(0,0,0,.10) 100%)}
+.swatch:hover{transform:scale(1.12)}
+.swatch.sel{border-color:var(--glass-border-hi);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.34),inset 0 -3px 6px rgba(0,0,0,.42),
+             inset 0 0 0 1px rgba(255,255,255,.14),0 0 0 2px rgba(255,255,255,.62),0 2px 9px rgba(0,0,0,.32)}
+```
+
+### 验证
+- Playwright 注入多种底色（蓝/红/白/近黑/conic 金属）核对 computed style：内联底色保留（`rgb(27,58,107)` 等），`::before` content=`""`、`backgroundImage` 含 3 个 gradient 层，`.swatch` boxShadow 含 inset，`overflow:hidden`。
+- 隔离渲染截图：每个色块呈现「左上高光斑 + 底部暗边 + 斜向漆面反光 + 内圈反光」的金属漆小球观感，任意底色一致生效，选中项带冷白外环。风格克制，与玻璃冷色调协调。
+- `npx vite build` 通过（dist/index.html 28.53 kB）。
