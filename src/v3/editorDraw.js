@@ -8,8 +8,8 @@ import { HERO_TAGS } from './routeAnalysis.js';
 
 // landmark 标签 → 体验节点显示名（优先级高于控制点编号）
 const HERO_LABEL = {
-  start: 'START', valley: 'VALLEY', hairpin: 'HAIRPIN', summit: 'SUMMIT',
-  cave: 'CAVE', tunnel: 'TUNNEL', coast_sunrise: 'COAST', harbor_sunset: 'HARBOR',
+  start: '起点', valley: '山谷', hairpin: '发卡弯', summit: '山顶',
+  cave: '洞穴', tunnel: '隧道', coast_sunrise: '海岸', harbor_sunset: '港湾',
 };
 
 const P = TrackEditor.prototype;
@@ -155,8 +155,8 @@ P._drawStartMarker = function (ctx, samples) {
   ctx.fillStyle = '#1a8f5a';
   ctx.fillRect(p.x - 30, p.y - 34, 60, 18);
   ctx.strokeStyle = '#7affc0'; ctx.lineWidth = 2; ctx.strokeRect(p.x - 30, p.y - 34, 60, 18);
-  ctx.fillStyle = '#eafff3'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-  ctx.fillText('START', p.x, p.y - 21);
+  ctx.fillStyle = '#eafff3'; ctx.font = 'bold 12px "Noto Sans SC",monospace'; ctx.textAlign = 'center';
+  ctx.fillText('起点', p.x, p.y - 21);
   ctx.textAlign = 'left';
 };
 

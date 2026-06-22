@@ -203,7 +203,7 @@ P.summaryTextZh = function () {
     `自交叉状态：${s.selfIntersect > 0 ? '有 ' + s.selfIntersect + ' 处' : '无'}`,
     `起点是否过挤：${yn(s.startCrowd, '是', '否')}`,
     `是否有过陡路段：${yn(s.tooSteep, '有', '无')}`,
-    `Hero Zone 是否过短：${yn(s.heroTooShort, '是（最短 ' + s.shortestHero.toFixed(0) + 'm）', '否')}`,
+    `体验段是否过短：${yn(s.heroTooShort, '是（最短 ' + s.shortestHero.toFixed(0) + 'm）', '否')}`,
   ].join('\n');
 };
 
@@ -225,7 +225,7 @@ P.validationTextZh = function () {
 
 P.profileCsv = function () {
   const prof = this._profile || buildProfile(this.track, 8);
-  const rows = ['s_m,elevation_m,grade_pct,segment,tags'];
+  const rows = ['距离_m,海拔_m,坡度_pct,段落,标签'];
   for (const p of prof.points) rows.push(`${p.s.toFixed(1)},${p.y.toFixed(2)},${p.grade.toFixed(2)},${p.segName},${(p.tags||[]).join('|')}`);
   return rows.join('\n');
 };

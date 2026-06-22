@@ -57,9 +57,9 @@ export function validateRoute(track) {
   const heroSegs = segs.filter((s) => s.hero);
   const shortHero = heroSegs.filter((s) => s.len < THRESHOLDS.heroZoneMinLen);
   if (shortHero.length) {
-    items.push(mk('herolen', 'warn', 'math', 'Hero Zone 过短', shortHero.map((s) => `${s.hero}(${s.len.toFixed(0)}m)`).join('、') + ` < ${THRESHOLDS.heroZoneMinLen}m，体验节奏被压缩。`));
+    items.push(mk('herolen', 'warn', 'math', '体验段过短', shortHero.map((s) => `${s.hero}(${s.len.toFixed(0)}m)`).join('、') + ` < ${THRESHOLDS.heroZoneMinLen}m，体验节奏被压缩。`));
   } else if (heroSegs.length) {
-    items.push(mk('herolen', 'ok', 'math', 'Hero Zone 展开充分', `最短 ${sum.shortestHero.toFixed(0)}m。`));
+    items.push(mk('herolen', 'ok', 'math', '体验段展开充分', `最短 ${sum.shortestHero.toFixed(0)}m。`));
   }
   // 5 海岸段展开
   const coastLen = segs.filter((s) => s.key === 'coast').reduce((a, s) => a + s.len, 0);
@@ -171,7 +171,7 @@ function visualChecks(items, track, segs, samples, sum) {
       if (d < T.heroNearMin) tooNear = `${heroSegs[i].hero}↔${heroSegs[j].hero}(${d.toFixed(0)}m)`;
     }
   }
-  if (tooNear) items.push(mk('heronear', 'warn', 'visual', 'Hero Zone 太近', tooNear + ` < ${T.heroNearMin}m，体验点扎堆。`));
+  if (tooNear) items.push(mk('heronear', 'warn', 'visual', '体验段太近', tooNear + ` < ${T.heroNearMin}m，体验点扎堆。`));
   // 山顶后下坡展开
   const summit = segs.find((s) => s.key === 'summit');
   if (summit) {

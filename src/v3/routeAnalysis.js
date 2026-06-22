@@ -34,8 +34,8 @@ export const THRESHOLDS = {
 // Hero Zone（体验节点）= 这些 landmark 标签构成的产品节点。
 export const HERO_TAGS = ['start', 'valley', 'hairpin', 'summit', 'cave', 'tunnel', 'coast_sunrise', 'harbor_sunset'];
 const HERO_LABEL = {
-  start: 'START', valley: 'VALLEY', hairpin: 'HAIRPIN', summit: 'SUMMIT',
-  cave: 'CAVE', tunnel: 'TUNNEL', coast_sunrise: 'COAST', harbor_sunset: 'HARBOR',
+  start: '起点', valley: '山谷', hairpin: '发卡弯', summit: '山顶',
+  cave: '洞穴', tunnel: '隧道', coast_sunrise: '海岸', harbor_sunset: '港湾',
 };
 
 function gradePct(dy, dxz) {
