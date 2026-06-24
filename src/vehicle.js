@@ -37,12 +37,16 @@ export function updateCarReflection() {
   //   Auto：最低 2 秒一次（不再高速 8 帧一次）。
   //   High：按车速 32/16/8 帧。
   const driving = (G.appState === 'drive' || G.appState === 'walk');
+  if (G.perfTier === 'ultralite') {
+    // [PERF1] UltraLite：不跑 CubeCamera，车漆靠 scene.environment / envMapIntensity 保质感，成本 0。
+    G._reflectionLive = false; return;
+  }
   if (isSafeMode()) {
-    // Safe：只在非驾驶（车库/照片）且还未拍过时更新一次，驾驶中不更新。
-    if (driving) { G._reflectionLive = false; return; }
+    // [PERF1] Safe：只拍一次静态 envMap，之后永不重拍（车仍有金属质感）。
+    // 即使直接进驾驶（?vp / 跳过车库）也拍一次，避免反射为黑。
     if (G._safeReflDone) { G._reflectionLive = false; return; }
     G._safeReflDone = true;
-    G._reflectionLive = false;
+    G._reflectionLive = false; // 静态：拍完这一次就锁定
   } else if (G.perfTier === 'auto') {
     // Auto：最低 2 秒一次
     const now = performance.now();
@@ -152,6 +156,9 @@ loader.load(GLB_URL, (gltf) => {
   model.updateWorldMatrix(true, true);
 
   // 材质与阴影
+  // [PERF1] UltraLite：不跑实时 CubeCamera、reflectRT 空（黑），车漆/玻璃 envMap 改用 null
+  //   → 回退 scene.environment（程序化 PMREM），车仍有金属反射质感，成本 0。
+  const carEnvMap = (G.perfTier === 'ultralite') ? null : reflectRT.texture;
   model.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -166,7 +173,7 @@ loader.load(GLB_URL, (gltf) => {
           m.metalness = 0.88;
           m.roughness = 0.22;
           m.envMapIntensity = 1.45;
-          m.envMap = reflectRT.texture;
+          m.envMap = carEnvMap;
           if ('clearcoat' in m) {
             m.clearcoat = 1.0;
             m.clearcoatRoughness = 0.08;
@@ -186,7 +193,7 @@ loader.load(GLB_URL, (gltf) => {
           // 玻璃保留实时 CubeCamera 反射（污染源已清除：sunSprite 删除、发光体隐藏）
           m.envMapIntensity = 1.50;
           m.roughness = 0.05;
-          m.envMap = reflectRT.texture;
+          m.envMap = carEnvMap;
           m.userData.origT = m.transparent;
           m.userData.origO = m.opacity;
           m.userData.origDW = m.depthWrite;

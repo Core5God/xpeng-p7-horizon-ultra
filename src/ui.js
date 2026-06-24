@@ -166,17 +166,24 @@ function setQuality(q) {
   let tier = q;
   if (q === true) tier = 'high';
   else if (q === false) tier = 'safe';
-  if (!['safe', 'auto', 'high', 'photo'].includes(tier)) tier = 'auto';
+  if (!['ultralite', 'safe', 'auto', 'high', 'photo'].includes(tier)) tier = 'auto';
 
   setTier(tier);
   G.perfTier = tier;
-  G.safeMode = (tier === 'safe');
+  G.safeMode = (tier === 'safe' || tier === 'ultralite');
+  G.ultraLite = (tier === 'ultralite');
   G.hiQuality = (tier === 'high' || tier === 'photo');
-  // bloom：Safe 关；Auto 默认关（夜间/照片动态再开）；High/Photo 常开。
+  // bloom：UltraLite/Safe 关；Auto 默认关（夜间/照片动态再开）；High/Photo 常开。
   G.bloomActive = (tier === 'high' || tier === 'photo');
   G._bloomStride = (tier === 'high' || tier === 'photo') ? 1 : 3;
   bloomPass.strength = G.bloomActive ? PRESETS[G.curTod].bloom : 0;
   if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，高低画质都常开
+  // [PERF1] UltraLite：关阴影（shadowMap.enabled=false）。其余档保留阴影。
+  renderer.shadowMap.enabled = (tier !== 'ultralite');
+  // 标记 body 类名，供 p0Hud CSS 隐藏 minimap/电台/复杂 HUD。
+  try {
+    document.body.classList.toggle('p1-ultralite', tier === 'ultralite');
+  } catch (e) {}
 
   const pr = Math.min(window.devicePixelRatio, maxPixelRatioFor(tier));
   renderer.setPixelRatio(pr);
@@ -184,14 +191,14 @@ function setQuality(q) {
   bloomComposer.setPixelRatio(pr);
   PERF.pixelRatio = pr;
 
-  // 阴影贴图随档：Safe/Auto 1024，High/Photo 2048。
+  // 阴影贴图随档：Safe/Auto 1024，High/Photo 2048（UltraLite 已关阴影）。
   const wantShadow = (tier === 'high' || tier === 'photo') ? 2048 : 1024;
   if (sun.shadow.mapSize.width !== wantShadow) {
     sun.shadow.mapSize.set(wantShadow, wantShadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // 触发重建
   }
-  PERF.shadowSize = wantShadow;
-  rememberSafe(tier === 'safe'); // localStorage 记住低画质
+  PERF.shadowSize = renderer.shadowMap.enabled ? wantShadow : 0;
+  rememberSafe(tier === 'safe' || tier === 'ultralite'); // localStorage 记住低画质
   refreshSettingBtns(); saveSettings();
 }
 for (const id of ['gQuality','pQuality']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; } // 画质统一：隐藏手动切换

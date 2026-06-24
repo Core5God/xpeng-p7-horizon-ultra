@@ -41,6 +41,8 @@ function detectLowMemory() {
 // ---------- 决定初始档位 ----------
 function resolveInitialTier() {
   const perf = (qs('perf') || '').toLowerCase();
+  // [PERF1] UltraLite：最省档。只保 车/路/极简地形/基础天空/基础驾驶。
+  if (qs('ultralite') === '1' || perf === 'ultralite' || perf === 'ultra-lite') return { tier: 'ultralite', reason: 'url-force' };
   if (qs('safe') === '1' || perf === 'low') return { tier: 'safe', reason: 'url-force' };
   if (perf === 'high') return { tier: 'high', reason: 'url-force' };
   if (perf === 'auto') return { tier: 'auto', reason: 'url-force' };
@@ -59,9 +61,10 @@ function resolveInitialTier() {
 const _init = resolveInitialTier();
 
 export const PERF = {
-  tier: _init.tier,            // 'safe' | 'auto' | 'high' | 'photo'
+  tier: _init.tier,            // 'ultralite' | 'safe' | 'auto' | 'high' | 'photo'
   reason: _init.reason,
-  isSafe: _init.tier === 'safe',
+  isSafe: _init.tier === 'safe' || _init.tier === 'ultralite',
+  isUltraLite: _init.tier === 'ultralite',
   macRetina: detectMacRetina(),
   lowMemory: detectLowMemory(),
   preloadMs: 0,                // assetPreload 计时（由 assetPreload 写回）
@@ -69,14 +72,71 @@ export const PERF = {
   pixelRatio: 1,
   bloomOn: false,
   reflectionOn: false,
-  shadowSize: 0
+  shadowSize: 0,
+  // [PERF1] CPU/GPU 拆分计时（由 main.js loop 写回）：
+  updateMs: 0,
+  renderMs: 0
 };
 
-export function isSafeMode() { return PERF.tier === 'safe'; }
+// [PERF1] 车优先预算表：按档位给出世界/车/HUD/特效预算。
+//   原则：车是主角（车漆/车灯/边缘高光/适度反射优先保），环境是陪衬（树/草/远景/粒子大幅降级）。
+//   carReflectionMode：'off' 不用实时 CubeCamera、靠静态 envMap；'static' 驾驶中不动、车库/照片拍一次；
+//                   'low' 低频；'live' 速度自适应高频。
+const _BUDGETS = {
+  ultralite: {
+    worldQuality: 'off', terrainQuality: 'ultralite',
+    targetTrees: 0, targetBushes: 0, palmRock: 0, flowers: 0, reeds: 0, reefs: 0,
+    grass: false, roadside: false, terrainSeg: 180,
+    carQuality: 'lite', carReflectionMode: 'off',
+    bloom: false, shadow: false, character: false, minimap: false, radio: false, complexHud: false,
+    effectBudget: 'off', hudBudget: 'lite'
+  },
+  safe: {
+    worldQuality: 'low', terrainQuality: 'safe',
+    targetTrees: 220, targetBushes: 120, palmRock: 0, flowers: 0, reeds: 0, reefs: 0,
+    grass: false, roadside: false, terrainSeg: 200,
+    carQuality: 'high', carReflectionMode: 'static',
+    bloom: false, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
+    effectBudget: 'off', hudBudget: 'lite'
+  },
+  auto: {
+    worldQuality: 'mid', terrainQuality: 'high',
+    targetTrees: 1400, targetBushes: 900, palmRock: 180, flowers: 360, reeds: 240, reefs: 80,
+    grass: true, roadside: true, terrainSeg: 300,
+    carQuality: 'high', carReflectionMode: 'low',
+    bloom: false, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
+    effectBudget: 'mid', hudBudget: 'full'
+  },
+  high: {
+    worldQuality: 'full', terrainQuality: 'high',
+    targetTrees: 3500, targetBushes: 2400, palmRock: 400, flowers: 800, reeds: 500, reefs: 120,
+    grass: true, roadside: true, terrainSeg: 300,
+    carQuality: 'ultra', carReflectionMode: 'live',
+    bloom: true, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
+    effectBudget: 'full', hudBudget: 'full'
+  },
+  photo: {
+    worldQuality: 'full', terrainQuality: 'high',
+    targetTrees: 3500, targetBushes: 2400, palmRock: 400, flowers: 800, reeds: 500, reefs: 120,
+    grass: true, roadside: true, terrainSeg: 300,
+    carQuality: 'ultra', carReflectionMode: 'live',
+    bloom: true, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
+    effectBudget: 'full', hudBudget: 'full'
+  }
+};
 
-// 像素比上限（按档位）：safe=1.0，auto/high=1.25，photo=1.5
+// 按当前（或传入）档位返回世界预算。
+export function worldBudget(tier) {
+  return _BUDGETS[tier || PERF.tier] || _BUDGETS.auto;
+}
+
+export function isSafeMode() { return PERF.tier === 'safe' || PERF.tier === 'ultralite'; }
+export function isUltraLite() { return PERF.tier === 'ultralite'; }
+
+// 像素比上限（按档位）：ultralite/safe=1.0，auto/high=1.25，photo=1.5
 export function maxPixelRatioFor(tier) {
   switch (tier || PERF.tier) {
+    case 'ultralite': return 1.0;
     case 'safe': return 1.0;
     case 'photo': return 1.5;
     case 'high':
@@ -88,9 +148,10 @@ export function maxPixelRatioFor(tier) {
 // 切换档位（运行期降级/升级用）。降到 safe 时写 localStorage 记住。
 export function setTier(tier) {
   PERF.tier = tier;
-  PERF.isSafe = tier === 'safe';
+  PERF.isSafe = tier === 'safe' || tier === 'ultralite';
+  PERF.isUltraLite = tier === 'ultralite';
   try {
-    if (tier === 'safe') localStorage.setItem('p7_perf_safe', '1');
+    if (tier === 'safe' || tier === 'ultralite') localStorage.setItem('p7_perf_safe', '1');
     else localStorage.removeItem('p7_perf_safe');
   } catch {}
 }

@@ -2,7 +2,7 @@
 // 运行时注入一层更克制的驾驶态 UI 策略，避免直接大改 index.html。
 // 默认驾驶态只保留速度、档位、小地图、临时提示；竞速态再显示计时组件。
 import { renderer, G } from './core.js';
-import { PERF } from './perfMode.js';
+import { PERF, worldBudget } from './perfMode.js';
 
 let installed = false;
 let lastMode = '';
@@ -75,6 +75,17 @@ export function installMinimalDriveHud() {
       letter-spacing: .5px !important;
       text-shadow: 0 8px 36px rgba(0,0,0,.42) !important;
     }
+
+    /* [PERF1] UltraLite：关 minimap / 电台（播放列表）/ 复杂 HUD，只保驾驶最基础读数。 */
+    body.p1-ultralite #minimap,
+    body.p1-ultralite #playlistbar,
+    body.p1-ultralite #plbar,
+    body.p1-ultralite #radio,
+    body.p1-ultralite #skillstack,
+    body.p1-ultralite #scorechip,
+    body.p1-ultralite #driftlive {
+      display: none !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -140,17 +151,31 @@ export function updatePerfHud() {
   try { info = renderer.info; } catch (e) {}
   const r = info ? info.render : {};
   const m = info ? info.memory : {};
+  // [PERF1] 预算分项：车/世界/地形/树/HUD/特效 + CPU updateMs vs renderMs 拆分。
+  const b = worldBudget();
+  const reflMode = b.carReflectionMode + (G._reflectionLive ? '·live' : '');
   const lines = [
     'FPS         : ' + _perfFps,
-    'SafeMode    : ' + (G.safeMode ? 'ON' : 'off') + '  (' + (G.perfTier || '?') + ')',
+    'tier        : ' + (G.perfTier || '?') + (G.safeMode ? ' (safe)' : ''),
+    'updateMs    : ' + (PERF.updateMs != null ? PERF.updateMs.toFixed(2) : '?'),
+    'renderMs    : ' + (PERF.renderMs != null ? PERF.renderMs.toFixed(2) : '?'),
+    'bottleneck  : ' + (PERF.renderMs > PERF.updateMs ? 'GPU(render)' : 'CPU(update)'),
     'pixelRatio  : ' + (PERF.pixelRatio || (renderer.getPixelRatio && renderer.getPixelRatio()) || '?'),
     'draw calls  : ' + (r.calls != null ? r.calls : '?'),
     'triangles   : ' + (r.triangles != null ? r.triangles.toLocaleString() : '?'),
     'geometries  : ' + (m.geometries != null ? m.geometries : '?'),
     'textures    : ' + (m.textures != null ? m.textures : '?'),
-    'shadowMap   : ' + (PERF.shadowSize || '?'),
+    '--- budget ---',
+    'carQuality  : ' + b.carQuality,
+    'carReflect  : ' + reflMode,
+    'worldQuality: ' + b.worldQuality,
+    'terrainQual : ' + b.terrainQuality,
+    'treeBudget  : ' + (b.targetTrees > 0 ? b.targetTrees + '/' + b.targetBushes : 'off'),
+    'effectBudget: ' + b.effectBudget,
+    'hudBudget   : ' + b.hudBudget,
+    '--- engine ---',
+    'shadowMap   : ' + (PERF.shadowSize || (renderer.shadowMap && renderer.shadowMap.enabled ? '?' : 'off')),
     'bloom       : ' + (PERF.bloomOn ? 'ON' : 'off'),
-    'cubeReflect : ' + (PERF.reflectionOn ? 'ON' : 'off'),
     'preload(ms) : ' + (PERF.preloadMs || 0)
   ];
   _perfEl.textContent = lines.join('\n');

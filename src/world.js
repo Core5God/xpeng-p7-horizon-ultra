@@ -8,7 +8,7 @@ import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
 import { createRoadSurfaceMasks, maybeShowRoadMaskDebug } from './roadSurfaceMask.js';
-import { isSafeMode } from './perfMode.js';
+import { isSafeMode, isUltraLite, worldBudget } from './perfMode.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -59,7 +59,9 @@ function rebuildEnv() {
 }
 
 // ---------- 白天 HDRI 天空（Poly Haven，真实天光与反射；其余时段仍用程序化大气散射） ----------
+// [PERF1] HDR 只保一套轻量环境。UltraLite：不加载 HDR（多余的 PMREM 开销），回退程序化天空。
 let dayBg = null, dayEnv = null, hdrReady = false;
+if (!isUltraLite()) {
 new RGBELoader().load('assets/sky_day.hdr', (tex) => {
   tex.mapping = THREE.EquirectangularReflectionMapping;
   dayBg = tex; // 背景仍用完整天空
@@ -77,6 +79,7 @@ new RGBELoader().load('assets/sky_day.hdr', (tex) => {
   hdrReady = true;
   if (G.curTod === 'day') applySkyForTod(); // 当前就是白天则立即生效
 }, undefined, (e) => console.warn('白天 HDRI 加载失败，回退程序化天空：', e));
+}
 
 // 按当前时段选择天空/环境：白天用 HDRI（背景+IBL，隐藏程序化天空盒），落日/夜晚用程序化
 function applySkyForTod() {
@@ -496,11 +499,12 @@ function reedTexture() {
 }
 
 function buildTerrain(opts) {
-  // [PERF0] Safe 档低成本分支：segment 300→200、anisotropy 8→1、不走 road mask 多贴图混合、
-  // 简化 roughness/normal。默认从 perfMode 读；也可显式传 {quality:'safe'}。
-  const quality = (opts && opts.quality) || (isSafeMode() ? 'safe' : 'high');
-  const safe = quality === 'safe';
-  const SEG = safe ? 200 : TERR_SEG, SIZE = TERR_SIZE;
+  // [PERF1] 按预算表选择地形档：ultralite/safe 走低成本分支（单贴图 + 顶点色 splat，
+  //   segment 180-220、anisotropy 1、不走 road mask 多贴图混合）。
+  const budget = worldBudget();
+  const quality = (opts && opts.quality) || budget.terrainQuality;
+  const safe = quality === 'safe' || quality === 'ultralite';
+  const SEG = safe ? (budget.terrainSeg || 200) : TERR_SEG, SIZE = TERR_SIZE;
   TERR_SEG_CUR = SEG; TERR_ST_CUR = SIZE / SEG; // 同步碰撞高度场索引
   const ANISO = safe ? 1 : 8;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
@@ -1264,6 +1268,14 @@ function buildRoad() {
 
 // ---------- 植被 / 岩石（EZ-Tree 程序化森林，实例化渲染） ----------
 async function buildScenery() {
+  // [PERF1] 世界预算下沉：树/灌木/棕榈/散岩/花/芦苇/礼石/草/路旁生态都按档位限量。
+  //   ultralite：worldQuality='off' → 直接跳过整个 buildScenery（只车/路/地形/天空）。
+  //   safe：树灰木砍到极少量（~220/120），草/路旁散布/棕榈/花/芦苇/礼石全关。
+  const budget = worldBudget();
+  if (budget.worldQuality === 'off') {
+    console.log('[PERF1] buildScenery skipped (worldQuality=off, tier=ultralite): 只车/路/地形/天空');
+    return;
+  }
   const palmTrunkG = new THREE.CylinderGeometry(0.14, 0.24, 5, 6);
   palmTrunkG.translate(0, 2.5, 0);
   const trunkM = new THREE.MeshStandardMaterial({color:0x8a6a4a, roughness:1});
@@ -1273,17 +1285,17 @@ async function buildScenery() {
   const rockG = new THREE.DodecahedronGeometry(1.6, 0);
   const rockM = new THREE.MeshStandardMaterial({color:0x7d7468, flatShading:true, roughness:0.9});
   // ---------- 森林斑块系统：替代旧的随机撒树 ----------
-  // FASTDEBUG：树/灌木数量降到极小（generateForestSpots 是本函最耗时的生成步骤）
+  // [PERF1] 树/灌木数量按预算表：Safe ~220/120，Auto ~1400/900，High 3500/2400。FASTDEBUG 仍极小。
   const treeSpots = generateForestSpots({
     meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase,
-    targetTrees: FASTDEBUG ? 40 : 3500, targetBushes: FASTDEBUG ? 20 : 2400
+    targetTrees: FASTDEBUG ? 40 : budget.targetTrees, targetBushes: FASTDEBUG ? 20 : budget.targetBushes
   });
 
   // ---------- 棕榈（低地 < 3.5m）+ 散岩 ----------
   const trunkGeos = [], palmLeafGeos = [], rockGeos = [];
   const tmpO = new THREE.Object3D();
   let palmRockPlaced = 0, guard2 = 0;
-  const palmRockTarget = FASTDEBUG ? 0 : 400; // FASTDEBUG：跳过棕榈/散岩撒点
+  const palmRockTarget = FASTDEBUG ? 0 : budget.palmRock; // 预算：Safe=0，Auto=180，High=400
   while (palmRockPlaced < palmRockTarget && guard2++ < 5000) {
     const a = Math.random()*Math.PI*2, r = 60 + Math.random()*520;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
@@ -1362,13 +1374,13 @@ async function buildScenery() {
   })();
   const flowerM = new THREE.MeshLambertMaterial({color:0xffffff, map: flowerTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
   const reedM2 = new THREE.MeshLambertMaterial({color:0xffffff, map: reedTexture(), alphaTest: 0.45, side: THREE.DoubleSide});
-  scatter(crossG, flowerM, FASTDEBUG ? 0 : 800, { minRoad: 8, hMin: 3, hMax: 14, s0: 1.0, s1: 1.0, sink: 0.04,
+  scatter(crossG, flowerM, FASTDEBUG ? 0 : budget.flowers, { minRoad: 8, hMin: 3, hMax: 14, s0: 1.0, s1: 1.0, sink: 0.04,
     color: (c) => c.setHSL([0.95, 0.13, 0.0, 0.78][Math.floor(Math.random()*4)], 0.7, 0.66) }); // 花簇
-  scatter(reedG, reedM2, FASTDEBUG ? 0 : 500, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.8, s1: 1.0, ys: 1.2, sink: 0.06,
+  scatter(reedG, reedM2, FASTDEBUG ? 0 : budget.reeds, { minRoad: 9, hMin: 0.8, hMax: 2.8, s0: 0.8, s1: 1.0, ys: 1.2, sink: 0.06,
     color: (c) => c.setHSL(0.13 + Math.random()*0.04, 0.42, 0.34 + Math.random()*0.12) }); // 芦苇/滨草
   const reefG = new THREE.DodecahedronGeometry(1, 0);
   const reefM = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.9, flatShading:true});
-  scatter(reefG, reefM, FASTDEBUG ? 0 : 120, { minRoad: 12, hMin: -0.2, hMax: 1.0, s0: 0.5, s1: 1.1, ys: 0.6, sink: 0.3,
+  scatter(reefG, reefM, FASTDEBUG ? 0 : budget.reefs, { minRoad: 12, hMin: -0.2, hMax: 1.0, s0: 0.5, s1: 1.1, ys: 0.6, sink: 0.3,
     color: (c) => c.setHSL(0.08, 0.08, 0.3 + Math.random()*0.12) }); // 水线礁石
 
   // —— EZ-Tree：生成 9 种树形 → 每种 2 个 InstancedMesh（枝干+树叶）
@@ -1465,21 +1477,28 @@ async function buildScenery() {
   }
 
   // ---------- 草地层 + 道路生态带 ----------
-  // FASTDEBUG：跳过草地层（28000 实例，本模块最耗算力）与道路生态带
-  if (!FASTDEBUG) {
+  // [PERF1] 草地（28000 实例，本模块最耗算力）与道路生态带按预算表开关：Safe/UltraLite 全关。
+  const grassOn = !FASTDEBUG && budget.grass;
+  const roadsideOn = !FASTDEBUG && budget.roadside;
+  if (grassOn || roadsideOn) {
+  if (grassOn) {
   try {
     buildGrassLayer({
       scene, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, windU, samples, normals
     });
   } catch (e) { console.warn('[GRASS] 草地层生成失败：', e); }
+  }
 
+  if (roadsideOn) {
   try {
     buildRoadsideEcology({
       scene, samples, normals, meshGroundHeight, groundHeight, nearestRoad, branchInfo, islandBase, HALF_W, seed: 0x50AD5113
     });
   } catch (e) { console.warn('[ROADSIDE] 道路生态带生成失败：', e); }
+  }
   } else {
-    console.log('[FASTDEBUG] buildScenery: skipped grass+roadside, trees=40 bushes=20, palm/rock+scatter=0');
+    console.log('[PERF1] buildScenery: grass+roadside skipped (budget) trees=' + budget.targetTrees +
+      ' bushes=' + budget.targetBushes + ' palmRock=' + budget.palmRock);
     // 路边地编自检：fastdebug 下仍可用 ?roadside=1 单独构建路边生态带（跳过 28k 草）。
     if (ROADSIDE_ONLY) {
       try {

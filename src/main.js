@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
-import { PERF, PERF_DEBUG, isSafeMode, maxPixelRatioFor, setTier } from './perfMode.js';
+import { PERF, PERF_DEBUG, isSafeMode, isUltraLite, worldBudget, maxPixelRatioFor, setTier } from './perfMode.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms, samples, nearestRoad, NS, HALF_W } from './world.js';
 // [task-20260620-001 回滚] buildRoadJunctionPass 调用已禁用，导入一并注释避免 unused
 // import { buildRoadJunctionPass } from './roadJunctionPass.js';
@@ -157,6 +157,7 @@ function pollGamepad() {
 }
 
 function loopBody() {
+  const _frameT0 = performance.now();
   pollGamepad();
   const now = performance.now();
   const dt = Math.min((now - last)/1000, 0.05);
@@ -253,7 +254,12 @@ function loopBody() {
     drawMinimap();
   }
   if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（仅车库/照片模式）
+  // [PERF1] CPU/GPU 拆分：update 段（以上逻辑/物理/反射探针）耗时 vs render 段（selectiveBloomRender）耗时。
+  //   定位 CPU 端（世界 update / 物理 / 探针）还是 GPU 端（draw calls / fill rate）瓶颈。
+  const _renderT0 = performance.now();
+  PERF.updateMs = _renderT0 - _frameT0;
   selectiveBloomRender();
+  PERF.renderMs = performance.now() - _renderT0;
   // [PERF0] 性能 HUD（?perfdebug=1）
   if (PERF_HUD_ON) { PERF.bloomOn = !!G.bloomActive; PERF.reflectionOn = G._reflectionLive; PERF.pixelRatio = renderer.getPixelRatio(); updatePerfHud(); }
   // 帧率自适应：持续偏低时自动降画质（一次性）。
@@ -362,6 +368,27 @@ function installViewpointJump() {
   // 暴露给截图脚本 / 控制台
   window.__jumpToViewpoint = jumpToViewpoint;
   window.__VIEWPOINTS = VIEWPOINTS;
+  // [PERF1] 无头性能探针（仅 perfdebug）：供 scripts/perf-probe.mjs 读场景资产数量/draw calls/CPU拆分。
+  if (PERF_HUD_ON) {
+    window.__perfStartDrive = () => { try { startDrive(false); } catch (e) {} };
+    window.__perfProbe = () => {
+      let trees = 0, bushes = 0, instTotal = 0, meshes = 0, instanced = 0;
+      scene.traverse((o) => {
+        if (o.isInstancedMesh) { instanced++; instTotal += o.count || 0; }
+        else if (o.isMesh) meshes++;
+      });
+      // 真实 draw calls：renderer.info 每次 render 重置，直接强制一次主场景渲染后读。
+      renderer.render(scene, camera);
+      const info = renderer.info;
+      return {
+        tier: G.perfTier, safeMode: G.safeMode, ultraLite: !!G.ultraLite,
+        budget: worldBudget(),
+        counts: { sceneChildren: scene.children.length, meshes, instancedMeshes: instanced, instancedTotal: instTotal },
+        info: { calls: info.render.calls, triangles: info.render.triangles, geometries: info.memory.geometries, textures: info.memory.textures },
+        perf: { updateMs: +PERF.updateMs.toFixed(2), renderMs: +PERF.renderMs.toFixed(2), pixelRatio: PERF.pixelRatio, shadowSize: PERF.shadowSize, bloomOn: PERF.bloomOn, reflectionLive: G._reflectionLive }
+      };
+    };
+  }
 }
 
 addEventListener('resize', () => {
@@ -458,13 +485,17 @@ addEventListener('keydown', (e) => {
       if (b) b.remove();
     });
 
-    // [PERF0] Safe 档延迟加载：页面已可操作后再在后台加载森林 + 步行角色，
-    // 不阻塞首屏 / 进驾驶。出错不影响主流程（森林/角色均为增强，非必需）。
+    // [PERF0/PERF1] Safe 档延迟加载：页面已可操作后再在后台加载森林 + 步行角色。
+    //   UltraLite：不延迟构森林（worldQuality=off）、不加步行角色/Iron——只车/路/地形/天空。
     if (isSafeMode()) {
       const lazy = async () => {
+        if (isUltraLite()) {
+          console.log('[PERF1] UltraLite：跳过延迟 buildScenery + buildCharacter（只车/路/地形/天空）');
+          return;
+        }
         try { await preloadLazyAssets(); } catch (e) { console.warn('[PERF0] lazy preload failed:', e); }
-        try { await buildScenery(); console.log('[PERF0] lazy buildScenery done'); }
-        catch (e) { console.warn('[PERF0] lazy buildScenery failed:', e); }
+        try { await buildScenery(); console.log('[PERF1] lazy buildScenery done (safe budget)'); }
+        catch (e) { console.warn('[PERF1] lazy buildScenery failed:', e); }
         try { await buildCharacter(); console.log('[PERF0] lazy buildCharacter done'); }
         catch (e) { console.warn('[PERF0] lazy buildCharacter failed:', e); }
       };
