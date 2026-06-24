@@ -166,7 +166,7 @@ function setQuality(q) {
   let tier = q;
   if (q === true) tier = 'high';
   else if (q === false) tier = 'safe';
-  if (!['ultralite', 'safe', 'auto', 'high', 'photo'].includes(tier)) tier = 'auto';
+  if (!['ultralite', 'safe', 'medium', 'auto', 'high', 'photo'].includes(tier)) tier = 'auto';
 
   setTier(tier);
   G.perfTier = tier;

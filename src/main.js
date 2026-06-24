@@ -109,6 +109,15 @@ function computeRoutePreview(pos, heading) {
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
 let fpsAcc = 0, fpsN = 0, autoDropped = false;
+// [PERF1b] 自适应升降档梯（运行期调渲染开销杠杆，不动基础车漆/车身模型/公路贴图）。
+//   升/降只调：反射频率、bloom、阴影分辨率、pixelRatio（setQuality 内部）。
+//   梯子：ultralite < safe < medium < high。启动后先采样 ~4s 再允许调整。
+const _ADAPT_LADDER = ['ultralite', 'safe', 'medium', 'high'];
+let _adaptSampleStart = 0;       // 启动采样起点（0=未开始）
+let _adaptLastChange = 0;        // 上次档位变更时间（冷却用）
+let _adaptHighFpsSince = 0;      // 持续高帧起点（升档需持续 10s）
+const _ADAPT_COOLDOWN = 6000;    // 档位变更冷却 6s，不频繁跳档
+const _ADAPT_WARMUP = 4000;      // 启动 4s 采样期不调档
 let loopErrCount = 0, slowFrames = 0;
 function loop() {
   requestAnimationFrame(loop);
@@ -262,15 +271,35 @@ function loopBody() {
   PERF.renderMs = performance.now() - _renderT0;
   // [PERF0] 性能 HUD（?perfdebug=1）
   if (PERF_HUD_ON) { PERF.bloomOn = !!G.bloomActive; PERF.reflectionOn = G._reflectionLive; PERF.pixelRatio = renderer.getPixelRatio(); updatePerfHud(); }
-  // 帧率自适应：持续偏低时自动降画质（一次性）。
-  // [PERF0] Mac 擑不到 4 秒：采样窗口缩到 1.5 秒，平均 < 45fps 即降到 Safe。
+  // [PERF1b] 自适应升降档梯：启动 ~4s 采样，fps<20 降一档，>50 持续 10s 升一档，有冷却。
+  //   只在 drive/garage 调；不动基础车漆（setQuality 只调渲染杠杆）。
   fpsAcc += dt; fpsN++;
+  const _nowA = performance.now();
+  if (_adaptSampleStart === 0) _adaptSampleStart = _nowA;
   if (fpsAcc > 1.5) {
     const avg = fpsN / fpsAcc;
-    if (!autoDropped && !isSafeMode() && avg < 45 && (G.appState === 'drive' || G.appState === 'garage')) {
-      autoDropped = true;
-      setQuality('safe');
-      showMsg('检测到帧率偏低，已自动切换安全画质以保流畅', 2400, 22);
+    const inAdaptState = (G.appState === 'drive' || G.appState === 'garage');
+    const warmedUp = (_nowA - _adaptSampleStart) > _ADAPT_WARMUP;
+    const cooled = (_nowA - _adaptLastChange) > _ADAPT_COOLDOWN;
+    // URL 强制档（url-force / url-quality）不受自适应干预，保证验收链接稳定。
+    const urlForced = (PERF.reason === 'url-force' || PERF.reason === 'url-quality');
+    if (warmedUp && inAdaptState && cooled && !urlForced) {
+      const cur = _ADAPT_LADDER.indexOf(G.perfTier);
+      if (avg < 20 && cur > 0) {
+        // 降一档
+        setQuality(_ADAPT_LADDER[cur - 1]);
+        _adaptLastChange = _nowA; _adaptHighFpsSince = 0;
+        showMsg('帧率偏低，已自动降一档画质以保流畅（车漆/车身不变）', 2200, 22);
+      } else if (avg > 50 && cur >= 0 && cur < _ADAPT_LADDER.length - 1) {
+        // 持续高帧 10s 才升一档
+        if (_adaptHighFpsSince === 0) _adaptHighFpsSince = _nowA;
+        else if (_nowA - _adaptHighFpsSince > 10000) {
+          setQuality(_ADAPT_LADDER[cur + 1]);
+          _adaptLastChange = _nowA; _adaptHighFpsSince = 0;
+        }
+      } else {
+        _adaptHighFpsSince = 0; // 中间区间：维持
+      }
     }
     fpsAcc = 0; fpsN = 0;
   }

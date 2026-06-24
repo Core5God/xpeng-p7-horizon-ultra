@@ -41,9 +41,17 @@ function detectLowMemory() {
 // ---------- 决定初始档位 ----------
 function resolveInitialTier() {
   const perf = (qs('perf') || '').toLowerCase();
+  const quality = (qs('quality') || '').toLowerCase();
+  // [PERF1b] 统一 ?quality= 入口：ultralite|low|medium|high（low → safe 档）。
+  if (quality === 'ultralite' || quality === 'ultra-lite') return { tier: 'ultralite', reason: 'url-quality' };
+  if (quality === 'low' || quality === 'safe') return { tier: 'safe', reason: 'url-quality' };
+  if (quality === 'medium' || quality === 'mid') return { tier: 'medium', reason: 'url-quality' };
+  if (quality === 'high') return { tier: 'high', reason: 'url-quality' };
+  if (quality === 'photo' || quality === 'garage') return { tier: 'photo', reason: 'url-quality' };
   // [PERF1] UltraLite：最省档。只保 车/路/极简地形/基础天空/基础驾驶。
   if (qs('ultralite') === '1' || perf === 'ultralite' || perf === 'ultra-lite') return { tier: 'ultralite', reason: 'url-force' };
   if (qs('safe') === '1' || perf === 'low') return { tier: 'safe', reason: 'url-force' };
+  if (perf === 'medium' || perf === 'mid') return { tier: 'medium', reason: 'url-force' };
   if (perf === 'high') return { tier: 'high', reason: 'url-force' };
   if (perf === 'auto') return { tier: 'auto', reason: 'url-force' };
 
@@ -95,13 +103,23 @@ const _BUDGETS = {
     worldQuality: 'low', terrainQuality: 'safe',
     targetTrees: 220, targetBushes: 120, palmRock: 0, flowers: 0, reeds: 0, reefs: 0,
     grass: false, roadside: false, terrainSeg: 200,
-    carQuality: 'high', carReflectionMode: 'static',
+    carQuality: 'high', carReflectionMode: 'lowfreq',
     bloom: false, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
     effectBudget: 'off', hudBudget: 'lite'
   },
   auto: {
     worldQuality: 'mid', terrainQuality: 'high',
     targetTrees: 1400, targetBushes: 900, palmRock: 180, flowers: 360, reeds: 240, reefs: 80,
+    grass: true, roadside: true, terrainSeg: 300,
+    carQuality: 'high', carReflectionMode: 'low',
+    bloom: false, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
+    effectBudget: 'mid', hudBudget: 'full'
+  },
+  // [PERF1b] Medium：普通设备。车/角色/公路完整，中等树木密度（<=50% high），基础反射，少量后处理。
+  //   预算：textures<60, geometries<250, tree<=50%(high=3500→50%=1750)。
+  medium: {
+    worldQuality: 'mid', terrainQuality: 'high',
+    targetTrees: 1750, targetBushes: 1100, palmRock: 200, flowers: 400, reeds: 260, reefs: 90,
     grass: true, roadside: true, terrainSeg: 300,
     carQuality: 'high', carReflectionMode: 'low',
     bloom: false, shadow: true, character: true, minimap: true, radio: true, complexHud: true,
@@ -130,6 +148,26 @@ export function worldBudget(tier) {
   return _BUDGETS[tier || PERF.tier] || _BUDGETS.auto;
 }
 
+// [PERF1b] 资源预算上限（textures / geometries / tree / particle）——对应需求文档预算表。
+//   仅作为 perfdebug 展示 + 自适应判断参考，不硬性截断已有析构。
+const _CAPS = {
+  ultralite: { textures: 20, geometries: 80, tree: 0, particle: 0 },
+  safe:      { textures: 35, geometries: 150, tree: 350 /*<=10% high(3500)*/, particle: 0 },
+  medium:    { textures: 60, geometries: 250, tree: 1750 /*<=50% high*/, particle: 200 },
+  auto:      { textures: 60, geometries: 250, tree: 1750, particle: 200 },
+  high:      { textures: 120, geometries: 600, tree: 3500, particle: 800 },
+  photo:     { textures: 140, geometries: 700, tree: 3500, particle: 1000 }
+};
+export function budgetCaps(tier) { return _CAPS[tier || PERF.tier] || _CAPS.auto; }
+
+// [PERF1b] 车视觉保护策略：任何档位都不降车漆颜色/车身基础金属质感/公路基础贴图/角色基础可见性。
+//   只允许降：反射频率、反射分辨率、阴影分辨率、环境密度。
+export const PROTECT = {
+  carPaintProtected: true,
+  roadTextureProtected: true,
+  characterBaselineProtected: true
+};
+
 export function isSafeMode() { return PERF.tier === 'safe' || PERF.tier === 'ultralite'; }
 export function isUltraLite() { return PERF.tier === 'ultralite'; }
 
@@ -140,6 +178,7 @@ export function maxPixelRatioFor(tier) {
     case 'safe': return 1.0;
     case 'photo': return 1.5;
     case 'high':
+    case 'medium':
     case 'auto':
     default: return 1.25;
   }

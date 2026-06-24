@@ -32,25 +32,23 @@ let _reflN = 0;
 let _lastReflTime = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  // [PERF0] CubeCamera 是车身反射探针，每次 update 会把周围场景重渲染 6 面，开销极高。
-  //   Safe：驾驶中不实时更新（用静态 environment），仅车库/照片首帧拍一次。
-  //   Auto：最低 2 秒一次（不再高速 8 帧一次）。
-  //   High：按车速 32/16/8 帧。
-  const driving = (G.appState === 'drive' || G.appState === 'walk');
+  // [PERF1b] CubeCamera 是车身反射探针，每次 update 把周围场景重渲染 6 面。
+  //   修复：删除 PERF1 的 _safeReflDone 永久死锁（那会造成"死的/不匹配场景"反射 + 车漆偏色）。
+  //   UltraLite：不跑 CubeCamera（靠 scene.environment，成本 0）。
+  //   Safe/Low：低频实时（每 1.5 秒重拍一次），车漆颜色/反射始终匹配实时场景。
+  //   Auto：最低 2 秒一次；High/Photo：按车速高频。
   if (G.perfTier === 'ultralite') {
-    // [PERF1] UltraLite：不跑 CubeCamera，车漆靠 scene.environment / envMapIntensity 保质感，成本 0。
+    // UltraLite：不跑实时 CubeCamera，车漆靠 scene.environment / envMapIntensity 保质感。
     G._reflectionLive = false; return;
   }
+  const now = performance.now();
   if (isSafeMode()) {
-    // [PERF1] Safe：只拍一次静态 envMap，之后永不重拍（车仍有金属质感）。
-    // 即使直接进驾驶（?vp / 跳过车库）也拍一次，避免反射为黑。
-    if (G._safeReflDone) { G._reflectionLive = false; return; }
-    G._safeReflDone = true;
-    G._reflectionLive = false; // 静态：拍完这一次就锁定
+    // [PERF1b] Safe/Low：低频实时。首帧立刻拍一次（避免初始黑反射），之后每 1500ms 重拍。不再永久锁死。
+    if (_lastReflTime !== 0 && now - _lastReflTime < 1500) { G._reflectionLive = false; return; }
+    _lastReflTime = now;
   } else if (G.perfTier === 'auto') {
     // Auto：最低 2 秒一次
-    const now = performance.now();
-    if (now - _lastReflTime < 2000) { G._reflectionLive = true; return; }
+    if (_lastReflTime !== 0 && now - _lastReflTime < 2000) { G._reflectionLive = true; return; }
     _lastReflTime = now;
   } else {
     // High/Photo：速度自适应频率
@@ -58,7 +56,7 @@ export function updateCarReflection() {
     const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
     if ((_reflN++ % interval) !== 0) { G._reflectionLive = true; return; }
   }
-  G._reflectionLive = !isSafeMode();
+  G._reflectionLive = true; // 本帧重拍（低频实时也算 live）
 
   // 隐藏高亮 sprite / 光球 / 发光体，防止进入车身 CubeCamera 反射造成脏反射
   const hidden = [];

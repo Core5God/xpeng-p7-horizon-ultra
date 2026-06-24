@@ -2,7 +2,7 @@
 // 运行时注入一层更克制的驾驶态 UI 策略，避免直接大改 index.html。
 // 默认驾驶态只保留速度、档位、小地图、临时提示；竞速态再显示计时组件。
 import { renderer, G } from './core.js';
-import { PERF, worldBudget } from './perfMode.js';
+import { PERF, worldBudget, budgetCaps } from './perfMode.js';
 
 let installed = false;
 let lastMode = '';
@@ -151,18 +151,25 @@ export function updatePerfHud() {
   try { info = renderer.info; } catch (e) {}
   const r = info ? info.render : {};
   const m = info ? info.memory : {};
+  // [PERF1b] draw calls / triangles 读真实主场景快照（core.js 在主 RenderPass 后写入），
+  //   不再读 finalComposer 跑完后的最后一个全屏小 pass（那是假数据 calls:1）。
+  const sri = G._sceneRenderInfo || {};
+  const realCalls = sri.calls != null ? sri.calls : r.calls;
+  const realTris = sri.triangles != null ? sri.triangles : r.triangles;
   // [PERF1] 预算分项：车/世界/地形/树/HUD/特效 + CPU updateMs vs renderMs 拆分。
   const b = worldBudget();
+  const caps = budgetCaps();
   const reflMode = b.carReflectionMode + (G._reflectionLive ? '·live' : '');
   const lines = [
     'FPS         : ' + _perfFps,
     'tier        : ' + (G.perfTier || '?') + (G.safeMode ? ' (safe)' : ''),
     'updateMs    : ' + (PERF.updateMs != null ? PERF.updateMs.toFixed(2) : '?'),
     'renderMs    : ' + (PERF.renderMs != null ? PERF.renderMs.toFixed(2) : '?'),
+    'frameMs     : ' + ((PERF.updateMs != null && PERF.renderMs != null) ? (PERF.updateMs + PERF.renderMs).toFixed(2) : '?'),
     'bottleneck  : ' + (PERF.renderMs > PERF.updateMs ? 'GPU(render)' : 'CPU(update)'),
     'pixelRatio  : ' + (PERF.pixelRatio || (renderer.getPixelRatio && renderer.getPixelRatio()) || '?'),
-    'draw calls  : ' + (r.calls != null ? r.calls : '?'),
-    'triangles   : ' + (r.triangles != null ? r.triangles.toLocaleString() : '?'),
+    'draw calls  : ' + (realCalls != null ? realCalls : '?'),
+    'triangles   : ' + (realTris != null ? realTris.toLocaleString() : '?'),
     'geometries  : ' + (m.geometries != null ? m.geometries : '?'),
     'textures    : ' + (m.textures != null ? m.textures : '?'),
     '--- budget ---',
@@ -171,6 +178,7 @@ export function updatePerfHud() {
     'worldQuality: ' + b.worldQuality,
     'terrainQual : ' + b.terrainQuality,
     'treeBudget  : ' + (b.targetTrees > 0 ? b.targetTrees + '/' + b.targetBushes : 'off'),
+    'cap tex/geo : <' + caps.textures + ' / <' + caps.geometries,
     'effectBudget: ' + b.effectBudget,
     'hudBudget   : ' + b.hudBudget,
     '--- engine ---',

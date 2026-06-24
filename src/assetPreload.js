@@ -113,9 +113,29 @@ export async function preloadCriticalAssets(onProgress) {
   }
 }
 
-// [PERF0] Lazy 预热：进游戏后后台拉取 LAZY_ASSETS。不阻塞、失败只警告。
+// [PERF1b] Lazy 预热按档位过滤：低档不后台补载用不到的全量资源（多套 HDR/高清树贴图），
+//   避免“低档仍 58 textures”——那些是 lazy 后台拉进来的。并由调用方氨进场景后最后跱进。
+function lazyAssetsForTier(tier) {
+  // UltraLite：极省。只补载 character（可选）；不补额外 HDR / 多套地形 PBR / 高清树贴图。
+  if (tier === 'ultralite') {
+    return LAZY_ASSETS.filter(a => a.url === 'assets/character.glb');
+  }
+  // Safe/Low：保角色 + iron + 当前场景一套轻量 HDR(day2) + 基础地形 diff；
+  //   不补 night HDR/day3 多套 + 高清树贴图(1k)。
+  if (tier === 'safe') {
+    const skip = new Set([
+      'assets/sky/day3.hdr', 'assets/sky/night2.hdr', 'assets/sky/night1.hdr',
+      'assets/trees/oak_color_1k.jpg', 'assets/trees/pine_color_1k.jpg'
+    ]);
+    return LAZY_ASSETS.filter(a => !skip.has(a.url));
+  }
+  // medium/auto/high/photo：全量补载。
+  return LAZY_ASSETS.slice();
+}
+
+// [PERF0] Lazy 预热：进游戏后后台拉取。不阻塞、失败只警告。
 export async function preloadLazyAssets() {
-  const queue = LAZY_ASSETS.slice();
+  const queue = lazyAssetsForTier(PERF.tier);
   const concurrency = 2; // 低并发，不抢运行期带宽
   async function worker() {
     while (queue.length) {
@@ -125,5 +145,5 @@ export async function preloadLazyAssets() {
     }
   }
   await Promise.all(Array.from({ length: concurrency }, worker));
-  console.log('[PERF0] lazy preload done,', LAZY_ASSETS.length, 'assets');
+  console.log('[PERF1b] lazy preload done, tier=', PERF.tier, queue.length === 0 ? '(filtered)' : '');
 }

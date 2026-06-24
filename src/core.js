@@ -59,7 +59,10 @@ export const G = {
   lampMats: [],
   // PR4.1 路边植被材质注册表：用于映复昼夜（夜间压暗/降饱和，避免荧光绿草。
   // 每项 { mat, baseColor:THREE.Color }，applyTod / skyCycleUpdate 随 nightFactor 调 mat.color。
-  roadsideVegMats: []
+  roadsideVegMats: [],
+  // [PERF1b] perfdebug 真实读数：主场景 RenderPass 之后立刻快照 renderer.info.render，
+  // 避免被后续 composite/output/SMAA 等全屏小 pass（calls:1/triangles:1）覆盖。
+  _sceneRenderInfo: { calls: 0, triangles: 0 }
 };
 
 // ---------- 渲染器 ----------
@@ -171,6 +174,21 @@ bloomComposer.addPass(bloomPass);
 const finalComposer = new EffectComposer(renderer);
 finalComposer.renderToScreen = true;
 finalComposer.addPass(new RenderPass(scene, camera));
+// [PERF1b] 真实场景读数快照：紧跟主 RenderPass 之后插一个零渲染的透传 pass，
+// 把此刻 renderer.info.render（= 主场景真实 draw calls/triangles）快照到 G。
+// 否则 perfdebug 在 finalComposer 跑完后读到的是最后一个全屏三角 pass（calls:1）。
+const sceneInfoSnapshotPass = {
+  enabled: true,
+  needsSwap: false,
+  render() {
+    const ri = renderer.info.render;
+    G._sceneRenderInfo.calls = ri.calls;
+    G._sceneRenderInfo.triangles = ri.triangles;
+  },
+  setSize() {},
+  dispose() {}
+};
+finalComposer.addPass(sceneInfoSnapshotPass);
 // Additive composite: scene + bloomTexture，在 OutputPass 之前叠加确保一起进 tone mapping
 // ShaderPass 自动把 tDiffuse uniform 设为 readBuffer（即上一 pass 的场景渲染结果）
 const compositePass = new ShaderPass({
