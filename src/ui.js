@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { G, camera, renderer, canvas, finalComposer, bloomComposer, selectiveBloomRender, bloomPass, photoPass, sun } from './core.js';
-import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
+import { G, camera, renderer, canvas, finalComposer, bloomComposer, selectiveBloomRender, bloomPass, photoPass, sun } from './core.js';import { PRESETS, samples, tangents, bSamples, NS, nearestRoad, applyTod, fallbackOcean } from './world.js';
 import { PAINTS, applySkin, state, settleCarPose, camPos, camDamp, camAng } from './vehicle.js';
 import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack, plShuffle } from './audio.js';
 import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS, charState } from './character.js';
+import { PERF, isSafeMode, maxPixelRatioFor, setTier, rememberSafe } from './perfMode.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -159,20 +159,39 @@ function refreshSettingBtns() {
   for (const id of ['gMusicMode','pMusicMode']) document.getElementById(id).textContent = G.musicMode === 'playlist' ? '歌单' : '电台';
 }
 
+// [PERF0] setQuality 接受档位字符串 'safe'|'auto'|'high'|'photo'（仍兼容旧的 true/false）。
+// 统一调像素比 / bloom / 阴影贴图 / hiQuality。
 function setQuality(q) {
-  G.hiQuality = q;
-  bloomPass.strength = G.hiQuality ? PRESETS[G.curTod].bloom : 0;
+  // 兼容：true→high，false→safe
+  let tier = q;
+  if (q === true) tier = 'high';
+  else if (q === false) tier = 'safe';
+  if (!['safe', 'auto', 'high', 'photo'].includes(tier)) tier = 'auto';
+
+  setTier(tier);
+  G.perfTier = tier;
+  G.safeMode = (tier === 'safe');
+  G.hiQuality = (tier === 'high' || tier === 'photo');
+  // bloom：Safe 关；Auto 默认关（夜间/照片动态再开）；High/Photo 常开。
+  G.bloomActive = (tier === 'high' || tier === 'photo');
+  G._bloomStride = (tier === 'high' || tier === 'photo') ? 1 : 3;
+  bloomPass.strength = G.bloomActive ? PRESETS[G.curTod].bloom : 0;
   if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，高低画质都常开
-  const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.25 : 1); // 高画质像素比 1.5→1.25：填充率约降 30%，车身仍锐利
+
+  const pr = Math.min(window.devicePixelRatio, maxPixelRatioFor(tier));
   renderer.setPixelRatio(pr);
   finalComposer.setPixelRatio(pr);
   bloomComposer.setPixelRatio(pr);
-  // 阴影贴图随画质：低画质降到 1024²（开放世界阴影很贵，分辨率减半省一半阴影 pass 开销）
-  const wantShadow = G.hiQuality ? 2048 : 1024;
+  PERF.pixelRatio = pr;
+
+  // 阴影贴图随档：Safe/Auto 1024，High/Photo 2048。
+  const wantShadow = (tier === 'high' || tier === 'photo') ? 2048 : 1024;
   if (sun.shadow.mapSize.width !== wantShadow) {
     sun.shadow.mapSize.set(wantShadow, wantShadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // 触发重建
   }
+  PERF.shadowSize = wantShadow;
+  rememberSafe(tier === 'safe'); // localStorage 记住低画质
   refreshSettingBtns(); saveSettings();
 }
 for (const id of ['gQuality','pQuality']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; } // 画质统一：隐藏手动切换
@@ -296,6 +315,15 @@ function enterPhoto() {
   document.body.classList.add('nohud');
   document.body.classList.add('photo');
   photoPass.enabled = true; // 启用暗角+色差电影感（海报导出也会带上）
+  // [PERF0] 照片模式临时开 bloom + 拉高像素比（不永久切档，退出时恢复）。
+  G._photoPrevBloom = G.bloomActive;
+  G._photoPrevStride = G._bloomStride;
+  G._photoPrevPr = renderer.getPixelRatio();
+  G.bloomActive = true;
+  G._bloomStride = 1;
+  bloomPass.strength = PRESETS[G.curTod].bloom;
+  { const pr = Math.min(window.devicePixelRatio, maxPixelRatioFor('photo'));
+    renderer.setPixelRatio(pr); finalComposer.setPixelRatio(pr); bloomComposer.setPixelRatio(pr); }
   elPause.classList.remove('show');
   elPhotobar.classList.add('show');
   controls.enabled = true; controls.autoRotate = false;
@@ -320,6 +348,12 @@ function exitPhoto() {
   document.body.classList.remove('nohud');
   document.body.classList.remove('photo');
   photoPass.enabled = false;
+  // [PERF0] 恢复进照片前的 bloom / 像素比状态。
+  G.bloomActive = !!G._photoPrevBloom;
+  G._bloomStride = G._photoPrevStride || 3;
+  bloomPass.strength = G.bloomActive ? PRESETS[G.curTod].bloom : 0;
+  { const pr = G._photoPrevPr || Math.min(window.devicePixelRatio, maxPixelRatioFor(G.perfTier));
+    renderer.setPixelRatio(pr); finalComposer.setPixelRatio(pr); bloomComposer.setPixelRatio(pr); }
   elPhotobar.classList.remove('show');
   controls.enabled = false;
   // 恢复车库/驾驶默认镜头限制

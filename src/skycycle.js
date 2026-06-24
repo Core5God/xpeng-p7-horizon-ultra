@@ -169,7 +169,22 @@ export function skyCycleUpdate(dt) {
   scene.fog.color.copy(A._fog).lerp(B._fog, f);
   renderer.toneMappingExposure = A.exp + (B.exp - A.exp) * f;
   scene.environmentIntensity = A.envI + (B.envI - A.envI) * f;
-  bloomPass.strength = G.hiQuality ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
+  // [PERF0] bloom 购强 + Auto 夜间自动启用：
+  //   Safe：始终关（bloomActive=false，selectiveBloomRender 直接跳过）。
+  //   Auto：白天关，夜间（nightAmt 较高）自动开 selective bloom（车灯/路灯辉光）。
+  //   High/Photo：常开。
+  if (G.perfTier === 'safe') {
+    G.bloomActive = false;
+    bloomPass.strength = 0;
+  } else if (G.perfTier === 'high' || G.perfTier === 'photo' || G.appState === 'photo') {
+    G.bloomActive = true;
+    bloomPass.strength = A.bloom + (B.bloom - A.bloom) * f;
+  } else {
+    // Auto：仅夜间开（避免白天每帧全场景材质替换）
+    const wantBloom = nightAmt > 0.35;
+    G.bloomActive = wantBloom;
+    bloomPass.strength = wantBloom ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
+  }
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
   rim.color.copy(sun.color);
   if (G.waterOK && G.water && oceanUniforms) {

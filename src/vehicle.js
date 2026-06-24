@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { G, scene, camera, renderer, wrapPi, BLOOM_LAYER } from './core.js';
+import { isSafeMode } from './perfMode.js';
 import { samples, tangents, normals, garageIdx, nearestRoad, surfaceHeight, groundHeight, branchInfo, bSamples, bNormals, B_HALF, HALF_W, applyTod, env, stars, sky } from './world.js';
 import { sfx, skillPop, race, unlockAch, spawnBreakDebris } from './gameplay.js';
 import { showMsg, refreshSwatches, saveSettings, keys } from './ui.js';
@@ -28,12 +29,32 @@ scene.add(car);
 const reflectRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
 const reflectCam = new THREE.CubeCamera(0.3, 2500, reflectRT);
 let _reflN = 0;
+let _lastReflTime = 0;
 export function updateCarReflection() {
   if (!G.carReady) return;
-  // 速度自适应更新频率：低速每 32 帧、中速每 16 帧、高速每 8 帧
-  const sp = Math.abs(state.speed);
-  const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
-  if ((_reflN++ % interval) !== 0) return;
+  // [PERF0] CubeCamera 是车身反射探针，每次 update 会把周围场景重渲染 6 面，开销极高。
+  //   Safe：驾驶中不实时更新（用静态 environment），仅车库/照片首帧拍一次。
+  //   Auto：最低 2 秒一次（不再高速 8 帧一次）。
+  //   High：按车速 32/16/8 帧。
+  const driving = (G.appState === 'drive' || G.appState === 'walk');
+  if (isSafeMode()) {
+    // Safe：只在非驾驶（车库/照片）且还未拍过时更新一次，驾驶中不更新。
+    if (driving) { G._reflectionLive = false; return; }
+    if (G._safeReflDone) { G._reflectionLive = false; return; }
+    G._safeReflDone = true;
+    G._reflectionLive = false;
+  } else if (G.perfTier === 'auto') {
+    // Auto：最低 2 秒一次
+    const now = performance.now();
+    if (now - _lastReflTime < 2000) { G._reflectionLive = true; return; }
+    _lastReflTime = now;
+  } else {
+    // High/Photo：速度自适应频率
+    const sp = Math.abs(state.speed);
+    const interval = sp < 1 ? 32 : sp < 8 ? 16 : 8;
+    if ((_reflN++ % interval) !== 0) { G._reflectionLive = true; return; }
+  }
+  G._reflectionLive = !isSafeMode();
 
   // 隐藏高亮 sprite / 光球 / 发光体，防止进入车身 CubeCamera 反射造成脏反射
   const hidden = [];

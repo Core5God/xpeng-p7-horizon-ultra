@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { G, scene, camera, renderer, composer, finalComposer, bloomComposer, selectiveBloomRender, sun, rim, FASTDEBUG } from './core.js';
+import { PERF, PERF_DEBUG, isSafeMode, maxPixelRatioFor, setTier } from './perfMode.js';
 import { curSunDir, env, buildTerrain, buildRoad, buildScenery, buildEnv, applyTod, groundHeight, windU, oceanUniforms, samples, nearestRoad, NS, HALF_W } from './world.js';
 // [task-20260620-001 回滚] buildRoadJunctionPass 调用已禁用，导入一并注释避免 unused
 // import { buildRoadJunctionPass } from './roadJunctionPass.js';
@@ -10,10 +11,12 @@ import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arr
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, startDrive, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
-import { preloadCriticalAssets } from './assetPreload.js';
-import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
+import { preloadCriticalAssets, preloadLazyAssets } from './assetPreload.js';
+import { installMinimalDriveHud, updateMinimalDriveHud, installPerfHud, updatePerfHud } from './p0Hud.js';
 import { installHmiDrivingHud, updateHmiDrivingHud } from './hmiDrivingHud.js';
 import { VIEWPOINTS, getViewpoint } from './viewpoints.js';
+
+const PERF_HUD_ON = PERF_DEBUG;
 
 // ---------- HMI Route Preview 辅助（读取只读 samples / NS / nearestRoad，不改 world.js）----------
 // 算法：以 state.pos 为输入，找到最近主路 sample index，递增/递减取前方 ~32 个点，
@@ -209,18 +212,8 @@ function loopBody() {
   }
   updateHmiDrivingHud(Math.abs(state.speed) * 3.6, state.distance || 0, race.phase, gear, routePts, HALF_W);
 
-  // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
-  // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
-  if (G.hiQuality && G.appState === 'drive') {
-    const sp = Math.abs(state.speed);
-    let want = G._prTier || 1.25;
-    if (sp < 4) want = 1.5; else if (sp > 10) want = 1.2;
-    if (want !== G._prTier) {
-      G._prTier = want;
-      const pr = Math.min(window.devicePixelRatio, want);
-      renderer.setPixelRatio(pr); finalComposer.setPixelRatio(pr); bloomComposer.setPixelRatio(pr);
-    }
-  }
+  // [PERF0] 删除原“低速拉 DPR 到 1.5”逻辑：在 Mac 上低速拉高 DPR 反而卡，且频繁重建 RT。
+  // 现在像素比只由档位决定（setQuality / Auto 升降级），不再按车速动态拉高。
 
   // 阴影/补光跟随焦点：步行时跟角色，否则跟车
   const focus = G.appState === 'walk' ? charState.pos : state.pos;
@@ -261,14 +254,17 @@ function loopBody() {
   }
   if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（仅车库/照片模式）
   selectiveBloomRender();
-  // 帧率自适应：持续偏低时自动降画质（一次性，Q 可切回）
+  // [PERF0] 性能 HUD（?perfdebug=1）
+  if (PERF_HUD_ON) { PERF.bloomOn = !!G.bloomActive; PERF.reflectionOn = G._reflectionLive; PERF.pixelRatio = renderer.getPixelRatio(); updatePerfHud(); }
+  // 帧率自适应：持续偏低时自动降画质（一次性）。
+  // [PERF0] Mac 擑不到 4 秒：采样窗口缩到 1.5 秒，平均 < 45fps 即降到 Safe。
   fpsAcc += dt; fpsN++;
-  if (fpsAcc > 4) {
+  if (fpsAcc > 1.5) {
     const avg = fpsN / fpsAcc;
-    if (!autoDropped && G.hiQuality && avg < 42 && G.appState === 'drive') {
+    if (!autoDropped && !isSafeMode() && avg < 45 && (G.appState === 'drive' || G.appState === 'garage')) {
       autoDropped = true;
-      setQuality(false);
-      showMsg('已自动优化画质以保持流畅', 2200, 24);
+      setQuality('safe');
+      showMsg('检测到帧率偏低，已自动切换安全画质以保流畅', 2400, 22);
     }
     fpsAcc = 0; fpsN = 0;
   }
@@ -404,14 +400,22 @@ addEventListener('keydown', (e) => {
       elBF.style.width = (4 + done / total * 8).toFixed(1) + '%';
       if (elTip) elTip.textContent = '正在准备：' + url;
     }));
-    await stage('构建岛屿地形…', 24, buildTerrain);
+    // [PERF0] 地形按档位构建：Safe 走低成本分支（segment 200 / 不走 road mask）。
+    await stage('构建岛屿地形…', 24, () => buildTerrain({ quality: isSafeMode() ? 'safe' : 'high' }));
     await stage('铺设海岸公路…', 45, buildRoad);
     // [task-20260620-001 回滚] 禁用路口缝合 pass，回滚到完整可玩道路
     // await stage('修补公路分叉…', 48, buildRoadJunctionPass);
-    await stage('生成程序化森林…', 68, buildScenery);
+    // [PERF0] Safe 档：首屏不构建森林/草（trees.json+bin+6 树贴图），改为进游戏后延迟加载，
+    // 让页面先打开、车先出现、路先能开。
+    if (!isSafeMode()) {
+      await stage('生成程序化森林…', 68, buildScenery);
+    }
     await stage('布置灯塔与环境…', 76, buildEnv);
     await stage('搭建海滩建筑与道具…', 88, buildProps);
-    await stage('唤醒步行角色…', 92, buildCharacter);
+    // [PERF0] Safe 档：不预加载步行角色（character.glb/iron.glb），需要时（切步行）再加。
+    if (!isSafeMode()) {
+      await stage('唤醒步行角色…', 92, buildCharacter);
+    }
     await stage('载入动态天空…', 95, buildSkyCycle);
     elBT.textContent = '点火启动…';
     elBF.style.width = '100%';
@@ -419,12 +423,13 @@ addEventListener('keydown', (e) => {
     await new Promise(r => requestAnimationFrame(r));
     initUI();
     installMinimalDriveHud();
+    if (PERF_HUD_ON) installPerfHud();
     installHmiDrivingHud();
     installViewpointJump();
     initFX();
     settleCarPose();
     applyTod(G.curTod);
-    setQuality(G.hiQuality);
+    setQuality(G.perfTier || (G.hiQuality ? 'high' : 'auto'));
     // 线上 ?vp=N（N=1~8，无需 fastdebug）：跳过车库菜单，世界就绪后自动进 drive 并应用该验收点。
     const urlVp = getUrlViewpointId();
     if (urlVp) {
@@ -452,6 +457,20 @@ addEventListener('keydown', (e) => {
       const b = document.getElementById('boot');
       if (b) b.remove();
     });
+
+    // [PERF0] Safe 档延迟加载：页面已可操作后再在后台加载森林 + 步行角色，
+    // 不阻塞首屏 / 进驾驶。出错不影响主流程（森林/角色均为增强，非必需）。
+    if (isSafeMode()) {
+      const lazy = async () => {
+        try { await preloadLazyAssets(); } catch (e) { console.warn('[PERF0] lazy preload failed:', e); }
+        try { await buildScenery(); console.log('[PERF0] lazy buildScenery done'); }
+        catch (e) { console.warn('[PERF0] lazy buildScenery failed:', e); }
+        try { await buildCharacter(); console.log('[PERF0] lazy buildCharacter done'); }
+        catch (e) { console.warn('[PERF0] lazy buildCharacter failed:', e); }
+      };
+      // 等几帧让首屏稳定（避免与进驾驶的初始帧抢带宽/主线程）。
+      setTimeout(() => { lazy(); }, 1200);
+    }
   } catch (err) {
     console.error('[boot fatal]', err);
     elBT.textContent = '关键资源加载失败，请刷新重试';

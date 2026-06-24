@@ -1,23 +1,32 @@
-// ---------- 首访关键资源预热 ----------
-// 目标：在允许进入游戏前，先把首屏必需的 GLB / HDR / PBR 贴图 / 树木数据拉进 HTTP 缓存。
-// Three.js 的 TextureLoader / GLTFLoader 仍负责真正创建 GPU 资源，但冷启动时不会再边进游戏边抢下载。
-
+// ---------- 首访关键资源预热（两级化）----------
+import { PERF } from './perfMode.js';
+// [PERF0] Boot Critical 只保留首屏必需：e29.glb + 最小地形/道路贴图。
+// 原本 31 项全塞首屏（含 character/iron/5 HDR/全套地形 PBR/trees+6 树贴图），Mac 冷启动被拖死。
+// 原则：页面先打开、车先出现、路先能开。其余资源进游戏后 lazy 预热。
 const CRITICAL_ASSETS = [
-  // 车辆 / 角色
+  // 车辆（唯一必要 GLB）
   { url: 'assets/e29.glb', type: 'buffer' },
+
+  // 首轮当前 TOD 天空（只保留 1 个，默认 sunset → evening）
+  { url: 'assets/sky/evening.hdr', type: 'buffer' },
+
+  // 最小地形/道路必要贴图：forest diff（地形底色）+ road2 三贴图（路面）
+  { url: 'assets/terrain/forest_diff.jpg', type: 'image' },
+  { url: 'assets/terrain/road2_diff.jpg', type: 'image' },
+  { url: 'assets/terrain/road2_nrm.webp', type: 'image' },
+  { url: 'assets/terrain/road2_rough.webp', type: 'image' }
+];
+
+// [PERF0] Lazy 资源：进游戏后后台预热。character/iron/多 HDR/地形多套 PBR/树木。
+// 不阻塞首屏；失败只警告不抛。
+const LAZY_ASSETS = [
   { url: 'assets/character.glb', type: 'buffer' },
   { url: 'assets/iron.glb', type: 'buffer' },
-
-  // 动态天空首轮关键帧
   { url: 'assets/sky/day3.hdr', type: 'buffer' },
   { url: 'assets/sky/day2.hdr', type: 'buffer' },
-  { url: 'assets/sky/evening.hdr', type: 'buffer' },
   { url: 'assets/sky/night2.hdr', type: 'buffer' },
   { url: 'assets/sky/night1.hdr', type: 'buffer' },
-
-  // 地形 / 道路 PBR 贴图
   { url: 'assets/terrain/sand_diff.jpg', type: 'image' },
-  { url: 'assets/terrain/forest_diff.jpg', type: 'image' },
   { url: 'assets/terrain/rock_diff.jpg', type: 'image' },
   { url: 'assets/terrain/dry_diff.jpg', type: 'image' },
   { url: 'assets/terrain/sand_rough.webp', type: 'image' },
@@ -26,10 +35,6 @@ const CRITICAL_ASSETS = [
   { url: 'assets/terrain/dry_rough.webp', type: 'image' },
   { url: 'assets/terrain/forest_nrm.webp', type: 'image' },
   { url: 'assets/terrain/road2_diff.jpg', type: 'image' },
-  { url: 'assets/terrain/road2_nrm.webp', type: 'image' },
-  { url: 'assets/terrain/road2_rough.webp', type: 'image' },
-
-  // 森林烘焙数据与基础贴图
   { url: 'assets/trees/trees.json', type: 'json' },
   { url: 'assets/trees/trees.bin', type: 'buffer' },
   { url: 'assets/trees/oak_color.png', type: 'image' },
@@ -73,6 +78,7 @@ async function loadOne(asset) {
 }
 
 export async function preloadCriticalAssets(onProgress) {
+  const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   const total = CRITICAL_ASSETS.length;
   let done = 0;
   const failures = [];
@@ -96,8 +102,28 @@ export async function preloadCriticalAssets(onProgress) {
 
   await Promise.all(Array.from({ length: concurrency }, worker));
 
+  // [PERF0] 记录预热耗时，供 perfdebug HUD 显示。
+  const t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  PERF.preloadMs = Math.round(t1 - t0);
+  console.log('[PERF0] critical preload', PERF.preloadMs, 'ms,', total, 'assets');
+
   if (failures.length) {
     const list = failures.map(f => f.asset.url).join(', ');
     throw new Error('关键资源预热失败：' + list);
   }
+}
+
+// [PERF0] Lazy 预热：进游戏后后台拉取 LAZY_ASSETS。不阻塞、失败只警告。
+export async function preloadLazyAssets() {
+  const queue = LAZY_ASSETS.slice();
+  const concurrency = 2; // 低并发，不抢运行期带宽
+  async function worker() {
+    while (queue.length) {
+      const asset = queue.shift();
+      try { await loadOne(asset); }
+      catch (err) { console.warn('[preload-lazy] skipped:', asset.url, err); }
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  console.log('[PERF0] lazy preload done,', LAZY_ASSETS.length, 'assets');
 }

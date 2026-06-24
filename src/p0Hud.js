@@ -1,6 +1,8 @@
 // ---------- P0 Minimal Driving HUD ----------
 // 运行时注入一层更克制的驾驶态 UI 策略，避免直接大改 index.html。
 // 默认驾驶态只保留速度、档位、小地图、临时提示；竞速态再显示计时组件。
+import { renderer, G } from './core.js';
+import { PERF } from './perfMode.js';
 
 let installed = false;
 let lastMode = '';
@@ -97,4 +99,59 @@ export function updateMinimalDriveHud(appState, racePhase, dt = 0) {
   } else {
     document.body.classList.remove(HINT_CLASS);
   }
+}
+
+// ---------- [PERF0] 性能 HUD（?perfdebug=1）----------
+// 显示 fps / render.calls / render.triangles / memory.geometries / memory.textures /
+// pixelRatio / shadowMap size / bloom on/off / CubeReflection on/off / SafeMode on/off / preload duration。
+let _perfEl = null;
+let _perfInstalled = false;
+let _perfLastT = 0, _perfFrames = 0, _perfFps = 0;
+
+export function installPerfHud() {
+  if (_perfInstalled) return;
+  _perfInstalled = true;
+  const el = document.createElement('div');
+  el.id = 'perf-hud';
+  el.style.cssText = [
+    'position:fixed', 'top:8px', 'right:8px', 'z-index:99999',
+    'font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+    'color:#9fe7b0', 'background:rgba(8,12,18,.82)', 'padding:8px 10px',
+    'border:1px solid rgba(120,200,150,.35)', 'border-radius:8px',
+    'white-space:pre', 'pointer-events:none', 'min-width:188px',
+    'text-shadow:0 1px 2px rgba(0,0,0,.6)'
+  ].join(';');
+  el.textContent = 'perf hud…';
+  document.body.appendChild(el);
+  _perfEl = el;
+  _perfLastT = performance.now();
+}
+
+export function updatePerfHud() {
+  if (!_perfInstalled || !_perfEl) return;
+  // fps：每 0.5 秒采样一次
+  _perfFrames++;
+  const now = performance.now();
+  if (now - _perfLastT >= 500) {
+    _perfFps = Math.round((_perfFrames * 1000) / (now - _perfLastT));
+    _perfFrames = 0; _perfLastT = now;
+  }
+  let info = null;
+  try { info = renderer.info; } catch (e) {}
+  const r = info ? info.render : {};
+  const m = info ? info.memory : {};
+  const lines = [
+    'FPS         : ' + _perfFps,
+    'SafeMode    : ' + (G.safeMode ? 'ON' : 'off') + '  (' + (G.perfTier || '?') + ')',
+    'pixelRatio  : ' + (PERF.pixelRatio || (renderer.getPixelRatio && renderer.getPixelRatio()) || '?'),
+    'draw calls  : ' + (r.calls != null ? r.calls : '?'),
+    'triangles   : ' + (r.triangles != null ? r.triangles.toLocaleString() : '?'),
+    'geometries  : ' + (m.geometries != null ? m.geometries : '?'),
+    'textures    : ' + (m.textures != null ? m.textures : '?'),
+    'shadowMap   : ' + (PERF.shadowSize || '?'),
+    'bloom       : ' + (PERF.bloomOn ? 'ON' : 'off'),
+    'cubeReflect : ' + (PERF.reflectionOn ? 'ON' : 'off'),
+    'preload(ms) : ' + (PERF.preloadMs || 0)
+  ];
+  _perfEl.textContent = lines.join('\n');
 }

@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { PERF, isSafeMode, maxPixelRatioFor } from './perfMode.js';
 
 // 常数时间角度回绕：取模实现，对 NaN/Infinity 免疫（while 减法回绕在异常值下会死循环）
 export function wrapPi(a) {
@@ -37,7 +38,15 @@ export const G = {
   muted: false,
   musicOn: true,
   musicMode: 'playlist', // 'lofi' | 'playlist' - 默认歌单模式
-  hiQuality: true,
+  // [PERF0] 不再默认强制最高画质：Mac/Retina/低内存/?safe → Safe 档；普通桌面 → Auto。
+  // hiQuality 仅表示"是否开高画质特性（bloom 常开/CubeCam 较快等）"，Safe/Auto 都为 false。
+  hiQuality: (PERF.tier === 'high'),
+  perfTier: PERF.tier,   // 'safe' | 'auto' | 'high' | 'photo'
+  safeMode: isSafeMode(),
+  // [PERF0] bloom 运行期开关 + 节奏：Safe 永远关；Auto 默认关（夜间/照片再开）；High 常开。
+  // _bloomStride：bloom 重做间隔帧数（Auto=3，High=1）。
+  bloomActive: (PERF.tier === 'high'),
+  _bloomStride: (PERF.tier === 'high') ? 1 : 3,
   weatherOn: true,      // 动态天空/天气循环
   skinIdx: 0,
   curTod: 'sunset',
@@ -59,10 +68,14 @@ const canvas = document.getElementById('c');
 // preserveDrawingBuffer 移除：它强制浏览器每帧 copy 而非 swap 交换链，是持续填充率开销。
 // 截图改为渲染后同帧同步拷贝像素（见 ui.js 海报/截图），不再依赖保留缓冲。
 const renderer = new THREE.WebGLRenderer({canvas, antialias:false});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// [PERF0] 启动像素比按档位封顶：Safe=1.0，Auto/High=1.25。原本固定 1.5 在 Retina Mac 上填充率爆炸。
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatioFor(PERF.tier)));
+PERF.pixelRatio = renderer.getPixelRatio();
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// [PERF0] Safe 档：阴影贴图降到 1024（开放世界阴影贴图很贵）。
+if (isSafeMode()) { /* mapSize 在下方 sun.shadow 处统一设 */ }
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.35;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -86,7 +99,9 @@ const hemi = new THREE.HemisphereLight(0xffd9b0, 0x33405e, 0.65);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffc792, 4.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+// [PERF0] Safe 档阴影贴图 1024（半分辨率，阴影 pass 开销减半）；其余档 2048。
+sun.shadow.mapSize.set(isSafeMode() ? 1024 : 2048, isSafeMode() ? 1024 : 2048);
+PERF.shadowSize = sun.shadow.mapSize.width;
 sun.shadow.camera.left = -80; sun.shadow.camera.right = 80; // 收窄到近景走廊：提高阴影纹素密度
 sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 350; // 近景真实阴影，远景靠植被暗化
@@ -175,7 +190,43 @@ const compositePass = new ShaderPass({
 finalComposer.addPass(compositePass);
 finalComposer.addPass(new OutputPass());
 
+// [PERF0] selective bloom 是最大单项开销：每帧 traverse 全场景 + 二次渲染。
+// Safe 档：完全关闭，只走单次 finalComposer。
+// Auto 档：默认关（由 G.bloomActive 控，夜间/车灯/照片再开），开启时每 3 帧才重做一次 bloom。
+// 该函数由 main.js 设置 G._bloomStride / G.bloomActive 控制节奏。
+let _bloomFrame = 0;
+let _bloomWasActive = false;
 function selectiveBloomRender() {
+  // Safe 档或未激活 bloom：只渲染场景，不做第二次 bloom pass（避免全场景材质替换）。
+  if (isSafeMode() || !G.bloomActive) {
+    // 从“bloom 开”跳到“bloom 关”时，bloomRT 仍残留上一次辉光 → 清一次避免叠加鬼影。
+    if (_bloomWasActive) {
+      bloomPass.strength = 0;
+      _darkCount = 0;
+      scene.traverse((obj) => {
+        if (!bloomLayer.test(obj.layers)) {
+          if (obj.isMesh || obj.isSprite || obj.isPoints) {
+            _darkObjs[_darkCount] = obj; _darkMats[_darkCount] = obj.material;
+            obj.material = obj.isMesh ? darkMaterial : obj.isSprite ? darkSpriteMat : darkPointsMat;
+            _darkCount++;
+          }
+        }
+      });
+      bloomComposer.render();
+      for (let i = 0; i < _darkCount; i++) _darkObjs[i].material = _darkMats[i];
+      _bloomWasActive = false;
+    }
+    finalComposer.render();
+    return;
+  }
+  _bloomWasActive = true;
+  // Auto/High bloom 降频：不是每帧都重做 bloom，按 G._bloomStride（默认 3）步进。
+  const stride = Math.max(1, G._bloomStride || 1);
+  if ((_bloomFrame++ % stride) !== 0) {
+    // 跳帧：复用上一次 bloomRT，只重画主场景 + 叠加旧 bloom 纹理
+    finalComposer.render();
+    return;
+  }
   _darkCount = 0;
   scene.traverse((obj) => {
     if (!bloomLayer.test(obj.layers)) {

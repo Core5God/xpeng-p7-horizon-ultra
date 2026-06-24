@@ -8,6 +8,7 @@ import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
 import { createRoadSurfaceMasks, maybeShowRoadMaskDebug } from './roadSurfaceMask.js';
+import { isSafeMode } from './perfMode.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -187,6 +188,9 @@ function islandBase(x, z) {
 }
 // 地形网格分辨率：buildTerrain 与 meshGroundHeight 必须共用同一组常量（否则碰撞高度场错位）
 const TERR_SEG = 300, TERR_SIZE = 1900, TERR_HALF = 950, TERR_ST = TERR_SIZE / TERR_SEG;
+// [PERF0] 运行期实际用的 segment：Safe 档降到 200（300→200 顶点数 ~0.44x）。
+// meshGroundHeight 必须读同一个运行期值，否则碰撞高度场错位。
+let TERR_SEG_CUR = TERR_SEG, TERR_ST_CUR = TERR_ST;
 // 中频起伏细节：让地表丰富、不像平面（仅叠加在路外地形上；路面走廊仍由压平带保持平整）
 function detail(x, z) {
   return Math.sin(x*0.075 + z*0.05)*1.4 + Math.sin(x*0.12 - z*0.10)*0.9 + Math.sin(x*0.26 + z*0.21)*0.45;
@@ -299,9 +303,9 @@ function branchInfo(x, z) {
 let terrainField = null;
 function meshGroundHeight(x, z) {
   if (!terrainField) return groundHeight(x, z);
-  const g = TERR_SEG + 1, st = TERR_ST;
+  const g = TERR_SEG_CUR + 1, st = TERR_ST_CUR;
   const gx = (x + TERR_HALF)/st, gz = (z + TERR_HALF)/st;
-  if (gx < 0 || gz < 0 || gx >= TERR_SEG || gz >= TERR_SEG) return groundHeight(x, z);
+  if (gx < 0 || gz < 0 || gx >= TERR_SEG_CUR || gz >= TERR_SEG_CUR) return groundHeight(x, z);
   const ix = Math.floor(gx), iz = Math.floor(gz);
   const u = gx - ix, v = gz - iz;
   const h00 = terrainField[iz*g+ix], h10 = terrainField[iz*g+ix+1];
@@ -491,8 +495,14 @@ function reedTexture() {
   });
 }
 
-function buildTerrain() {
-  const SEG = TERR_SEG, SIZE = TERR_SIZE;
+function buildTerrain(opts) {
+  // [PERF0] Safe 档低成本分支：segment 300→200、anisotropy 8→1、不走 road mask 多贴图混合、
+  // 简化 roughness/normal。默认从 perfMode 读；也可显式传 {quality:'safe'}。
+  const quality = (opts && opts.quality) || (isSafeMode() ? 'safe' : 'high');
+  const safe = quality === 'safe';
+  const SEG = safe ? 200 : TERR_SEG, SIZE = TERR_SIZE;
+  TERR_SEG_CUR = SEG; TERR_ST_CUR = SIZE / SEG; // 同步碰撞高度场索引
+  const ANISO = safe ? 1 : 8;
   const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   g.rotateX(-Math.PI/2);
   const pos = g.attributes.position;
@@ -540,8 +550,30 @@ function buildTerrain() {
   g.computeVertexNormals();
   // —— PBR splat 地形：真实 diffuse + roughness 按高度/坡度混合（顶点算权重），森林地法线提供表面起伏
   const TL = new THREE.TextureLoader(), TP = 'assets/terrain/';
-  const texColor = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
-  const texData  = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
+  const texColor = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = ANISO; return t; };
+  const texData  = (u) => { const t = TL.load(u); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; return t; };
+
+  // [PERF0] Safe 档地形低成本分支：只加载 forest diffuse（首屏必要）+ 顶点色 splat。
+  //   不加 sand/rock/dry 3 套 diff + 4 套 rough + normal，不生成 road mask 多贴图，
+  //   不走 onBeforeCompile 多采样 shader。道路走向仍由 buildRoad 的 road2 贴图表现。
+  if (safe) {
+    const forestD = texColor(TP+'forest_diff.jpg');
+    const mat = new THREE.MeshStandardMaterial({ vertexColors:true, map: forestD, roughness:1.0, metalness:0, envMapIntensity:0.45 });
+    mat.onBeforeCompile = (shader) => {
+      // 只做单贴图平铺（密度跟高画质一致），不做多贴图 splat 混合，避免多采样。
+      shader.uniforms.uTile = { value: 320.0 };
+      shader.fragmentShader = 'uniform float uTile;\n' + shader.fragmentShader
+        .replace('#include <map_fragment>', [
+          'vec2 uvT = vMapUv * uTile;',
+          'diffuseColor.rgb *= texture2D(map, uvT).rgb * 1.1;'
+        ].join('\n'));
+    };
+    const m = new THREE.Mesh(g, mat);
+    m.receiveShadow = true;
+    scene.add(m);
+    return;
+  }
+
   const sandD = texColor(TP+'sand_diff.jpg'), forestD = texColor(TP+'forest_diff.jpg'), rockD = texColor(TP+'rock_diff.jpg'), dryD = texColor(TP+'dry_diff.jpg');
   const sandR = texData(TP+'sand_rough.webp'), rockR = texData(TP+'rock_rough.webp'), dryR = texData(TP+'dry_rough.webp'), forestR = texData(TP+'forest_rough.webp');
   const forestN = texData(TP+'forest_nrm.webp');
