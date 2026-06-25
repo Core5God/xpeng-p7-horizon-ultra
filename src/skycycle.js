@@ -3,6 +3,7 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { G, scene, renderer, camera, sun, hemi, rim, bloomPass } from './core.js';
 import { curSunDir, env, sky, stars, fallbackOcean, oceanUniforms, setRoadWetness } from './world.js';
 import { SKY_PRESETS } from './skyPresets.js';
+import { bloomStrengthScale } from './perfMode.js';
 import { WeatherController } from './weatherController.js';
 
 // ---------- 动态天空 / 随机天气状态机 ----------
@@ -169,7 +170,7 @@ export function skyCycleUpdate(dt) {
   scene.fog.color.copy(A._fog).lerp(B._fog, f);
   renderer.toneMappingExposure = A.exp + (B.exp - A.exp) * f;
   scene.environmentIntensity = A.envI + (B.envI - A.envI) * f;
-  bloomPass.strength = G.hiQuality ? (A.bloom + (B.bloom - A.bloom) * f) : 0;
+  bloomPass.strength = (A.bloom + (B.bloom - A.bloom) * f) * bloomStrengthScale();
   rim.intensity = 0.42 * (1 - nightAmt) + 0.12 * nightAmt;
   rim.color.copy(sun.color);
   if (G.waterOK && G.water && oceanUniforms) {

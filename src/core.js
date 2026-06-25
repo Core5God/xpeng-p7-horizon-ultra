@@ -37,7 +37,11 @@ export const G = {
   muted: false,
   musicOn: true,
   musicMode: 'playlist', // 'lofi' | 'playlist' - 默认歌单模式
-  hiQuality: true,
+  // 画质三档单一来源（task-20260625-001）：'low' | 'medium' | 'high'，由 perfMode.js 统一读写。
+  // 默认 high（保持原 hiQuality:true 行为），运行时由帧率自适应逐级下降。
+  qualityLevel: 'high',
+  hiQuality: true, // 兼容派生值（high→true，其余→false），勿直接写，统一走 perfMode.setQualityLevel
+  isMacRetina: false, // perfMode.detectMacRetina() 缓存结果，便于其它模块只读判定
   weatherOn: true,      // 动态天空/天气循环
   skinIdx: 0,
   curTod: 'sunset',

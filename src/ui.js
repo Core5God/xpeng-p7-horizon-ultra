@@ -7,6 +7,7 @@ import { PRESETS as TODP } from './world.js';
 import { race, toggleRace, startRace, endRace, saveBestScore, ROUTES, selectRoute, getRecordsView, getShareStats, zones } from './gameplay.js';
 import { initAudio, startMusic, setMusic, startPlaylist, stopPlaylist, nextTrack, prevTrack, toggleShuffle, refreshPlaylistUI, setLofiGain, stopLofi, getCurrentTrack, plShuffle } from './audio.js';
 import { spawnCharacter, setCharacterVisible, showCharacterPreview, setActiveCharacter, getActiveId, CHARACTERS, charState } from './character.js';
+import { setQualityLevel, getQualityLevel, levelFromLegacyBool, effectivePixelRatio, shadowMapSize, bloomStrengthScale, levelLabel, detectMacRetina } from './perfMode.js';
 
 // ---------- 轨道相机（车库/照片模式） ----------
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -28,14 +29,17 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
 // ---------- 设置持久化 ----------
 let hintsOn = true, keytipsTimer = null;
 function saveSettings() {
-  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, musicMode: G.musicMode, hintsOn, routeId: race.routeIdx, charId: G.charId})); } catch(e) {}
+  try { localStorage.setItem('p7_set', JSON.stringify({skinIdx: G.skinIdx, curTod: G.curTod, qualityLevel: G.qualityLevel, hiQuality: G.hiQuality, muted: G.muted, musicOn: G.musicOn, musicMode: G.musicMode, hintsOn, routeId: race.routeIdx, charId: G.charId})); } catch(e) {}
 }
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('p7_set') || '{}');
     if (typeof s.skinIdx === 'number' && s.skinIdx >= 0 && s.skinIdx < PAINTS.length) G.skinIdx = s.skinIdx;
     if (s.curTod && PRESETS[s.curTod]) G.curTod = s.curTod;
-    // 画质统一：始终以最高画质启动（不再从存档恢复低画质），运行时由系统按帧率自适应
+    // 画质：不从存档恢复低画质；Mac/Retina 默认起 medium（省填充率，仍可手动或自适应调），
+    // 其他设备起 high；运行时由帧率自适应逐级下降。统一走 perfMode。
+    G.isMacRetina = detectMacRetina();
+    setQualityLevel(G.isMacRetina ? 'medium' : 'high');
     if (typeof s.muted === 'boolean') G.muted = s.muted;
     if (typeof s.musicOn === 'boolean') G.musicOn = s.musicOn;
     if (s.musicMode === 'lofi' || s.musicMode === 'playlist') G.musicMode = s.musicMode;
@@ -153,22 +157,32 @@ function refreshTodButtons() {
   document.querySelectorAll('[data-tod]').forEach(b => b.classList.toggle('sel', b.dataset.tod === G.curTod));
 }
 function refreshSettingBtns() {
-  for (const id of ['gQuality','pQuality']) document.getElementById(id).textContent = '画质：' + (G.hiQuality?'高':'低');
+  for (const id of ['gQuality','pQuality']) document.getElementById(id).textContent = '画质：' + levelLabel(getQualityLevel());
   for (const id of ['gSound','pSound']) document.getElementById(id).textContent = '声音：' + (G.muted?'关':'开');
   for (const id of ['gMusic','pMusic']) document.getElementById(id).textContent = '音乐：' + (G.musicOn?'开':'关');
   for (const id of ['gMusicMode','pMusicMode']) document.getElementById(id).textContent = G.musicMode === 'playlist' ? '歌单' : '电台';
 }
 
+// setQuality 现接受画质等级字符串 'low'|'medium'|'high'；为兼容旧调用也接受布尔（true→high, false→low）。
+// 所有派生参数（像素比 / 阴影 / bloom）统一从 perfMode.js 读，单一来源。
 function setQuality(q) {
-  G.hiQuality = q;
-  bloomPass.strength = G.hiQuality ? PRESETS[G.curTod].bloom : 0;
-  if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，高低画质都常开
-  const pr = Math.min(window.devicePixelRatio, G.hiQuality ? 1.25 : 1); // 高画质像素比 1.5→1.25：填充率约降 30%，车身仍锐利
+  let level;
+  if (typeof q === 'boolean') level = levelFromLegacyBool(q);
+  else if (typeof q === 'string') level = q;
+  else level = getQualityLevel();
+  setQualityLevel(level);
+  level = getQualityLevel();
+  // bloom：High 全开 / Medium 弱开 / Low 关。基准强度来自当前 TOD preset，再乘等级缩放。
+  bloomPass.strength = PRESETS[G.curTod].bloom * bloomStrengthScale(level);
+  if (G.waterOK) G.water.visible = true; // 环境反射海面很便宜，各档都常开
+  // 像素比：Mac/Retina 在 Medium 强制 1.0（绝不放开 1.25/1.5），由 perfMode 统一计算。
+  const pr = effectivePixelRatio(level);
+  G._prTier = pr; // 同步动态像素比基线，避免 main.js 误判
   renderer.setPixelRatio(pr);
   finalComposer.setPixelRatio(pr);
   bloomComposer.setPixelRatio(pr);
-  // 阴影贴图随画质：低画质降到 1024²（开放世界阴影很贵，分辨率减半省一半阴影 pass 开销）
-  const wantShadow = G.hiQuality ? 2048 : 1024;
+  // 阴影贴图随等级：Low/Medium=1024，High=2048（开放世界阴影很贵，分辨率减半省一半阴影 pass 开销）
+  const wantShadow = shadowMapSize(level);
   if (sun.shadow.mapSize.width !== wantShadow) {
     sun.shadow.mapSize.set(wantShadow, wantShadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // 触发重建

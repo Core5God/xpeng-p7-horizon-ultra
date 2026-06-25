@@ -8,6 +8,7 @@ import { generateForestSpots } from './vegetation/forestPatches.js';
 import { buildGrassLayer } from './vegetation/grassLayer.js';
 import { buildRoadsideEcology } from './vegetation/roadsideScatter.js';
 import { createRoadSurfaceMasks, maybeShowRoadMaskDebug } from './roadSurfaceMask.js';
+import { bloomStrengthScale } from './perfMode.js';
 
 // ---------- 天空（官方大气散射：瑞利/米氏） ----------
 const sky = new Sky();
@@ -1899,7 +1900,7 @@ function applyTod(name) {
   rim.color.setHex(name === 'night' ? 0x6f82a8 : name === 'day' ? 0xcfe0f5 : 0xe8b9a0);
   renderer.toneMappingExposure = P.exposure;
   scene.fog.color.setHex(P.fog);
-  bloomPass.strength = G.hiQuality ? P.bloom : 0;
+  bloomPass.strength = P.bloom * bloomStrengthScale();
   stars.visible = (name === 'night');
   if (G.waterOK && oceanUniforms) {
     oceanUniforms.deepColor.value.setHex(P.water);

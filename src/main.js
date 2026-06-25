@@ -10,6 +10,7 @@ import { race, raceUpdate, gameplayUpdate, buildProps, fmt, cps, cpGroupAll, arr
 import { audioUpdate } from './audio.js';
 import { initFX, fxUpdate } from './fx.js';
 import { showMsg, keys as keysRef, pauseGame, resumeGame, controls, drawMinimap, setQuality, enterGarage, startDrive, initUI, elSpeed, elMode, elNitro, elGear, gArc, gLen, elLap, elCp, elBest } from './ui.js';
+import { getQualityLevel, dynamicPixelRatioAllowed, effectivePixelRatio, stepDownLevel, levelLabel } from './perfMode.js';
 import { preloadCriticalAssets } from './assetPreload.js';
 import { installMinimalDriveHud, updateMinimalDriveHud } from './p0Hud.js';
 import { installHmiDrivingHud, updateHmiDrivingHud } from './hmiDrivingHud.js';
@@ -105,7 +106,7 @@ function computeRoutePreview(pos, heading) {
 
 // ---------- 主循环 ----------
 let last = performance.now(), frame = 0;
-let fpsAcc = 0, fpsN = 0, autoDropped = false;
+let fpsAcc = 0, fpsN = 0;
 let loopErrCount = 0, slowFrames = 0;
 function loop() {
   requestAnimationFrame(loop);
@@ -211,7 +212,10 @@ function loopBody() {
 
   // 动态像素比（车近景更清晰）：停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
   // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标
-  if (G.hiQuality && G.appState === 'drive') {
+  // 动态像素比（车近景更清晰）：仅 High 档生效。停车/低速拉到 1.5 看清车身细节，高速降到 1.2 保帧；
+  // 4/10 双阈值迟滞，避免在临界速度反复重建渲染目标。
+  // Low / Medium 不进入此抬像素比逻辑（尤其 Medium on Mac Retina 必须固定在 effectivePixelRatio）。
+  if (dynamicPixelRatioAllowed(getQualityLevel()) && G.appState === 'drive') {
     const sp = Math.abs(state.speed);
     let want = G._prTier || 1.25;
     if (sp < 4) want = 1.5; else if (sp > 10) want = 1.2;
@@ -262,13 +266,17 @@ function loopBody() {
   if (G.appState !== 'pause' && G.appState !== 'photo') updateCarReflection(); // 反射探针（仅车库/照片模式）
   selectiveBloomRender();
   // 帧率自适应：持续偏低时自动降画质（一次性，Q 可切回）
+  // 帧率自适应：持续偏低时自动逐级降画质（High→Medium→Low），不再一次性掘到 Low。
+  // 每次降一级后重置计时，留一个窗口观察是否仍偏低再接着降。
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 4) {
     const avg = fpsN / fpsAcc;
-    if (!autoDropped && G.hiQuality && avg < 42 && G.appState === 'drive') {
-      autoDropped = true;
-      setQuality(false);
-      showMsg('已自动优化画质以保持流畅', 2200, 24);
+    if (avg < 42 && G.appState === 'drive') {
+      const next = stepDownLevel(getQualityLevel());
+      if (next) {
+        setQuality(next);
+        showMsg('已自动优化画质以保持流畅（' + levelLabel(next) + '）', 2200, 24);
+      }
     }
     fpsAcc = 0; fpsN = 0;
   }
@@ -424,7 +432,7 @@ addEventListener('keydown', (e) => {
     initFX();
     settleCarPose();
     applyTod(G.curTod);
-    setQuality(G.hiQuality);
+    setQuality(G.qualityLevel);
     // 线上 ?vp=N（N=1~8，无需 fastdebug）：跳过车库菜单，世界就绪后自动进 drive 并应用该验收点。
     const urlVp = getUrlViewpointId();
     if (urlVp) {
