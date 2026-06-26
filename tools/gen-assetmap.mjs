@@ -16,6 +16,7 @@ for (const s of ['day2', 'day3', 'evening', 'night1', 'night2']) put('sky/' + s,
 for (const f of ['sand_diff', 'forest_diff', 'rock_diff', 'dry_diff']) put('terrain/' + f, b + 'terrain/' + f + '.jpg', 'image/jpeg');
 for (const f of ['sand_rough', 'rock_rough', 'dry_rough', 'forest_rough', 'forest_nrm']) put('terrain/' + f, b + 'terrain/' + f + '.webp', 'image/webp');
 put('terrain/road2_diff', b + 'terrain/road2_diff.jpg', 'image/jpeg');
+put('terrain/waternormals', b + 'terrain/waternormals.jpg', 'image/jpeg');
 put('terrain/road2_nrm', b + 'terrain/road2_nrm.webp', 'image/webp');
 put('terrain/road2_rough', b + 'terrain/road2_rough.webp', 'image/webp');
 fs.writeFileSync('.build-tmp/assetmap.json', JSON.stringify(A));

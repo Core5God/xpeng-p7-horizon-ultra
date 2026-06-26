@@ -24,6 +24,7 @@ function inlineAssets() {
         const terr={"sand_diff.jpg":"terrain/sand_diff","forest_diff.jpg":"terrain/forest_diff","rock_diff.jpg":"terrain/rock_diff","dry_diff.jpg":"terrain/dry_diff","sand_rough.webp":"terrain/sand_rough","rock_rough.webp":"terrain/rock_rough","dry_rough.webp":"terrain/dry_rough","forest_rough.webp":"terrain/forest_rough","forest_nrm.webp":"terrain/forest_nrm"};
         for (const [fn,key] of Object.entries(terr)) code = code.split("TP+'"+fn+"'").join(JSON.stringify(A[key]));
         code = code.replace("'assets/terrain/road2_diff.jpg'", JSON.stringify(A['terrain/road2_diff']));
+        code = code.replace("'assets/terrain/waternormals.jpg'", JSON.stringify(A['terrain/waternormals']));
         code = code.replace("'assets/terrain/road2_nrm.webp'", JSON.stringify(A['terrain/road2_nrm']));
         code = code.replace("'assets/terrain/road2_rough.webp'", JSON.stringify(A['terrain/road2_rough']));
       }

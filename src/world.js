@@ -779,7 +779,7 @@ G.water = ocean;
 G.waterOK = true;
 const fallbackOcean = ocean; // 兼容旧引用（同一网格）
 new THREE.TextureLoader().load(
-  'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',
+  'assets/terrain/waternormals.jpg',
   (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(48, 48);
